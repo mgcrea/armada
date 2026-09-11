@@ -192,6 +192,8 @@ struct AccountSummary: View {
   let account: Account
   let showsName: Bool
 
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+
   /// Three, not five. The popover has to fit two of these plus the buttons, and
   /// the list in the window is one click away.
   private static let visibleSessions = 3
@@ -233,16 +235,33 @@ struct AccountSummary: View {
       }
 
       if let usage = account.usage, !usage.isEmpty {
+        let fiveHour = forecast(usage.fiveHour, .fiveHour, usage.fetchedAt)
+        let sevenDay = forecast(usage.sevenDay, .sevenDay, usage.fetchedAt)
         HStack(spacing: 16) {
-          CompactUsage(label: "5h", window: usage.fiveHour)
-          CompactUsage(label: "7d", window: usage.sevenDay)
+          CompactUsage(label: "5h", window: usage.fiveHour, forecast: fiveHour)
+          CompactUsage(label: "7d", window: usage.sevenDay, forecast: sevenDay)
         }
         .padding(.top, 2)
+        // Only when there is something to act on. "On pace" in a menu is a line of
+        // chrome in a 280pt panel whose job is the session list above it, and the
+        // weekly window is the one worth interrupting someone about.
+        if let sevenDay, sevenDay.isNoteworthy {
+          UsageCaption(window: usage.sevenDay, forecast: sevenDay)
+        }
       }
     }
   }
 
   private var sessions: [Session] { account.sessions.sessions }
+
+  private func forecast(
+    _ window: UsageWindow?, _ length: UsageWindowLength, _ fetchedAt: Date?
+  ) -> UsageForecast? {
+    guard let window else { return nil }
+    return UsageForecast(
+      window: window, length: length, weights: DayWeights(stored: storedWeights),
+      asOf: fetchedAt, now: .now)
+  }
 
   private var summary: String {
     let working = sessions.count { $0.state != .idle }
@@ -256,6 +275,7 @@ struct AccountSummary: View {
 struct CompactUsage: View {
   let label: String
   let window: UsageWindow?
+  var forecast: UsageForecast?
 
   var body: some View {
     HStack(spacing: 5) {
@@ -265,9 +285,7 @@ struct CompactUsage: View {
       Text(window.map { "\($0.utilization)%" } ?? "—")
         .font(.callout.monospacedDigit())
       if let window {
-        ProgressView(value: Double(window.utilization), total: 100)
-          .progressViewStyle(.linear)
-          .tint(UsageTint.for(window.utilization))
+        UsageBar(percent: window.utilization, forecast: forecast, height: 5)
           .frame(width: 52)
       }
     }
