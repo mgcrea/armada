@@ -1,8 +1,19 @@
 # Codex: sessions, limits and hooks
 
-Findings from 2026-09-09 and 2026-09-10 against Codex 0.152.0. Less complete than
+Findings from 2026-09-09 and 2026-09-10 against Codex 0.152.0, extended 2026-09-11 against
+0.153.4 while building Armada's Codex pane. Less complete than
 [claude-code-sessions.md](claude-code-sessions.md): enough to design from, with the gaps
 listed at the end.
+
+**What 2026-09-11 settled**, all of it measured on this Mac and all of it now load-bearing
+in the app — the detail is in the sections below:
+
+| Question | Answer |
+| --- | --- |
+| Where are the titles? | `session_index.jsonl`, `thread_name`. Absent for subagents. |
+| Which sessions are live? | `thread-writer-locks/<id>.lock` — a zero-byte flock held for the whole session |
+| Where are the limits? | inside every rollout's `token_count`; no cache file exists |
+| What identifies a session? | the filename uuid. `session_meta.session_id` **lies on a subagent** |
 
 ## The binary
 
@@ -16,9 +27,116 @@ listed at the end.
 ## Files
 
 - `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl`: one log per session.
-- Also present, not studied: `session_index.jsonl`, `state_5.sqlite`, `thread-writer-locks/`,
-  `archived_sessions/`.
-- `auth.json` holds credentials when the file store is used. Armada must never read it.
+  **The day directory is the local date**, not UTC: a session whose first event is
+  `05:01:34Z` is filed under `2026/09/11` on a UTC+2 machine, matching the `T07-01-34` in
+  its own filename. 418 of them here across six months; nothing prunes them.
+- `session_index.jsonl`: `{"id", "thread_name", "updated_at"}` per line. The titles.
+- `thread-writer-locks/<sessionId>.lock`: liveness. See below.
+- `state_5.sqlite`, `thread_history_1.sqlite`: the ChatGPT app's own stores. Richer and
+  deliberately unused — see below.
+- `archived_sessions/`: 401 rollouts moved out of `sessions/`. An archived session is by
+  definition not one to watch.
+- `auth.json` holds credentials when the file store is used. Armada must never read it, and
+  does not need to: `plan_type` arrives with the rate limits.
+
+### The filename uuid is the session id — `session_meta.session_id` is not
+
+Every rollout's `session_meta` carries both `id` and `session_id`. They are the same string
+on an ordinary thread and **different on a spawned one**: all four `guardian_review`
+rollouts on 2026-09-11 carry their own uuid in `id` and their *parent's* uuid in
+`session_id`, identical to `parent_thread_id`.
+
+So `session_id` gives a subagent the identity of the thread that spawned it. This is not
+cosmetic — it cost three wrong rows in Armada, because SwiftUI's `List` keys on identity and
+a subagent sharing its parent's id made the parent render the child's project and lose its
+title. The filename uuid is `id`, and so is the lock file's name; that is what to key on.
+
+`parent_thread_id` is the honest test for "is this a subagent": set on exactly those four,
+null on every top-level thread. `thread_source` (`user` / `automation` / `guardian_review`)
+says what started it. **`source` is not a string** — it is `"vscode"` on a normal thread and
+the object `{"subagent":{"other":"guardian"}}` on a spawned one, so code reading it as a
+string gets nil exactly where the interesting case is.
+
+### Reading one cheaply
+
+- **Head, 64KB.** The first line alone is ~22KB, because `session_meta` embeds the whole
+  system prompt in `base_instructions.text` (18KB). `turn_context` — which carries `model`,
+  `effort` and `approval_policy` — is around line 6, so 64KB reaches it.
+- **Tail, 64KB.** Contained between 1 and 6 `token_count` events in every rollout measured,
+  so one bounded read answers both "what is the state" and "what are the limits". No
+  full-scan fallback is needed, unlike the Claude side's 64KB tail, which finds the title it
+  wants only 16% of the time: Codex emits `token_count` after every turn rather than once
+  early on.
+
+## Which sessions are live
+
+**There is no registry.** Claude Code writes `sessions/<pid>.json` per live session and
+liveness is `kill(pid, 0)`. Codex writes nothing of the kind, and its processes are the
+wrong shape for one anyway: the three `codex … app-server` processes running here are hosts
+for the VS Code extension, each able to hold several threads, so "is a codex process alive"
+answers nothing about any particular session.
+
+What it does write is `~/.codex/thread-writer-locks/<sessionId>.lock`. Measured on
+2026-09-11 by running `codex exec` and watching the directory:
+
+- the file appears when the session starts writing its rollout and is **gone** about two
+  seconds after `task_complete`;
+- it is **zero bytes** — the liveness is the flock, not the contents. `lsof` showed
+  `codex … 32u REG` holding it open, so there is no pid to read out of it;
+- its name is the *session* id, matching the uuid in the rollout filename, so a lock maps to
+  a session with no file read at all;
+- `.coordination.lock` sits beside them and is not a session.
+
+**Settled the same evening: the lock spans the session, not the turn.** `codex exec` could
+not answer it — it exits with its turn, so the turn's end and the process's end always
+coincide — but simply looking at the directory while the ChatGPT VS Code panel had a thread
+open did: one interactive `codex` process held two locks, and the rollout for one of them
+had ended its turn with `task_complete` **7 hours 20 minutes earlier**. The lock was still
+held.
+
+So the three states Armada shows are all real: lock + unfinished turn is working, lock +
+`task_complete` is a session sitting open waiting for input, no lock is ended.
+
+**A lock can exist with no rollout file at all.** The second of those two locks had none —
+an open session that has never been prompted, the exact analogue of a Claude Code session
+with a registry entry and no transcript. It follows that **walking `sessions/` does not
+enumerate open sessions**: the locks directory is the only place a never-prompted session
+exists, and anything that discovers sessions from rollout files alone will silently miss it.
+
+Neither of these needed a probe script or a turn of quota. Both were sitting in
+`ls -A thread-writer-locks/` the whole time, which is worth remembering before writing
+another probe: this directory is a live registry, and reading it costs nothing.
+
+A crashed process leaves its lock behind and nothing can tell that from a live one. With no
+pid in the file there is no `kill(pid, 0)` equivalent. The honest alternative is
+`flock(LOCK_SH | LOCK_NB)`, which Armada does **not** do: taking even a shared lock on a
+file Codex expects to hold exclusively could make a real session fail to start.
+
+### Turn boundaries are explicit
+
+`task_started` and `task_complete` bracket every turn, so "working" needs no inference —
+the opposite of the Claude side, where an unanswered `tool_use` is a guess the UI has to
+hedge. The two vendors answer opposite halves of the same question: Claude Code says the
+*session* is alive and leaves the turn to be inferred; Codex says the *turn* is over and
+leaves the session to be inferred.
+
+## Titles
+
+`session_index.jsonl`, one `{"id", "thread_name", "updated_at"}` per line, 104KB and 747
+lines here. A nicer answer than the Claude side's, which needs a tail-scan of every
+multi-megabyte transcript.
+
+**It is not complete, and the gap is not random.** 9 of the 13 rollouts written on
+2026-09-11 have an entry; the 4 without are all `guardian_review` subagents, which are
+spawned rather than started by a person and never get a generated name. A missing title
+means "never named", not "the index is behind".
+
+**`state_5.sqlite` is richer and deliberately unused.** Its `threads` table has 819 rows
+with `rollout_path`, `cwd`, `archived`, `git_branch`, `tokens_used`, `preview` and more, and
+it reads fine read-only (`file:…?mode=ro`) while the ChatGPT app holds it open in WAL mode.
+Two reasons against depending on it: the filename carries a schema version that has already
+been bumped to 5, and its `title` column is not a title — empty for every named automation
+thread, and the *entire prompt* for the subagent ones, over 100KB in a single row.
 
 ### Session log entries
 
@@ -49,6 +167,30 @@ Every `token_count` event carries the plan windows:
 ```
 
 `primary` is the 5-hour window and `secondary` the 7-day one. No credentials involved.
+
+Four things measured while building against it on 2026-09-11, each of which the Claude side
+does differently:
+
+- **`resets_at` is epoch seconds, an integer.** Claude's field of the same name and meaning
+  is an ISO 8601 string with six fractional digits that needs `.withFractionalSeconds` to
+  parse at all ([limits-accounts-and-terms.md](limits-accounts-and-terms.md#where-plan-limit-data-is)).
+  Sharing a parser between the two is a bug waiting for whichever vendor changes first.
+- **`used_percent` is a `Double`** (`61.0`), where Claude's `utilization` is an `Int`. A
+  cast to `Int` quietly produces nil against `JSONSerialization`.
+- **`plan_type`** (`"plus"`) is the only account identity available without opening
+  `auth.json`. `limit_name`, `individual_limit`, `spend_control_reached` and
+  `rate_limit_reached_type` sit beside it and are worth ignoring: read narrowly, as with
+  Claude's cache, so an unrelated key changing shape cannot break anything.
+- **There is no cache file, and that is the real difference.** Claude Code maintains
+  `cachedUsageUtilization` as a document any reader can consult at any time. Codex states
+  its limits only as a side effect of a turn, so the newest figures are exactly as old as
+  the last turn anyone ran — and the 5-hour window they describe has often already rolled
+  over by the time you look. Anything showing these must show their age, and say when the
+  window they belong to no longer exists. Observed the same afternoon: a 61% reading from
+  07:06 whose window reset at 12:00, sitting beside a 1% reading from 12:30.
+
+To find the current figures: take the newest `token_count` across recent rollouts, tracked
+by the event's own timestamp rather than the file's mtime.
 
 ## As an MCP client
 
@@ -104,8 +246,23 @@ credentials. Unverified.
 
 ## Open questions
 
-- Where does Codex keep a session's title, if anywhere?
-- Does one Codex process (the ChatGPT app, the IDE extension) host several conversations?
+Answered on 2026-09-11, kept here so the change is visible: **where the titles are**
+(`session_index.jsonl`, above) and **whether one process hosts several conversations** —
+yes, `codex … app-server` is a host for the VS Code extension and three were running here,
+which is why liveness is per-lock and never per-process.
+
+Also answered, later the same day: **an idle interactive session does keep its writer
+lock** (7h20m past `task_complete`), and **a `codex` process does hold locks for the threads
+open in the VS Code panel** — an earlier `lsof` on three `app-server` processes showed none
+only because no thread was open at the time.
+
+Still open:
+
+- **Is a lock ever left behind by a crash?** Nothing observed, and nothing could distinguish
+  it from a live session if it were: the file is empty, so there is no pid to test. This is
+  the one remaining soft spot under "live".
 - Does an `updatedInput` rewrite from `PreToolUse` reach the MCP server?
 - Do `Stop` blocks and `UserPromptSubmit` context deliver reliably in an interactive Codex
   session?
+- Does anything prune `sessions/`, or does it grow forever? Six months and 418 files here
+  with no sign of a sweep.

@@ -17,6 +17,28 @@ nonisolated enum TranscriptTitle {
   /// transcripts measured during the spike.
   static let tailBytes = 64 * 1024
 
+  /// The last `tailBytes` of a transcript, and whether the first line in them is a
+  /// fragment.
+  ///
+  /// Shared rather than repeated because more than one thing is read out of these
+  /// files now — the title here, and a rate-limit refusal in `TranscriptQuota` — and
+  /// they are read on the same events. One read, handed to both parsers, is what
+  /// keeps a second reader from doubling the I/O of every transcript write.
+  ///
+  /// **`droppingFirstLine` is not optional politeness.** A tail read starts
+  /// mid-line unless it started at byte zero, and that first fragment is not
+  /// parseable JSON; every caller must drop it or hand the decoder garbage.
+  static func tail(of url: URL) -> (chunk: Data, droppingFirstLine: Bool)? {
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
+
+    guard let size = try? handle.seekToEnd() else { return nil }
+    let start = size > UInt64(tailBytes) ? size - UInt64(tailBytes) : 0
+    try? handle.seek(toOffset: start)
+    guard let chunk = try? handle.readToEnd() else { return nil }
+    return (chunk, start > 0)
+  }
+
   /// The title Claude Code shows for this session, or nil.
   ///
   /// **Keeps the LAST match, not the first.** Titles are rewritten throughout a
@@ -40,22 +62,15 @@ nonisolated enum TranscriptTitle {
   /// accordingly: 54MB and 141ms across those 19, which is why the caller does it
   /// in the background and why it is attempted at most once per session.
   static func newestTitle(at url: URL, fullScanFallback: Bool = false) -> String? {
-    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-    defer { try? handle.close() }
+    guard let tail = tail(of: url) else { return nil }
 
-    guard let size = try? handle.seekToEnd() else { return nil }
-    let start = size > UInt64(tailBytes) ? size - UInt64(tailBytes) : 0
-    try? handle.seek(toOffset: start)
-    guard let tail = try? handle.readToEnd() else { return nil }
-
-    // A tail read starts mid-line unless it started at byte zero; that first
-    // partial line is not parseable JSON and must not be handed to the decoder.
-    if let title = newestTitle(inChunk: tail, droppingFirstLine: start > 0) {
+    if let title = newestTitle(inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine) {
       return title
     }
-    guard fullScanFallback, start > 0 else { return nil }
+    guard fullScanFallback, tail.droppingFirstLine else { return nil }
 
-    try? handle.seek(toOffset: 0)
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
     guard let whole = try? handle.readToEnd() else { return nil }
     return newestTitle(inChunk: whole, droppingFirstLine: false)
   }
@@ -91,15 +106,10 @@ nonisolated enum TranscriptTitle {
   /// in that snapshot had sat on an unanswered `tool_use` for 10.5 hours. Telling
   /// those apart needs hooks, which this prototype deliberately does not install.
   static func isAwaitingToolResult(at url: URL) -> Bool {
-    guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-    defer { try? handle.close() }
-    guard let size = try? handle.seekToEnd() else { return false }
-    let start = size > UInt64(tailBytes) ? size - UInt64(tailBytes) : 0
-    try? handle.seek(toOffset: start)
-    guard let tail = try? handle.readToEnd() else { return false }
+    guard let tail = tail(of: url) else { return false }
 
-    var lines = tail.split(separator: 0x0A, omittingEmptySubsequences: true)
-    if start > 0, !lines.isEmpty { lines.removeFirst() }
+    var lines = tail.chunk.split(separator: 0x0A, omittingEmptySubsequences: true)
+    if tail.droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
 
     // Walk backwards to the newest entry that is a user or assistant turn;
     // everything else (file-history, cost-state, mode, …) is noise for this.

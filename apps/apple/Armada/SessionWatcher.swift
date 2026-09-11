@@ -93,6 +93,15 @@ final class SessionWatcher {
     timer = tick
   }
 
+  /// The newest rate-limit refusal across this folder's sessions, live or spent.
+  ///
+  /// Folder-wide because that is the scope a plan limit has: the windows belong to
+  /// the organization, not to the session that happened to be refused first, so a
+  /// refusal in any one of them describes all of them.
+  var newestQuotaHit: QuotaHit? {
+    sessions.compactMap(\.quotaHit).max { $0.at < $1.at }
+  }
+
   /// Rebuild the session list from `~/.claude/sessions`.
   ///
   /// Called on any registry event and on the liveness sweep. Sessions that survive
@@ -182,6 +191,12 @@ final class SessionWatcher {
   /// and it grows with both session count and session age. So it runs detached and
   /// the title arrives a moment later, which is what the rows are built to do
   /// anyway: an untitled session already renders its registry name.
+  /// Also carries the rate-limit refusal out of the same buffer.
+  ///
+  /// Two things are wanted from a transcript's tail and they are wanted on the same
+  /// event, so they share one read. `TranscriptTitle.tail(of:)` exists for that:
+  /// adding the quota scan as a second `…(at:)` call would have doubled the I/O of
+  /// every transcript write to find a record that is absent from almost all of them.
   private func refreshTitle(_ session: Session) {
     if session.transcript == nil { locateTranscript(session) }
     guard let transcript = session.transcript else { return }
@@ -191,7 +206,20 @@ final class SessionWatcher {
     guard size != session.titleScannedSize || session.title == nil else { return }
     session.titleScannedSize = size
 
-    if let title = TranscriptTitle.newestTitle(at: transcript) {
+    guard let tail = TranscriptTitle.tail(of: transcript) else { return }
+
+    // Newest wins, and nothing found leaves what is already held — see
+    // `Session.quotaHit` for why an absent record is not a retraction.
+    if let hit = TranscriptQuota.newestHit(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine),
+      hit.at > (session.quotaHit?.at ?? .distantPast)
+    {
+      session.quotaHit = hit
+    }
+
+    if let title = TranscriptTitle.newestTitle(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+    {
       session.title = title
       return
     }

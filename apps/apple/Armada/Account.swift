@@ -68,6 +68,13 @@ final class Account: Identifiable {
     (folder.usageJSON.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
   }
 
+  /// The newest rate-limit refusal this folder's transcripts have recorded.
+  ///
+  /// A second usage source beside `usage`, and the only one that is not a cache.
+  /// See `QuotaHit`, and `UsageSnapshot.window(_:correctedBy:now:)` for the narrow
+  /// circumstances in which it is allowed to overrule the cached figure.
+  var quotaHit: QuotaHit? { sessions.newestQuotaHit }
+
   func start() {
     sessions.start()
     refreshConfig()

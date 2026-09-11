@@ -9,6 +9,19 @@ import Foundation
 nonisolated struct UsageWindow: Sendable, Hashable {
   let utilization: Int
   let resetsAt: Date?
+
+  /// Set when this reading came from a refused request rather than from the vendor's
+  /// own cached figure. Display only — see `UsageSnapshot.window(_:correctedBy:now:)`.
+  var rejectedAt: Date?
+
+  /// The reset has passed, so `utilization` describes a window that no longer exists.
+  ///
+  /// **Takes `now` rather than reading `Date.now`.** Every caller is a SwiftUI body,
+  /// and a body that reads the clock directly is only correct at the instant it was
+  /// last evaluated — which is how the menu bar popover came to show a 99% meter for
+  /// a window that had rolled over an hour earlier. Threading the pane's tick in
+  /// makes the staleness impossible to draw by accident.
+  func hasRolled(asOf now: Date) -> Bool { resetsAt.map { $0 < now } ?? false }
 }
 
 /// One entry of the cache's `limits` array.
@@ -101,6 +114,33 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
   let fetchedAt: Date?
 
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }
+
+  /// One window, with a rate-limit refusal allowed to overrule the cached figure.
+  ///
+  /// **Three conditions, all of them narrow, because overruling the vendor's own
+  /// number is not something to do on a hunch.** The hit must name this window, it
+  /// must be newer than the cache it is correcting, and its own window must not have
+  /// rolled yet. Miss any one and the cached figure stands untouched.
+  ///
+  /// When all three hold, the refusal is simply better evidence. The cache says what
+  /// Claude Code last copied down; the refusal says the API turned a request away
+  /// just now, which means the window is spent whatever the older figure claims.
+  /// Measured on 2026-09-11: the cache read 26% while a session in the same folder
+  /// had been refused eight minutes later — the correction is the difference between
+  /// a green bar and the truth.
+  ///
+  /// `resets_at` comes from the hit too, not from the cache. They are the same
+  /// instant when both are current, and when they disagree the fresher one is the
+  /// one that has not been overtaken by a rollover.
+  func window(_ length: UsageWindowLength, correctedBy hit: QuotaHit?, now: Date)
+    -> UsageWindow?
+  {
+    let cached = length == .fiveHour ? fiveHour : sevenDay
+    guard let hit, hit.length == length, hit.isLive(at: now),
+      hit.at > (fetchedAt ?? .distantPast)
+    else { return cached }
+    return UsageWindow(utilization: 100, resetsAt: hit.resetsAt, rejectedAt: hit.at)
+  }
 
   static func read(from url: URL) -> UsageSnapshot? {
     guard let root = ClaudeConfigDocument.read(url) else { return nil }

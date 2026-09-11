@@ -5,9 +5,11 @@ is drafted and waiting for review, sections 3–5 are notes only. After section 
 written spec, then an implementation plan.
 
 > **Update 2026-09-11: parts of this are built.** The session dashboard and plan limits
-> exist and run, per account, ahead of sections 3–5 being written — so where this doc and
-> the app disagree about those two, the app is what happened and
-> [implementation.md](implementation.md) describes it. Everything in section 1's messaging
+> exist and run, per Claude account and — added the same day as a spike — per Codex home,
+> ahead of sections 3–5 being written. So where this doc and the app disagree about those
+> two, the app is what happened and [implementation.md](implementation.md) describes it.
+> Section 3's Codex bullets in particular were written before anyone had read a rollout;
+> [codex-sessions.md](codex-sessions.md) now has the measurements. Everything in section 1's messaging
 > architecture (`hubctl`, the socket, hook installation, the MCP surface) is still design
 > only, and still the plan. This doc is not stale as a *plan*; it is just no longer the only
 > place to look.
@@ -253,14 +255,21 @@ Facts to design from:
   `stop_reason: end_turn` means waiting for the user; an unanswered `tool_use` means a tool
   is running or approval is pending, which hooks tell apart.
 - **Codex sessions:** `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, with explicit
-  `task_started` and `task_complete` events, plus Codex hooks. Titles not studied. See
-  [codex-sessions.md](codex-sessions.md).
+  `task_started` and `task_complete` events, plus Codex hooks. ~~Titles not studied.~~
+  **Measured 2026-09-11:** titles are in `session_index.jsonl`; liveness is a flock in
+  `thread-writer-locks/`, held for the whole session, and is the *only* place a
+  never-prompted session appears; a subagent's `session_meta.session_id` is its parent's.
+  See [codex-sessions.md](codex-sessions.md).
 - **Limits:** Claude's status-line JSON documents `rate_limits.five_hour` and `seven_day`,
   but very likely never runs in VS Code. The fallback is `cachedUsageUtilization` in the
   account's `.claude.json` (undocumented, cached). Codex writes `rate_limits.primary` and
   `secondary` in every `token_count` event. See
   [limits-accounts-and-terms.md](limits-accounts-and-terms.md).
-- **Accounts:** found by locating Claude config folders and Codex homes.
+- **Accounts:** found by locating Claude config folders and Codex homes. **The two are not
+  symmetrical, deliberately.** Claude Code's own docs name the `~/.claude-<name>` sibling
+  pattern, so scanning for it finds real accounts; Codex documents `CODEX_HOME` with no
+  naming convention, so Armada takes `~/.codex` plus whatever `CODEX_HOME` says and invents
+  nothing.
 
 ## 4. Error handling (To write)
 
@@ -271,7 +280,11 @@ Cases to cover:
   waiting for its next turn".
 - `wait` killed between receiving and acknowledging: choose at-least-once delivery with a
   message ID the recipient can de-duplicate, or at-most-once.
-- A session-list file left behind by a crashed session: check PID liveness.
+- A session-list file left behind by a crashed session: check PID liveness. **This is
+  Claude-only reasoning.** Codex's liveness marker is an empty lock file with no pid in it,
+  so there is nothing to check and a crash-orphaned lock is indistinguishable from a live
+  session. `flock(LOCK_SH|LOCK_NB)` would test it and is refused: taking even a shared lock
+  on a file Codex holds exclusively could stop a real session starting.
 - Config drift: the user edits or removes Armada's hooks, or a merge fails.
 - Codex hooks not firing in some setups (reported upstream, unverified): warn per session.
 - A stale limits cache: show its age.
@@ -294,8 +307,11 @@ Starting points:
 - **How long a session stays reachable:** does a long `timeout` (an hour or more) hold on an
   `asyncRewake` hook? The settings schema only requires a positive number.
 - **Codex sender identity:** does the `PreToolUse` token work end to end?
-- **Codex process model:** does one Codex process host several conversations? This only
-  matters if the token approach fails.
+- ~~**Codex process model:** does one Codex process host several conversations?~~
+  **Answered 2026-09-11: yes.** `codex … app-server` is a host for the VS Code extension —
+  three were running here — and one `codex` process was seen holding writer locks for two
+  threads at once. So a Codex process never identifies a session, which is why Armada's
+  liveness is per-lock and never per-process.
 - **Claude limits in VS Code:** confirm the status line doesn't run there, and find where
   `.claude.json` lives under a non-default `CLAUDE_CONFIG_DIR`.
 - **Multiple accounts:** can `claudeCode.environmentVariables` set `CLAUDE_CONFIG_DIR` per

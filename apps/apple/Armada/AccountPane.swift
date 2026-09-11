@@ -72,12 +72,16 @@ struct UsageHeader: View {
     VStack(spacing: 0) {
       HStack(alignment: .top, spacing: 24) {
         if let usage = account.usage, !usage.isEmpty {
+          // See `UsageSnapshot.window(_:correctedBy:now:)`: a refusal newer than the
+          // cache overrules it, and nothing else does.
+          let five = usage.window(.fiveHour, correctedBy: account.quotaHit, now: now)
+          let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
           CompactMeter(
-            title: "Session", subtitle: "5 hours", window: usage.fiveHour,
-            forecast: forecast(usage.fiveHour, .fiveHour, usage.fetchedAt))
+            title: "Session", subtitle: "5 hours", window: five,
+            forecast: forecast(five, .fiveHour, usage.fetchedAt), now: now)
           CompactMeter(
-            title: "Weekly", subtitle: "7 days", window: usage.sevenDay,
-            forecast: forecast(usage.sevenDay, .sevenDay, usage.fetchedAt))
+            title: "Weekly", subtitle: "7 days", window: seven,
+            forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now)
           Spacer(minLength: 0)
           StalenessBadge(fetchedAt: usage.fetchedAt, now: now)
         } else {
@@ -100,7 +104,8 @@ struct UsageHeader: View {
   private func forecast(
     _ window: UsageWindow?, _ length: UsageWindowLength, _ fetchedAt: Date?
   ) -> UsageForecast? {
-    guard let window else { return nil }
+    // Nothing to project from a window a refusal has already closed.
+    guard let window, window.rejectedAt == nil else { return nil }
     return UsageForecast(
       window: window, length: length, weights: DayWeights(stored: storedWeights),
       asOf: fetchedAt, now: now)
@@ -113,6 +118,7 @@ struct CompactMeter: View {
   let subtitle: LocalizedStringKey
   let window: UsageWindow?
   var forecast: UsageForecast?
+  let now: Date
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -122,13 +128,14 @@ struct CompactMeter: View {
       }
       if let window {
         HStack(spacing: 8) {
-          Text("\(window.utilization)%")
-            .font(.title3.monospacedDigit())
-            .contentTransition(.numericText())
-          UsageBar(percent: window.utilization, forecast: forecast)
-            .frame(width: 110)
+          UsageFigure(window: window, now: now, font: .title3)
+          UsageBar(
+            percent: window.utilization, forecast: forecast,
+            voided: window.hasRolled(asOf: now)
+          )
+          .frame(width: 110)
         }
-        UsageCaption(window: window, forecast: forecast)
+        UsageFootnote(window: window, forecast: forecast, now: now)
       } else {
         Text("—").foregroundStyle(.secondary)
       }
@@ -156,6 +163,14 @@ enum UsageTint {
 struct StalenessBadge: View {
   let fetchedAt: Date?
   let now: Date
+  var style: Style = .full
+
+  /// `.compact` is the popover's. The two-line stack below is sized for a header
+  /// strip with a `Spacer` in front of it and does not belong in a 320pt panel, but
+  /// the panel is exactly where the age was missing — it was the one surface showing
+  /// a percentage with nothing to say how old it was. One tertiary line, and the
+  /// same thresholds, so the two surfaces cannot disagree about what "stale" means.
+  enum Style { case full, compact }
 
   private static let fresh: TimeInterval = 5 * 60
   private static let stale: TimeInterval = 60 * 60
@@ -167,12 +182,22 @@ struct StalenessBadge: View {
         if age > Self.stale {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
+            .font(style == .full ? nil : .caption2)
         }
-        VStack(alignment: .trailing, spacing: 2) {
-          Text("as of").font(.caption2).foregroundStyle(.tertiary)
-          Text(fetchedAt, format: .relative(presentation: .named))
-            .font(.caption)
-            .foregroundStyle(age > Self.fresh ? .secondary : .primary)
+        if style == .full {
+          VStack(alignment: .trailing, spacing: 2) {
+            Text("as of").font(.caption2).foregroundStyle(.tertiary)
+            Text(fetchedAt, format: .relative(presentation: .named))
+              .font(.caption)
+              .foregroundStyle(age > Self.fresh ? .secondary : .primary)
+          }
+        } else {
+          Text("figures from \(fetchedAt, format: .relative(presentation: .named))")
+            .font(.caption2)
+            .foregroundStyle(
+              age > Self.stale ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
+            )
+            .lineLimit(1)
         }
       }
       .help(

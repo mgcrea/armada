@@ -6,24 +6,32 @@ import SwiftUI
 /// and one account, which is the whole cost of adding a second sidebar section.
 ///
 /// Round-trips through one defaults string because that is what `@AppStorage`
-/// stores. Account ids are absolute paths — `Account.id` guarantees it — so they
-/// always begin with a slash and can never be mistaken for the overview's token.
+/// stores. Claude account ids are absolute paths — `Account.id` guarantees it — so
+/// they always begin with a slash and can never be mistaken for the overview's
+/// token. Codex ids are absolute paths too, which is exactly why they carry a
+/// prefix: `~/.claude` and `~/.codex` are different rows and the stored string has
+/// to say which.
 enum SidebarItem: Hashable {
   case usage
   case account(String)
+  case codex(String)
 
   private static let usageToken = "usage"
+  private static let codexPrefix = "codex:"
 
   var stored: String {
     switch self {
     case .usage: Self.usageToken
     case .account(let id): id
+    case .codex(let id): Self.codexPrefix + id
     }
   }
 
   init?(stored: String) {
     if stored == Self.usageToken {
       self = .usage
+    } else if stored.hasPrefix(Self.codexPrefix) {
+      self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
     } else if stored.hasPrefix("/") {
       self = .account(stored)
     } else {
@@ -34,6 +42,7 @@ enum SidebarItem: Hashable {
 
 struct MainWindowView: View {
   @State private var accounts = Accounts.shared
+  @State private var codex = CodexAccounts.shared
 
   /// What the sidebar had selected last time.
   ///
@@ -50,10 +59,21 @@ struct MainWindowView: View {
           Label("Usage", systemImage: "gauge.with.dots.needle.bottom.50percent")
             .tag(SidebarItem.usage)
         }
-        Section("Accounts") {
+        Section("Claude Code") {
           ForEach(accounts.all) { account in
             AccountSidebarRow(account: account)
               .tag(SidebarItem.account(account.id))
+          }
+        }
+        // Omitted entirely when there is no Codex home, rather than shown empty:
+        // an app that watches agents should not tell someone who does not use
+        // Codex that they are missing something.
+        if !codex.isEmpty {
+          Section("Codex") {
+            ForEach(codex.all) { account in
+              CodexSidebarRow(account: account)
+                .tag(SidebarItem.codex(account.id))
+            }
           }
         }
       }
@@ -76,12 +96,17 @@ struct MainWindowView: View {
             // inside it does not carry across to a different folder's list.
             .id(account.id)
         }
+      case .codex(let id):
+        if let account = codex.account(id: id) {
+          CodexPaneView(account: account)
+            .id(account.id)
+        }
       case nil:
         ContentUnavailableView {
-          Label("No Claude config folder", systemImage: "folder.badge.questionmark")
+          Label("No agents found", systemImage: "folder.badge.questionmark")
         } description: {
           Text(
-            "Armada looks for ~/.claude and any ~/.claude-<name> beside it. None of them has a sessions folder yet."
+            "Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex. None of them has a sessions folder yet."
           )
         }
       }
@@ -96,7 +121,10 @@ struct MainWindowView: View {
     switch SidebarItem(stored: storedAccount) {
     case .usage: .usage
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
-    default: accounts.all.first.map { .account($0.id) }
+    case .codex(let id) where codex.account(id: id) != nil: .codex(id)
+    // A Codex home is a real fallback, not a consolation prize: someone may run
+    // Codex and no Claude Code at all, and the window should open on their work.
+    default: accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }
     }
   }
 
@@ -146,5 +174,40 @@ struct AccountSidebarRow: View {
 
   private var workingCount: Int {
     account.sessions.sessions.count { $0.state != .idle }
+  }
+}
+
+/// One Codex home in the sidebar.
+///
+/// Deliberately the same shape as `AccountSidebarRow` — icon, name, plan, badge,
+/// working dot — with one difference that is not cosmetic: **the badge counts live
+/// sessions, not rows.** The Codex pane lists recent sessions as well as live
+/// ones, and a badge of "14" next to a home where nothing is running would be the
+/// most prominent wrong number in the window.
+struct CodexSidebarRow: View {
+  let account: CodexAccount
+
+  var body: some View {
+    HStack(spacing: 8) {
+      CodexIconView(size: 18)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(account.displayName)
+          .lineLimit(1)
+        if let plan = account.planLabel {
+          Text(plan)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+      }
+      Spacer(minLength: 4)
+      if account.sessions.workingCount > 0 {
+        Circle()
+          .fill(CodexSessionState.working.tint)
+          .frame(width: 6, height: 6)
+          .help("\(account.sessions.workingCount) working")
+      }
+    }
+    .badge(account.sessions.liveSessions.count)
+    .help(account.displayPath)
   }
 }

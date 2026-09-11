@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SupportKitSettings
 import SupportKitUI
 import SwiftUI
@@ -34,6 +35,7 @@ struct ArmadaApp: App {
 /// nothing here sets one.
 private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
+  @State private var codex = CodexAccounts.shared
 
   var body: some View {
     Image(isWorking ? "MenuBarIconActive" : "MenuBarIcon")
@@ -41,10 +43,10 @@ private struct MenuBarLabel: View {
         isWorking ? "Armada — a session is working" : "Armada — all sessions idle")
   }
 
-  /// Across every account: the menu bar answers "is anything of mine moving",
-  /// which is not a per-organization question.
+  /// Across every account and every vendor: the menu bar answers "is anything of
+  /// mine moving", which is neither a per-organization nor a per-vendor question.
   private var isWorking: Bool {
-    accounts.workingSessionCount > 0
+    accounts.workingSessionCount > 0 || codex.workingCount > 0
   }
 }
 
@@ -60,13 +62,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private lazy var settingsWindow = HostedWindow(
     title: "Armada Settings",
-    autosaveName: "settings",
+    // "settings-panes", not "settings": cupertino renamed away from the bare
+    // name as a deliberate one-time frame reset and bastion followed, so this is
+    // the fleet's name. Free to adopt here — Armada has never shipped, so there
+    // is no remembered frame to reset.
+    autosaveName: "settings-panes",
     contentSize: NSSize(width: 700, height: 460)
   ) { SettingsWindowView() }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
     Accounts.shared.start()
+    CodexAccounts.shared.start()
     DockPresence.observe()
   }
 
@@ -96,6 +103,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// who has never heard of a second config folder sees no scaffolding for it.
 struct StatusMenu: View {
   @State private var accounts = Accounts.shared
+  @State private var codex = CodexAccounts.shared
+
+  /// The panel's clock, and the fix for the bug this panel had the longest: every
+  /// reset time, every forecast and the staleness line below are relative to *now*,
+  /// and nothing else here moves. The two windows both push state in from a pane
+  /// that owns a tick; the popover owns nothing, so a body evaluated at 12:58 still
+  /// said "resets in 2m" at half past two. Same one-second `Timer.publish` the three
+  /// panes use, rather than a second mechanism that would drift from them.
+  ///
+  /// One second is finer than anything on this panel needs — the shortest thing it
+  /// renders is "in 4h" — and unlike a pane's clock this one may well go on ticking
+  /// while the panel is closed, since SwiftUI keeps `MenuBarExtra` content alive. It
+  /// is kept anyway: the work per tick is assigning a `Date`, and matching what the
+  /// panes do is worth more than shaving that. `TimelineView(.periodic:)` would pause
+  /// itself while hidden and is the tidier answer if this ever shows up in a profile.
+  @State private var now = Date()
+  private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -138,15 +162,22 @@ struct StatusMenu: View {
         .help("About Armada")
       }
 
-      if accounts.all.isEmpty {
+      if accounts.all.isEmpty && codex.isEmpty {
         Divider()
-        Text("No Claude config folder found")
+        Text("No Claude Code or Codex folder found")
           .font(.callout)
           .foregroundStyle(.secondary)
       } else {
+        // Once there are two vendors on the panel every block needs its name, or
+        // the second one reads as more rows of the first.
+        let showsNames = accounts.all.count + codex.all.count > 1
         ForEach(accounts.all) { account in
           Divider()
-          AccountSummary(account: account, showsName: accounts.all.count > 1)
+          AccountSummary(account: account, showsName: showsNames, now: now)
+        }
+        ForEach(codex.all) { account in
+          Divider()
+          CodexSummary(account: account, showsName: showsNames, now: now)
         }
       }
 
@@ -157,11 +188,14 @@ struct StatusMenu: View {
       // GO TO sits right. "Open Armada" is the one being recommended, so it is
       // the only tinted button; a gear is a route, not advice.
       //
-      // Settings is a glyph rather than a word. Three text buttons stacked as
-      // three rows was the panel's own summary claim spent on chrome, and side
-      // by side they do not fit: the width the other two apps measured
-      // truncating "Open Cupertino" at 320pt is wider than this panel. A gear is
-      // the one glyph nobody needs taught, and its tooltip and ⌘, carry the name.
+      // Settings is a glyph rather than a word, and as of the widening to 320pt
+      // that rests on one reason rather than two. The width argument is gone: this
+      // panel used to be 280pt and the note here was that 320pt — where the other
+      // two apps measured "Open Cupertino" truncating — was wider than it. It is
+      // now exactly that width, though "Open Armada" is the shorter word. What
+      // stands is the other reason: a third text button is the panel's own summary
+      // claim spent on chrome. A gear is the one glyph nobody needs taught, and its
+      // tooltip and ⌘, carry the name.
       HStack {
         Button("Open Armada") { AppDelegate.shared?.showMain() }
           .buttonStyle(.glass)
@@ -183,7 +217,17 @@ struct StatusMenu: View {
       .controlSize(.small)
     }
     .padding(12)
-    .frame(width: 280)
+    .frame(width: 320)
+    .onReceive(clock) { now = $0 }
+    // Belt and braces beside the tick above. The tick keeps the *rendering* honest;
+    // this asks the watchers for a fresh *reading* the moment the panel is opened,
+    // rather than waiting out the rest of a 30-second poll in front of someone who
+    // just clicked to find out. Both are cheap: a re-read of a document already in
+    // the page cache, and a scan the Codex watcher coalesces anyway.
+    .onAppear {
+      accounts.refreshAll()
+      codex.refreshAll()
+    }
   }
 }
 
@@ -191,6 +235,7 @@ struct StatusMenu: View {
 struct AccountSummary: View {
   let account: Account
   let showsName: Bool
+  let now: Date
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
 
@@ -235,18 +280,26 @@ struct AccountSummary: View {
       }
 
       if let usage = account.usage, !usage.isEmpty {
-        let fiveHour = forecast(usage.fiveHour, .fiveHour, usage.fetchedAt)
-        let sevenDay = forecast(usage.sevenDay, .sevenDay, usage.fetchedAt)
-        HStack(spacing: 16) {
-          CompactUsage(label: "5h", window: usage.fiveHour, forecast: fiveHour)
-          CompactUsage(label: "7d", window: usage.sevenDay, forecast: sevenDay)
+        // Corrected before anything is drawn from them, so the figure, the bar, the
+        // reset and the forecast all describe the same window.
+        let five = usage.window(.fiveHour, correctedBy: account.quotaHit, now: now)
+        let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
+        let fiveHour = forecast(five, .fiveHour, usage.fetchedAt)
+        let sevenDay = forecast(seven, .sevenDay, usage.fetchedAt)
+        VStack(alignment: .leading, spacing: 3) {
+          CompactUsage(label: "5h", window: five, forecast: fiveHour, now: now)
+          CompactUsage(label: "7d", window: seven, forecast: sevenDay, now: now)
         }
         .padding(.top, 2)
+        // The panel was the one surface showing a percentage with nothing to say how
+        // old it was, which is exactly where a stale figure does the most damage: it
+        // is the surface people check *instead of* opening the window.
+        StalenessBadge(fetchedAt: usage.fetchedAt, now: now, style: .compact)
         // Only when there is something to act on. "On pace" in a menu is a line of
-        // chrome in a 280pt panel whose job is the session list above it, and the
+        // chrome in a 320pt panel whose job is the session list above it, and the
         // weekly window is the one worth interrupting someone about.
         if let sevenDay, sevenDay.isNoteworthy {
-          UsageCaption(window: usage.sevenDay, forecast: sevenDay)
+          UsageVerdictLine(forecast: sevenDay)
         }
       }
     }
@@ -257,10 +310,13 @@ struct AccountSummary: View {
   private func forecast(
     _ window: UsageWindow?, _ length: UsageWindowLength, _ fetchedAt: Date?
   ) -> UsageForecast? {
-    guard let window else { return nil }
+    // A window known to be exhausted has nothing left to project: "at this rate,
+    // 100% in 20 minutes" under a meter that is already at 100% is a forecast of
+    // the past. The reset line beside it is the whole story there.
+    guard let window, window.rejectedAt == nil else { return nil }
     return UsageForecast(
       window: window, length: length, weights: DayWeights(stored: storedWeights),
-      asOf: fetchedAt, now: .now)
+      asOf: fetchedAt, now: now)
   }
 
   private var summary: String {
@@ -272,21 +328,44 @@ struct AccountSummary: View {
   }
 }
 
+/// One window in the popover: label, figure, bar and reset, on one full-width row.
+///
+/// **A row per window rather than the two side by side.** Side by side across the
+/// 256pt of content the panel had before it was widened, each window got about 110pt
+/// — enough for a figure and a 52pt bar and nothing else, which is why the reset kept
+/// having to go somewhere odd. Stacked, each window has the full width, the reset
+/// sits at the end of its own row where it needs no label to say which window it
+/// belongs to, and the bars line up under each other for comparison.
+///
+/// The fixed label and figure widths are what make that alignment hold: the figure is
+/// trailing-aligned so "5%" and "100%" put their last digit in the same place.
 struct CompactUsage: View {
   let label: String
   let window: UsageWindow?
   var forecast: UsageForecast?
+  let now: Date
 
   var body: some View {
-    HStack(spacing: 5) {
+    HStack(spacing: 6) {
       Text(label)
         .font(.caption2)
         .foregroundStyle(.secondary)
-      Text(window.map { "\($0.utilization)%" } ?? "—")
-        .font(.callout.monospacedDigit())
+        .frame(width: 16, alignment: .leading)
       if let window {
-        UsageBar(percent: window.utilization, forecast: forecast, height: 5)
-          .frame(width: 52)
+        UsageFigure(window: window, now: now)
+          .frame(width: 38, alignment: .trailing)
+        UsageBar(
+          percent: window.utilization, forecast: forecast, height: 5,
+          voided: window.hasRolled(asOf: now)
+        )
+        .frame(width: 88)
+        Spacer(minLength: 4)
+        UsageResetLine(window: window, now: now, style: .compact)
+      } else {
+        Text("—")
+          .font(.callout.monospacedDigit())
+          .frame(width: 38, alignment: .trailing)
+        Spacer(minLength: 0)
       }
     }
   }

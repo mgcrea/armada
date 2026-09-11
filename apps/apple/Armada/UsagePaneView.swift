@@ -99,23 +99,34 @@ struct AccountUsageCard: View {
   private func rows(for usage: UsageSnapshot) -> [WindowRowModel] {
     let fromLimits = usage.limits.compactMap { limit -> WindowRowModel? in
       guard let length = limit.length else { return nil }
+      // Unscoped rows only. A refusal names `five_hour` or `seven_day`, which are
+      // the account-wide windows; it says nothing about a per-model row like the
+      // weekly Fable one, and correcting that to 100% would be an invention.
+      let window =
+        limit.scopeModelName == nil
+        ? corrected(length, in: usage) ?? limit.window
+        : limit.window
       return WindowRowModel(
-        id: limit.id, title: limit.title, subtitle: limit.subtitle, window: limit.window,
+        id: limit.id, title: limit.title, subtitle: limit.subtitle, window: window,
         length: length, isBinding: limit.isActive)
     }
     if !fromLimits.isEmpty { return fromLimits }
     return [
-      usage.fiveHour.map {
+      corrected(.fiveHour, in: usage).map {
         WindowRowModel(
           id: "five_hour", title: "Session", subtitle: "5 hours", window: $0, length: .fiveHour,
           isBinding: false)
       },
-      usage.sevenDay.map {
+      corrected(.sevenDay, in: usage).map {
         WindowRowModel(
           id: "seven_day", title: "Weekly", subtitle: "7 days", window: $0, length: .sevenDay,
           isBinding: false)
       },
     ].compactMap { $0 }
+  }
+
+  private func corrected(_ length: UsageWindowLength, in usage: UsageSnapshot) -> UsageWindow? {
+    usage.window(length, correctedBy: account.quotaHit, now: now)
   }
 }
 
@@ -136,8 +147,13 @@ struct WindowRow: View {
   let now: Date
 
   var body: some View {
-    let forecast = UsageForecast(
-      window: row.window, length: row.length, weights: weights, asOf: fetchedAt, now: now)
+    // Nothing to project from a window a refusal has already closed — see the same
+    // guard in `UsageHeader` and `AccountSummary`.
+    let forecast =
+      row.window.rejectedAt == nil
+      ? UsageForecast(
+        window: row.window, length: row.length, weights: weights, asOf: fetchedAt, now: now)
+      : nil
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 6) {
         Text(row.title).font(.subheadline)
@@ -154,12 +170,12 @@ struct WindowRow: View {
             .help("The window Claude Code is currently measuring you against.")
         }
         Spacer(minLength: 8)
-        Text("\(row.window.utilization)%")
-          .font(.body.monospacedDigit())
-          .contentTransition(.numericText())
+        UsageFigure(window: row.window, now: now, font: .body)
       }
-      UsageBar(percent: row.window.utilization, forecast: forecast, height: 8)
-      UsageCaption(window: row.window, forecast: forecast)
+      UsageBar(
+        percent: row.window.utilization, forecast: forecast, height: 8,
+        voided: row.window.hasRolled(asOf: now))
+      UsageFootnote(window: row.window, forecast: forecast, now: now)
     }
   }
 }

@@ -18,10 +18,14 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
   and a template glyph that fills when anything is working.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
+- **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
+  limits, read from `~/.codex`. See below — it is real code and shipped behaviour, but it
+  was written in one pass to find out what Codex makes possible, and it is the part most
+  likely to want revisiting.
 
 Not built, and all of it deliberate: **messaging** (v1's third feature), hooks, `hubctl`,
-the Unix socket, the MCP surface, Codex, and anything that writes to the user's Claude
-config. This app only ever reads `~/.claude*`.
+the Unix socket, the MCP surface, and anything that writes to a vendor's config. This app
+only ever reads `~/.claude*` and `~/.codex`.
 
 ## The shape
 
@@ -39,6 +43,18 @@ transcripts, separate rate limits.
 | `TranscriptLocator` | session → transcript path, with the encoding fallbacks |
 | `TranscriptTitle` | tail read for the title, and the unanswered-`tool_use` state check |
 | `UsageSnapshot` / `AccountIdentity` | the two halves of `.claude.json` |
+
+The Codex half mirrors it, name for name, and shares only the icon lookup (`VendorIcon`)
+and the usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`):
+
+| Type | Holds |
+| --- | --- |
+| `CodexHome` | the one seam for a Codex home's paths; `discoverAll()` finds them |
+| `CodexAccount` / `CodexAccounts` | a home plus its watcher; every home |
+| `CodexWatcher` | FSEvents on `sessions/` and `thread-writer-locks/`, and the scan |
+| `CodexRollout` | bounded head and tail reads of a rollout — meta, state, limits |
+| `CodexLocks` / `CodexTitleIndex` | who is live; what things are called |
+| `CodexSession` / `CodexSessionState` | one session, and the three states it can be in |
 
 Session watching is per account and config watching is shared, which is not an
 inconsistency: each folder has its own directory trees worth a dedicated stream, while the
@@ -69,6 +85,18 @@ Each of these cost time here, and none is visible from the code that depends on 
 - **A persisted id must not carry a trailing slash.** `URL.path` on a URL built with
   `directoryHint: .isDirectory` ends in `/`; that leaked into the remembered sidebar
   selection and made a stored value silently fail to match.
+- **The sidebar's stored selection needs a vendor prefix.** Claude account ids and Codex
+  home ids are both absolute paths, so `SidebarItem` stores Codex as `codex:<path>`.
+  Without it `~/.claude` and `~/.codex` are two rows with one stored form.
+- **A Codex subagent's `session_meta.session_id` is its parent's id.** Key on the rollout
+  filename instead. This is written up in
+  [codex-sessions.md](codex-sessions.md#the-filename-uuid-is-the-session-id--session_metasession_id-is-not);
+  it is repeated here because the symptom was three rows in a SwiftUI `List` rendering
+  another row's content, which looks like a view bug and is not one.
+- **Codex has no session registry and no usage cache.** Liveness is a zero-byte flock in
+  `thread-writer-locks/`, and the plan limits exist only inside `token_count` events in
+  session logs. Both consequences are visible in the UI on purpose: the Codex list is
+  "recent" rather than "live", and its header leads with how old the figures are.
 
 ## Verifying it against reality
 
@@ -79,7 +107,17 @@ ls ~/.claude/sessions/*.json | wc -l                       # session count per f
 jq '.cachedUsageUtilization.utilization
     | {five_hour, seven_day}' ~/.claude.json               # the two windows
 grep -o '"aiTitle":"[^"]*"' <transcript>.jsonl | tail -1   # the title, last match wins
+
+# Codex. The pane's row count, its ordering, and its figures:
+find ~/.codex/sessions -name '*.jsonl' -newermt "$(date -d '12 hours ago' -Iseconds)" | wc -l
+for f in ~/.codex/sessions/2026/*/*/*.jsonl; do tail -1 "$f" | jq -r .timestamp; done | sort -r
+ls -A ~/.codex/thread-writer-locks/                        # live sessions, minus the
+                                                           # .coordination.lock
+tail -c 65536 <rollout>.jsonl | grep '"token_count"' | tail -1 \
+  | jq .payload.rate_limits                                # the figures the header shows
 ```
+
+The `date -d` above is GNU; on a stock macOS `date` it is `-v-12H`.
 
 Two traps when doing this. `claude agents --json` reports whatever `CLAUDE_CONFIG_DIR` its
 shell has, so it will disagree with the app for a good reason. And `kill(pid, 0)` proves a
@@ -105,3 +143,37 @@ shows an empty usage strip, and neither crashes.
   `claude-code-sessions.md` still files as unverified and which cannot tell a running tool
   from one waiting for approval. The UI marks it best-effort. Hooks would settle it, and
   hooks are out of scope.
+
+### Where the Codex spike is thin
+
+Everything here is known, none of it is hidden by the UI, and all of it is a judgement call
+someone may want to make differently.
+
+- **A locked session with no rollout file is invisible.** Found on 2026-09-11, after the
+  pane was built: a lock can exist for a session that has been opened and never prompted,
+  and `CodexWatcher.scan` discovers sessions by walking `sessions/` — so that session
+  appears nowhere, even though it is the most live thing on the machine. The Claude side
+  handles the same case (`Session.untitledReason` says "Never prompted") because its
+  registry, not its transcripts, is what it enumerates. The fix is to seed the scan from
+  `CodexLocks.liveSessionIDs` as well as from the day directories, and to let a
+  `CodexSession` exist with no `CodexSessionMeta` — perhaps 15 lines in `scan` and `apply`,
+  plus a row that says "Not started yet". Not done here: the file was being edited
+  concurrently, and this is worth doing deliberately rather than racing it.
+- **The 12-hour recency window is a guess**, and it decides what the pane is. A Codex
+  session that ended is still listed; one that ended 13 hours ago is not. There is nothing
+  behind the number but "a working morning".
+- ~~**"Waiting for input" may be unreachable.**~~ Settled the same day: the lock is held for
+  the whole session, so the state is real. The code comments in `CodexLocks` and
+  `CodexSessionState` still hedge on this and should be tightened.
+- **Codex homes are not discovered by convention.** `~/.codex` plus `CODEX_HOME`, and
+  nothing else: unlike Claude Code, Codex documents no `~/.codex-<name>` pattern, so
+  scanning for one would be inventing a convention rather than following one. Someone with
+  two Codex accounts in custom homes sees only the one this process was told about.
+- **No forecast on Codex meters.** `UsageForecast` projects from a reading that tracks the
+  window, which Codex does not provide.
+- **The scan re-lists day directories on every event.** Bounded (≤8 directories, only files
+  inside the window, only re-reading a file whose size changed) and never measured under a
+  Codex session that is actually running.
+- **`~/.codex/state_5.sqlite` is left alone.** It would give exact titles, archived state
+  and git branches, at the cost of depending on a versioned private schema. That trade is
+  worth revisiting only if the plain files stop being enough.

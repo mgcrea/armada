@@ -10,6 +10,7 @@ re-run.
 | `identity/` | What a stdio MCP server can learn about the session that started it | [reaching-agents.md](../reaching-agents.md#sender-identity) |
 | `delivery/` | MCP notifications, `instructions`, long-poll and channel push, in Claude Code and Codex | [reaching-agents.md](../reaching-agents.md#plain-mcp-notifications-instructions-long-poll) |
 | `runtime-cost/` | Startup time and idle memory of a Swift program versus Node | [design.md](../design.md#why-swift-per-session-node-only-once-decided) |
+| `codex-liveness/` | How to tell which Codex sessions are live, with no registry to ask | [codex-sessions.md](../codex-sessions.md#which-sessions-are-live) |
 
 Scripts that start a real session use your subscription for a turn or two. They unset the
 child-session environment, so the session behaves like one you started yourself.

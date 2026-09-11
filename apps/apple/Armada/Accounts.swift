@@ -76,7 +76,13 @@ final class Accounts {
     startWatchingConfigFiles()
   }
 
-  private func refreshAll() {
+  /// Re-read every folder's `.claude.json` now.
+  ///
+  /// Internal rather than private because the menu bar popover calls it when it
+  /// opens: someone who clicks to check their limits should not be shown the tail
+  /// end of a 30-second poll. Cheap by construction — the document is one the page
+  /// cache already holds, and a decode that fails leaves the last good snapshot.
+  func refreshAll() {
     for account in all { account.refreshConfig() }
   }
 

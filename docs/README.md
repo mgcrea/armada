@@ -4,8 +4,8 @@ A native macOS app for running many coding agents at once: see every Claude Code
 Codex session across your accounts, track plan limits, and let agents message each other.
 
 **Status on 2026-09-11: the app is built and runs**, covering two of v1's three features —
-the session dashboard and plan limits, both per account. Messaging is designed and not
-started. See [implementation.md](implementation.md).
+the session dashboard and plan limits, per Claude account and, as a spike, per Codex home.
+Messaging is designed and not started. See [implementation.md](implementation.md).
 
 ## Start here
 
@@ -15,7 +15,7 @@ started. See [implementation.md](implementation.md).
 | [design.md](design.md) | Decisions, architecture, message flow, open questions. **Read first if you are extending the plan.** |
 | [reaching-agents.md](reaching-agents.md) | Measured: every way to get a message to a waiting agent, and how to tell who sent one |
 | [claude-code-sessions.md](claude-code-sessions.md) | Measured: reading Claude Code sessions, titles and state from disk |
-| [codex-sessions.md](codex-sessions.md) | Codex's equivalents: session logs, limits, hooks |
+| [codex-sessions.md](codex-sessions.md) | Measured: Codex's equivalents — session logs, liveness, titles, limits, hooks |
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
 | [landscape.md](landscape.md) | Competitors and standards (A2A) |
 | [spike/](spike/README.md) | Throwaway code the measurements came from |

@@ -53,6 +53,15 @@ final class Session: Identifiable {
   var state: SessionState = .idle
   var lastWrite: Date?
 
+  /// The newest rate-limit refusal seen in this session's transcript, if any.
+  ///
+  /// **Kept once seen, never cleared by a later read.** A refusal is a thing that
+  /// happened, and the record scrolls out of the 64KB tail as the session carries
+  /// on past it — re-reading and finding nothing means the tail has moved, not that
+  /// the refusal was retracted. `QuotaHit.isLive` is what decides whether it still
+  /// says anything about now.
+  var quotaHit: QuotaHit?
+
   /// File size at the last title read, so an unchanged file is not re-read and the
   /// expensive full-scan fallback is paid for at most once per size.
   var titleScannedSize: UInt64 = 0

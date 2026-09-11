@@ -49,15 +49,40 @@ before distributing anything that runs agents to clients.
 **How this shaped Armada:** it watches agents rather than running them, and holds no Claude
 credentials.
 
-Not checked: OpenAI's terms for Codex on a ChatGPT subscription.
+**Still not checked, and now load-bearing: OpenAI's terms for Codex on a ChatGPT
+subscription.** It was a footnote while Codex was unbuilt. As of 2026-09-11 the app reads
+`~/.codex` and displays a ChatGPT plan's usage, so this is the same question the whole
+Anthropic section above answers for Claude, asked of the other vendor and unanswered.
 
-### No official way for a third-party app to read subscription limits
+Two things that should make it easier than the Claude case, both measured: Armada reads
+only session logs and an empty lock file, and it **never opens `auth.json`** — the plan name
+arrives inside the rate limits as `plan_type`, so no credential file is touched at all. The
+same "watches agents rather than running them, holds no credentials" argument applies.
+
+### No official way for a third-party app to read subscription limits, and why the local route stays local
 
 - `claude setup-token` makes a one-year OAuth token for Claude Code itself to use (CI,
   scripts).
 - `ant auth login` OAuth profiles and the Admin API cover Console API organizations. The
   Admin API has rate-limit reports for those, but not the Pro and Max 5-hour and 7-day
   windows.
+
+**Settled 2026-09-11, so it is not re-argued.** Given how stale `cachedUsageUtilization`
+turned out to be (above), three routes to a live figure were weighed and all three declined:
+
+- **Read the OAuth token from the Keychain** (`Claude Code-credentials` is there) and call
+  the usage endpoint directly. This is the only way to get an exact, current number. It is
+  also the one thing the Consumer Terms name — developers may not "collect, store, or
+  intermediate Claude.ai credentials or session tokens" — and it contradicts the sentence
+  this whole document ends on: Armada watches agents and holds no Claude credentials.
+- **Force a refresh by running `claude -p`.** Spends the user's quota to measure the user's
+  quota, and is exactly the "automated or non-human means" the terms carve out.
+- **Install a `statusLine` shim** that dumps the documented `rate_limits` block to a file.
+  The data is real, but it runs only under the terminal UI (see 1 below) and would mean
+  Armada writing to the user's `settings.json`, which `docs/design.md` puts out of scope.
+
+What was taken instead is source 3 below — a signal already on disk, in files Armada
+already reads.
 
 ## Multiple accounts on one Mac
 
@@ -83,6 +108,11 @@ plugins move under it. It's ignored if set in project or local settings files.
 
 **This Mac on 2026-09-10:** one Claude account (Max, `organizationType: claude_max`) and one
 Codex account, with no second config folder.
+
+**Codex, measured 2026-09-11:** one home at `~/.codex`, `plan_type: "plus"`, 418 rollouts
+over six months. No second home, and no way to look for one — see the asymmetry note in
+[design.md](design.md#3-dashboard-data-to-write). Unlike Claude, there is no per-organization
+split to worry about: one home, one plan, one pair of windows.
 
 **Corrected 2026-09-11:** there is a second config folder after all —
 `CLAUDE_CONFIG_DIR=~/.claude-skitrust`, with 5 live sessions of its own against the default
@@ -146,16 +176,58 @@ assumption that it can.
      a bare `ISO8601DateFormatter()` returns **nil** on it. Compiled and run against the live
      string to confirm; `JSONDecoder`'s `.iso8601` strategy does parse it. The failure mode
      is not an error: the percentage still renders and the reset time just never appears.
-   - **It is a cache, and it goes stale.** `fetchedAtMs` is there because Claude Code
-     refreshes this when an API response happens to update it, which on an idle account can
-     be hours ago. Seen in practice: a `five_hour` window whose `resets_at` was already
-     10 hours in the past. Anything showing these numbers should show their age too, or it
-     will state a stale figure as the current one.
+   - **It is a cache, and it goes stale on a *busy* account, not only an idle one.**
+     Measured on 2026-09-11 at 14:10, with sessions running in both config folders:
+
+     | | `~/.claude` | `~/.claude-skitrust` |
+     | --- | --- | --- |
+     | file mtime | 14:04 | 14:10 |
+     | `cachedUsageUtilization.fetchedAtMs` | 10:34 (97 min old) | 10:36 (95 min old) |
+     | `five_hour` | 0%, no `resets_at` | 99%, `resets_at` 13:00 — 69 min in the past |
+
+     So the file is rewritten every few minutes for other reasons while the usage block
+     inside it sits untouched for an hour and a half. **Whatever refreshes it is not "an
+     API response happening to update it"** — both folders were talking to the API
+     throughout. Extension and SDK sessions appear not to write it at all; the two
+     timestamps landing two minutes apart suggests something periodic or startup-driven.
+
+     Two consequences for anything reading it. Re-reading the file more often buys
+     nothing — Armada polls every 30s *and* watches with FSEvents, and neither can make
+     the writer write. And a window whose `resets_at` has passed is not "99% used, reset
+     an hour ago": it is a figure for a window that no longer exists, and the only honest
+     rendering is to void it and say so. Show the age beside every figure, or it reads as
+     the current one.
    - **Decode narrowly.** The object also carries `limit_dollars`, `used_dollars`,
      `remaining_dollars`, `locked_reason`, a `limits` array, `extra_usage`, `spend` and a
      dozen code-named windows. Reading only the two windows you want means an unrelated key
      changing shape cannot break you.
-3. `~/.claude/stats-cache.json`: daily activity, token usage per model, session counts.
+3. **`quotaLimits` in a session transcript (undocumented).** The one rate-limit fact on
+   this Mac that is not a cache: written by the process it happened to, at the moment a
+   request was actually refused. As seen on 2026-09-11 in
+   `~/.claude-skitrust/projects/…/c8c404ba-….jsonl`:
+
+   ```json
+   {"type":"assistant","timestamp":"2026-09-11T10:44:34.121Z", …,
+    "message":{…,"content":[{"type":"text",
+      "text":"You've hit your session limit · resets 1pm (Europe/Paris)"}]},
+    "quotaLimits":{"status":"rejected","resetsAt":1789124400,
+      "unifiedRateLimitFallbackAvailable":false,"rateLimitType":"five_hour",
+      "overageStatus":"rejected","overageDisabledReason":"org_level_disabled",
+      "isUsingOverage":false},
+    "error":"rate_limit","isApiErrorMessage":true}
+   ```
+
+   - **Rejection-only.** One occurrence in a 657-message transcript, and none at all in a
+     session that never hit a wall. It cannot say you are at 60%; it can say you are at the
+     end, which is the reading the cache is least able to give.
+   - **`resetsAt` is epoch *seconds*** — against milliseconds in `fetchedAtMs` two files
+     over. Reading one as the other puts the reset in 1970 or in the year 58000, silently.
+   - **`rateLimitType`** uses the cache's own vocabulary: `five_hour`, `seven_day`.
+   - Worth reading only while the named window is still open. Here the refusal was at 10:44
+     for a window that ended at 13:00, and by 14:10 it said nothing about the allowance in
+     hand. It also sits megabytes from the end of a session that carried on afterwards, so a
+     64KB tail read finds it only while it is fresh — which is the only time it is useful.
+4. `~/.claude/stats-cache.json`: daily activity, token usage per model, session counts.
 
 ### Codex
 
