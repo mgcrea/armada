@@ -30,8 +30,6 @@ private nonisolated func sessionEventCallback(
 @MainActor
 @Observable
 final class SessionWatcher {
-  static let shared = SessionWatcher()
-
   /// 20 seconds of silence marks a session idle. A genuinely finished session went
   /// idle 21s after its last write in the spike (20s threshold plus the 1s tick),
   /// which was correct.
@@ -49,7 +47,10 @@ final class SessionWatcher {
   /// work itself is small — a directory listing, or a 64KB tail read.
   private let queue = DispatchQueue(label: "io.mgcrea.armada.fsevents")
 
-  init(folder: ClaudeConfigFolder = .default) {
+  /// One per config folder. Not a singleton: each account has its own
+  /// `sessions/` and `projects/` trees, and folding them into one stream would
+  /// mean routing every event back to a folder by path prefix for no gain.
+  init(folder: ClaudeConfigFolder) {
     self.folder = folder
   }
 

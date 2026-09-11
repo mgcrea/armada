@@ -59,7 +59,7 @@ struct SettingsWindowView: View {
 }
 
 struct GeneralPane: View {
-  @State private var watcher = SessionWatcher.shared
+  @State private var accounts = Accounts.shared
   @State private var launchAtLogin = LoginItem.isEnabled
   @State private var loginError: String?
 
@@ -84,32 +84,43 @@ struct GeneralPane: View {
         )
       }
 
-      Section("Claude") {
-        LabeledContent("Config folder") {
-          HStack(spacing: 6) {
-            Text(displayPath(watcher.folder.base))
-              .truncationMode(.head)
-              .lineLimit(1)
-            Button {
-              NSWorkspace.shared.activateFileViewerSelecting([watcher.folder.base])
-            } label: {
-              Image(systemName: "arrow.up.forward.square")
+      Section {
+        ForEach(accounts.all) { account in
+          LabeledContent {
+            HStack(spacing: 6) {
+              Text(account.displayPath)
+                .truncationMode(.head)
+                .lineLimit(1)
+              Button {
+                NSWorkspace.shared.activateFileViewerSelecting([account.folder.base])
+              } label: {
+                Image(systemName: "arrow.up.forward.square")
+              }
+              .buttonStyle(.borderless)
+              .help("Show in Finder")
             }
-            .buttonStyle(.borderless)
-            .help("Show in Finder")
+          } label: {
+            Text(account.displayName)
+            Text(
+              account.planLabel.map { "\($0) · \(account.sessions.sessions.count) sessions" }
+                ?? "\(account.sessions.sessions.count) sessions")
           }
         }
-        LabeledContent("Usage cache", value: displayPath(watcher.folder.usageJSON))
-        LabeledContent("Live sessions", value: String(watcher.sessions.count))
+        if accounts.all.isEmpty {
+          Text("No Claude config folder found").foregroundStyle(.secondary)
+        }
+      } header: {
+        Text("Claude accounts")
+      } footer: {
+        // Says where the list comes from, because a folder that is missing from it
+        // is the one thing a person will want to debug here — and the answer is
+        // always the same: it has no sessions/ yet.
+        Text(
+          "Found by looking for ~/.claude and any ~/.claude-<name> beside it that has a sessions folder. Each is a separate organization with its own sessions and its own plan limits."
+        )
       }
     }
     .formStyle(.grouped)
     .navigationTitle("General")
-  }
-
-  /// `~` rather than the full home path, which is both shorter and the one part of
-  /// these paths nobody needs to read.
-  private func displayPath(_ url: URL) -> String {
-    (url.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
   }
 }

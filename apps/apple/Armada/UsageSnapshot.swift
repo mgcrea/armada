@@ -19,7 +19,12 @@ struct UsageWindow: Sendable, Hashable {
 /// There is no supported alternative. `docs/limits-accounts-and-terms.md` checked:
 /// the documented status-line JSON almost certainly never runs under the VS Code
 /// extension, and the Admin API does not cover Pro/Max 5-hour and 7-day windows.
-struct UsageSnapshot: Sendable, Hashable {
+///
+/// **Per organization, not per person.** The two config folders on this Mac are
+/// one Anthropic account in two organizations, and they carry entirely separate
+/// figures — 17%/69% against 4%/8%. A snapshot belongs to a folder, and there is
+/// no meaningful way to add two of them together.
+nonisolated struct UsageSnapshot: Sendable, Hashable {
   let fiveHour: UsageWindow?
   let sevenDay: UsageWindow?
 
@@ -33,14 +38,12 @@ struct UsageSnapshot: Sendable, Hashable {
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }
 
   static func read(from url: URL) -> UsageSnapshot? {
-    guard let data = try? Data(contentsOf: url) else { return nil }
-    return decode(data)
+    guard let root = ClaudeConfigDocument.read(url) else { return nil }
+    return decode(root: root)
   }
 
-  static func decode(_ data: Data) -> UsageSnapshot? {
-    guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-      let cached = root["cachedUsageUtilization"] as? [String: Any]
-    else { return nil }
+  static func decode(root: [String: Any]) -> UsageSnapshot? {
+    guard let cached = root["cachedUsageUtilization"] as? [String: Any] else { return nil }
 
     let utilization = cached["utilization"] as? [String: Any] ?? [:]
     let fetchedAtMs = cached["fetchedAtMs"] as? Double

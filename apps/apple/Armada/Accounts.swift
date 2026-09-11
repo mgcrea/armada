@@ -1,0 +1,117 @@
+import CoreServices
+import Foundation
+
+private nonisolated func configEventCallback(
+  _ stream: ConstFSEventStreamRef,
+  _ info: UnsafeMutableRawPointer?,
+  _ count: Int,
+  _ paths: UnsafeMutableRawPointer,
+  _ flags: UnsafePointer<FSEventStreamEventFlags>,
+  _ ids: UnsafePointer<FSEventStreamEventId>
+) {
+  guard let info,
+    let cfPaths = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue() as? [String]
+  else { return }
+  let accounts = Unmanaged<Accounts>.fromOpaque(info).takeUnretainedValue()
+  Task { @MainActor in accounts.handle(paths: cfPaths) }
+}
+
+/// Every Claude config folder on this Mac, watched at once.
+///
+/// One timer and one FSEvents stream for all of them rather than a pair each: the
+/// `.claude.json` files are a handful of documents on an unpredictable cadence,
+/// so there is nothing to gain from separate clocks and one less thing to leak.
+/// Session watching is the opposite and stays per account — each folder has its
+/// own `sessions/` and `projects/` trees, and routing one merged stream back to
+/// the right folder would be work for nothing.
+@MainActor
+@Observable
+final class Accounts {
+  static let shared = Accounts()
+
+  /// `.claude.json` is one document rewritten whenever an API response updates
+  /// the cache, so there is no event that means "usage changed". The poll is the
+  /// floor; the watch below only shortens the wait when a write does land.
+  static let refreshInterval: TimeInterval = 30
+
+  private(set) var all: [Account] = []
+
+  private var stream: FSEventStreamRef?
+  private var timer: DispatchSourceTimer?
+  private let queue = DispatchQueue(label: "io.mgcrea.armada.config")
+
+  /// Every live session across every account, newest first — what the menu bar
+  /// summarises and what decides whether the status item is filled.
+  var allSessions: [Session] {
+    all.flatMap(\.sessions.sessions)
+      .sorted { ($0.registry.startedAt ?? 0, $0.id) > ($1.registry.startedAt ?? 0, $1.id) }
+  }
+
+  var workingSessionCount: Int {
+    all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state != .idle } }
+  }
+
+  var totalSessionCount: Int {
+    all.reduce(0) { $0 + $1.sessions.sessions.count }
+  }
+
+  func account(id: String) -> Account? {
+    all.first { $0.id == id }
+  }
+
+  func start() {
+    guard all.isEmpty else { return }
+    all = ClaudeConfigFolder.discoverAll().map(Account.init(folder:))
+    for account in all { account.start() }
+
+    let tick = DispatchSource.makeTimerSource(queue: .main)
+    tick.schedule(deadline: .now() + Self.refreshInterval, repeating: Self.refreshInterval)
+    tick.setEventHandler { MainActor.assumeIsolated { self.refreshAll() } }
+    tick.resume()
+    timer = tick
+
+    startWatchingConfigFiles()
+  }
+
+  private func refreshAll() {
+    for account in all { account.refreshConfig() }
+  }
+
+  /// Watch each usage file's *directory*, because an atomic rewrite replaces the
+  /// inode and a watch on the file itself would follow the one thrown away.
+  private func startWatchingConfigFiles() {
+    let directories = Set(
+      all.map { $0.folder.usageJSON.deletingLastPathComponent().path(percentEncoded: false) })
+    guard !directories.isEmpty, stream == nil else { return }
+
+    var context = FSEventStreamContext(
+      version: 0,
+      info: Unmanaged.passUnretained(self).toOpaque(),
+      retain: nil,
+      release: nil,
+      copyDescription: nil
+    )
+    let flags = UInt32(
+      kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
+        | kFSEventStreamCreateFlagNoDefer)
+    guard
+      let created = FSEventStreamCreate(
+        kCFAllocatorDefault, configEventCallback, &context, Array(directories) as CFArray,
+        FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 1.0, flags)
+    else { return }
+    FSEventStreamSetDispatchQueue(created, queue)
+    FSEventStreamStart(created)
+    stream = created
+  }
+
+  /// The home directory is one of the watched directories — `~/.claude.json` lives
+  /// there — so this sees an event for everything the user touches in `~`. Match
+  /// on the exact usage paths rather than a prefix, or Armada re-parses a 153KB
+  /// document every time anything at all changes in the home folder.
+  fileprivate func handle(paths: [String]) {
+    for account in all
+    where paths.contains(account.folder.usageJSON.path(percentEncoded: false)) {
+      account.refreshConfig()
+    }
+  }
+}

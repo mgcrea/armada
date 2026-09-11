@@ -33,7 +33,7 @@ struct ArmadaApp: App {
 /// highlighted menu bar — which is why neither carries a colour of its own and why
 /// nothing here sets one.
 private struct MenuBarLabel: View {
-  @State private var watcher = SessionWatcher.shared
+  @State private var accounts = Accounts.shared
 
   var body: some View {
     Image(isWorking ? "MenuBarIconActive" : "MenuBarIcon")
@@ -41,8 +41,10 @@ private struct MenuBarLabel: View {
         isWorking ? "Armada — a session is working" : "Armada — all sessions idle")
   }
 
+  /// Across every account: the menu bar answers "is anything of mine moving",
+  /// which is not a per-organization question.
   private var isWorking: Bool {
-    watcher.sessions.contains { $0.state != .idle }
+    accounts.workingSessionCount > 0
   }
 }
 
@@ -64,8 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
-    SessionWatcher.shared.start()
-    UsageTracker.shared.start()
+    Accounts.shared.start()
     DockPresence.observe()
   }
 
@@ -88,9 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// The menu bar popover: what is happening, in one glance.
+///
+/// One block per account, because the two organizations share nothing — separate
+/// sessions, separate rate limits — and a single merged total would be the wrong
+/// number twice over. With one account the section header is dropped, so a person
+/// who has never heard of a second config folder sees no scaffolding for it.
 struct StatusMenu: View {
-  @State private var watcher = SessionWatcher.shared
-  @State private var tracker = UsageTracker.shared
+  @State private var accounts = Accounts.shared
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -102,37 +107,15 @@ struct StatusMenu: View {
           .foregroundStyle(.secondary)
       }
 
-      Divider()
-
-      if watcher.sessions.isEmpty {
-        Text("No sessions running")
+      if accounts.all.isEmpty {
+        Divider()
+        Text("No Claude config folder found")
           .font(.callout)
           .foregroundStyle(.secondary)
       } else {
-        VStack(alignment: .leading, spacing: 4) {
-          Text(summary).font(.callout)
-          ForEach(watcher.sessions.prefix(5)) { session in
-            HStack(spacing: 6) {
-              StateDot(state: session.state)
-              Text(session.displayName)
-                .font(.caption)
-                .lineLimit(1)
-              Spacer(minLength: 0)
-            }
-          }
-          if watcher.sessions.count > 5 {
-            Text("and \(watcher.sessions.count - 5) more")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-      }
-
-      if let snapshot = tracker.snapshot, !snapshot.isEmpty {
-        Divider()
-        HStack(spacing: 16) {
-          CompactUsage(label: "5h", window: snapshot.fiveHour)
-          CompactUsage(label: "7d", window: snapshot.sevenDay)
+        ForEach(accounts.all) { account in
+          Divider()
+          AccountSummary(account: account, showsName: accounts.all.count > 1)
         }
       }
 
@@ -146,14 +129,73 @@ struct StatusMenu: View {
     }
     .buttonStyle(.plain)
     .padding(12)
-    .frame(width: 260)
+    .frame(width: 280)
+  }
+}
+
+/// One account's block in the popover.
+struct AccountSummary: View {
+  let account: Account
+  let showsName: Bool
+
+  /// Three, not five. The popover has to fit two of these plus the buttons, and
+  /// the list in the window is one click away.
+  private static let visibleSessions = 3
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      if showsName {
+        HStack(spacing: 6) {
+          ClaudeIconView(size: 14)
+          Text(account.displayName)
+            .font(.subheadline.weight(.medium))
+            .lineLimit(1)
+          Spacer(minLength: 0)
+          if let plan = account.planLabel {
+            Text(plan)
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+        }
+      }
+
+      Text(summary)
+        .font(.callout)
+        .foregroundStyle(sessions.isEmpty ? .secondary : .primary)
+
+      ForEach(sessions.prefix(Self.visibleSessions)) { session in
+        HStack(spacing: 6) {
+          StateDot(state: session.state)
+          Text(session.displayName)
+            .font(.caption)
+            .lineLimit(1)
+          Spacer(minLength: 0)
+        }
+      }
+      if sessions.count > Self.visibleSessions {
+        Text("and \(sessions.count - Self.visibleSessions) more")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      if let usage = account.usage, !usage.isEmpty {
+        HStack(spacing: 16) {
+          CompactUsage(label: "5h", window: usage.fiveHour)
+          CompactUsage(label: "7d", window: usage.sevenDay)
+        }
+        .padding(.top, 2)
+      }
+    }
   }
 
+  private var sessions: [Session] { account.sessions.sessions }
+
   private var summary: String {
-    let working = watcher.sessions.filter { $0.state != .idle }.count
-    let total = watcher.sessions.count
-    let sessions = total == 1 ? "1 session" : "\(total) sessions"
-    return working == 0 ? "\(sessions), all idle" : "\(sessions), \(working) active"
+    let working = sessions.count { $0.state != .idle }
+    let total = sessions.count
+    if total == 0 { return "No sessions running" }
+    let label = total == 1 ? "1 session" : "\(total) sessions"
+    return working == 0 ? "\(label), all idle" : "\(label), \(working) active"
   }
 }
 
@@ -162,12 +204,18 @@ struct CompactUsage: View {
   let window: UsageWindow?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
+    HStack(spacing: 5) {
       Text(label)
         .font(.caption2)
         .foregroundStyle(.secondary)
       Text(window.map { "\($0.utilization)%" } ?? "—")
         .font(.callout.monospacedDigit())
+      if let window {
+        ProgressView(value: Double(window.utilization), total: 100)
+          .progressViewStyle(.linear)
+          .tint(UsageTint.for(window.utilization))
+          .frame(width: 52)
+      }
     }
   }
 }

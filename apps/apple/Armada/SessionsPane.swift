@@ -1,46 +1,6 @@
-import Combine
 import SwiftUI
 
-/// Every live Claude Code session, with what it appears to be doing.
-struct SessionsPaneView: View {
-  @State private var watcher = SessionWatcher.shared
-  @State private var selection: String?
-
-  /// Drives the elapsed-time column.
-  @State private var now = Date()
-  private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-  var body: some View {
-    Group {
-      if watcher.sessions.isEmpty {
-        ContentUnavailableView {
-          Label("No sessions", systemImage: "sailboat")
-        } description: {
-          Text("Nothing is running. Start Claude Code and it appears here within a moment.")
-        }
-      } else {
-        List(watcher.sessions, selection: $selection) { session in
-          SessionRow(session: session, now: now)
-            .tag(session.id)
-        }
-        .inspector(isPresented: .constant(true)) {
-          SessionDetail(session: selected)
-            .inspectorColumnWidth(min: 240, ideal: 280)
-        }
-      }
-    }
-    .navigationTitle("Sessions")
-    .navigationSubtitle(
-      watcher.sessions.count == 1 ? "1 session" : "\(watcher.sessions.count) sessions"
-    )
-    .onReceive(clock) { now = $0 }
-  }
-
-  private var selected: Session? {
-    watcher.sessions.first { $0.id == selection } ?? watcher.sessions.first
-  }
-}
-
+/// One session in a list: state, title, project, age.
 struct SessionRow: View {
   let session: Session
   let now: Date
@@ -64,7 +24,7 @@ struct SessionRow: View {
       }
       Spacer(minLength: 8)
       if let started = session.registry.startedAtDate {
-        Text(elapsed(since: started))
+        Text(Self.elapsed(from: started, to: now))
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
       }
@@ -73,7 +33,7 @@ struct SessionRow: View {
   }
 
   /// Wall-clock age of the session, as `2h 14m` / `14m` / `43s`.
-  private func elapsed(since start: Date) -> String {
+  static func elapsed(from start: Date, to now: Date) -> String {
     let seconds = max(0, Int(now.timeIntervalSince(start)))
     let (hours, minutes) = (seconds / 3600, (seconds % 3600) / 60)
     if hours > 0 { return "\(hours)h \(minutes)m" }
@@ -104,6 +64,7 @@ struct StateDot: View {
 
 struct SessionDetail: View {
   let session: Session?
+  let account: Account
 
   var body: some View {
     Form {
@@ -150,6 +111,18 @@ struct SessionDetail: View {
         }
       } else {
         Text("No session selected").foregroundStyle(.secondary)
+      }
+
+      // Which folder this row came from. Cheap to show and the thing that makes
+      // two accounts legible: the same project can be open in both.
+      Section("Account") {
+        LabeledContent("Organization", value: account.displayName)
+        if let plan = account.planLabel {
+          LabeledContent("Plan", value: plan)
+        }
+        LabeledContent("Config folder", value: account.displayPath)
+          .lineLimit(2)
+          .truncationMode(.head)
       }
     }
     .formStyle(.grouped)
