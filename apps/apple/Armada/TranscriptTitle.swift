@@ -5,7 +5,13 @@ import Foundation
 /// Transcripts run 1–13MB and over 5,000 lines, and `~/.claude/projects` is 2.8GB
 /// on the machine this was measured on. Nothing here may scan a whole file on a
 /// change; everything works from the tail.
-enum TranscriptTitle {
+///
+/// `nonisolated` on purpose, and load-bearing. The project builds with
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without this every read here
+/// would be main-actor work — and the full-scan fallback below is measured at
+/// 141ms across this machine's live sessions, which is not something to do on the
+/// thread drawing the window.
+nonisolated enum TranscriptTitle {
   /// How much of the end of the file to read. The newest `ai-title` sits a median
   /// 15.3KB from the end (p90 29.6KB); 64KB finds it in 96% of 553 titled
   /// transcripts measured during the spike.
@@ -20,9 +26,19 @@ enum TranscriptTitle {
   /// every 15–25 lines; taking the first gets the draft. The spike's
   /// `SessionWatch.swift` has this bug, which is why it is called out here.
   ///
-  /// `fullScanFallback` covers the ~4% of transcripts that stopped re-appending
-  /// titles long ago (p99 is 4MB from the end, max 13MB). Off by default for the
-  /// hot path; the watcher turns it on once per file and caches the answer.
+  /// `fullScanFallback` covers the transcripts that stopped re-appending titles
+  /// long ago (p99 is 4MB from the end, max 13MB). Off by default for the hot
+  /// path; the watcher turns it on once per file, off the main actor.
+  ///
+  /// **It is not the ~4% case the spike reported.** Measured against this
+  /// machine's 19 live sessions, only 3 had their newest title inside the 64KB
+  /// tail — 16%, against the spike's 96%. The spike sampled 553 transcripts
+  /// "active in the prior 3 weeks", a population full of short recent ones;
+  /// Armada looks only at sessions that are live *now*, which skew long-running
+  /// (9–16 hours and 0.6–9.5MB here) and long past their last title write. So the
+  /// fallback is the common path for this app, not the rare one, and it is sized
+  /// accordingly: 54MB and 141ms across those 19, which is why the caller does it
+  /// in the background and why it is attempted at most once per session.
   static func newestTitle(at url: URL, fullScanFallback: Bool = false) -> String? {
     guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
     defer { try? handle.close() }

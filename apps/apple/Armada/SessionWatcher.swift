@@ -172,22 +172,48 @@ final class SessionWatcher {
   /// Re-read the title if the file grew.
   ///
   /// Gated on size so a burst of writes costs one tail read, and so the full-scan
-  /// fallback — up to 13MB — is attempted at most once per session rather than on
-  /// every event.
+  /// fallback is attempted at most once per session rather than on every event.
+  ///
+  /// The tail read stays inline: it is 64KB and the answer is wanted in the same
+  /// frame the row appears. The **full scan does not**, because it is not the rare
+  /// case the spike suggested — 16 of this machine's 19 live sessions need it, for
+  /// 54MB and 141ms all told. Inline, that is a visible stall on every cold start
+  /// and it grows with both session count and session age. So it runs detached and
+  /// the title arrives a moment later, which is what the rows are built to do
+  /// anyway: an untitled session already renders its registry name.
   private func refreshTitle(_ session: Session) {
     if session.transcript == nil { locateTranscript(session) }
     guard let transcript = session.transcript else { return }
     let size =
       (try? FileManager.default.attributesOfItem(atPath: transcript.path(percentEncoded: false))[
-        .size] as? UInt64) ?? 0
+        .size]) as? UInt64 ?? 0
     guard size != session.titleScannedSize || session.title == nil else { return }
-    session.titleScannedSize = size ?? 0
+    session.titleScannedSize = size
 
-    let allowFullScan = session.title == nil && !session.didFullScan
-    if let title = TranscriptTitle.newestTitle(at: transcript, fullScanFallback: allowFullScan) {
+    if let title = TranscriptTitle.newestTitle(at: transcript) {
       session.title = title
+      return
     }
-    if allowFullScan { session.didFullScan = true }
+    guard session.title == nil, !session.didFullScan else { return }
+    session.didFullScan = true
+    scanTitleInBackground(sessionId: session.id, transcript: transcript)
+  }
+
+  /// The full scan, off the main actor.
+  ///
+  /// Keyed by session id rather than capturing the `Session`, which is
+  /// `@Observable` and main-actor state: the answer is applied to whichever
+  /// session still holds that id when it lands, and dropped if the session ended
+  /// while the scan was running.
+  private func scanTitleInBackground(sessionId: String, transcript: URL) {
+    Task.detached(priority: .utility) { [weak self] in
+      guard let title = TranscriptTitle.newestTitle(at: transcript, fullScanFallback: true)
+      else { return }
+      await MainActor.run {
+        guard let self, let session = self.byId[sessionId], session.title == nil else { return }
+        session.title = title
+      }
+    }
   }
 
   /// Working on a write; otherwise the tool-use check decides between "running a
