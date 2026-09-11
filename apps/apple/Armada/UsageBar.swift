@@ -50,7 +50,14 @@ struct UsageBar: View {
             .fill(tint)
             .frame(width: width * min(Double(percent) / 100, 1))
         }
-
+      }
+      // The tick overhangs the track by design, and that is exactly why it is an
+      // overlay rather than a fourth layer of the `ZStack`. A stack takes its size
+      // from its tallest child, so a tick of `height + 3` inside it made the whole
+      // bar 3pt taller — but only on the windows that had a forecast to draw one
+      // from. In the menu bar popover that showed up as a 5h meter at its stated
+      // 5pt beside a 7d meter at 8pt, on the same account, in the same list.
+      .overlay(alignment: .leading) {
         if let forecast, !voided {
           // Inset by half the tick at each end so a marker at 0% or 100% stays
           // inside the bar instead of being clipped in half by the capsule.

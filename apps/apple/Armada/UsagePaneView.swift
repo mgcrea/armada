@@ -172,8 +172,10 @@ struct WindowRow: View {
         Spacer(minLength: 8)
         UsageFigure(window: row.window, now: now, font: .body)
       }
+      // 11pt for the reason `CompactMeter` gives: the tick used to add 3pt to
+      // whatever the track asked for, and this pane was sized against the result.
       UsageBar(
-        percent: row.window.utilization, forecast: forecast, height: 8,
+        percent: row.window.utilization, forecast: forecast, height: 11,
         voided: row.window.hasRolled(asOf: now))
       UsageFootnote(window: row.window, forecast: forecast, now: now)
     }

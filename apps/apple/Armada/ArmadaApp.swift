@@ -345,6 +345,15 @@ struct CompactUsage: View {
   var forecast: UsageForecast?
   let now: Date
 
+  /// **Sized from what is left of the row, not from what a bar needs.** The panel is
+  /// 320pt wide and everything else on the row is fixed: 16pt of label, 38pt of
+  /// figure, two 6pt gaps and the longest reset this renders ("already reset", about
+  /// 70pt at caption2). That leaves a shade over 150pt, and the bar takes 128 of it
+  /// so the gap before the reset stays wide enough to read as a gap. The 88pt it had
+  /// before was inherited from the 256pt panel and never revisited when the panel
+  /// grew, which is how the widest surface ended up with the narrowest meter.
+  private static let barWidth: CGFloat = 128
+
   var body: some View {
     HStack(spacing: 6) {
       Text(label)
@@ -358,8 +367,8 @@ struct CompactUsage: View {
           percent: window.utilization, forecast: forecast, height: 5,
           voided: window.hasRolled(asOf: now)
         )
-        .frame(width: 88)
-        Spacer(minLength: 4)
+        .frame(width: Self.barWidth)
+        Spacer(minLength: 6)
         UsageResetLine(window: window, now: now, style: .compact)
       } else {
         Text("—")

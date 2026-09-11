@@ -129,8 +129,13 @@ struct CompactMeter: View {
       if let window {
         HStack(spacing: 8) {
           UsageFigure(window: window, now: now, font: .title3)
+          // 9pt rather than the 6pt default, which is the size this strip has always
+          // rendered at: the pace tick used to inflate the track it sat in by 3pt,
+          // and the number here was tuned by eye against a bar that was already
+          // taller than it said. The tick no longer resizes anything, so the height
+          // has to say what it meant.
           UsageBar(
-            percent: window.utilization, forecast: forecast,
+            percent: window.utilization, forecast: forecast, height: 9,
             voided: window.hasRolled(asOf: now)
           )
           .frame(width: 110)
