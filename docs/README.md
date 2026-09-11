@@ -3,15 +3,16 @@
 A native macOS app for running many coding agents at once: see every Claude Code and
 Codex session across your accounts, track plan limits, and let agents message each other.
 
-**Status on 2026-09-10: design in progress, nothing built.** The architecture is settled;
-the message flow is drafted and waiting for review. Three design sections remain, then a
-written spec and an implementation plan.
+**Status on 2026-09-11: the app is built and runs**, covering two of v1's three features —
+the session dashboard and plan limits, both per account. Messaging is designed and not
+started. See [implementation.md](implementation.md).
 
 ## Start here
 
 | Doc | What it holds |
 | --- | --- |
-| [design.md](design.md) | Decisions, architecture, message flow, open questions, next steps. **Read first.** |
+| [implementation.md](implementation.md) | What exists today, the traps in it, how to verify it. **Read first if you are touching the code.** |
+| [design.md](design.md) | Decisions, architecture, message flow, open questions. **Read first if you are extending the plan.** |
 | [reaching-agents.md](reaching-agents.md) | Measured: every way to get a message to a waiting agent, and how to tell who sent one |
 | [claude-code-sessions.md](claude-code-sessions.md) | Measured: reading Claude Code sessions, titles and state from disk |
 | [codex-sessions.md](codex-sessions.md) | Codex's equivalents: session logs, limits, hooks |
@@ -30,7 +31,15 @@ written spec and an implementation plan.
 
 ## Next steps
 
-1. Review design section 2 (message flow).
-2. Write sections 3–5: dashboard data, error handling, testing.
-3. Run the tests listed in [design.md](design.md#tests-to-run-before-building).
-4. Turn the design into a spec, then an implementation plan.
+The dashboard half of the design shipped ahead of sections 3–5 being written, so those
+sections are now partly answered by working code — read
+[implementation.md](implementation.md) before writing them up.
+
+1. Ship a site at `armada.mgcrea.io`, or repoint `Support.swift`: the Help menu's links are
+   dead until one of those happens.
+2. Review design section 2 (message flow) — the one v1 feature with nothing built.
+3. Write sections 3–5: dashboard data, error handling, testing.
+4. Run the tests listed in [design.md](design.md#tests-to-run-before-building).
+5. Verify the unanswered-`tool_use` rule against a deliberately long tool call
+   ([claude-code-sessions.md](claude-code-sessions.md) open question 1). The app ships it as
+   best-effort and says so; that is the measurement that would let it stop hedging.

@@ -4,6 +4,14 @@ Status on 2026-09-10: **design in progress, nothing built.** Section 1 is decide
 is drafted and waiting for review, sections 3–5 are notes only. After section 5 comes a
 written spec, then an implementation plan.
 
+> **Update 2026-09-11: parts of this are built.** The session dashboard and plan limits
+> exist and run, per account, ahead of sections 3–5 being written — so where this doc and
+> the app disagree about those two, the app is what happened and
+> [implementation.md](implementation.md) describes it. Everything in section 1's messaging
+> architecture (`hubctl`, the socket, hook installation, the MCP surface) is still design
+> only, and still the plan. This doc is not stale as a *plan*; it is just no longer the only
+> place to look.
+
 Markers: **Decided** (agreed with the author), **Drafted** (proposed, not yet reviewed),
 **Open** (needs a decision or a test). This doc states conclusions; the evidence is in the
 findings docs listed in [README.md](README.md).

@@ -38,6 +38,14 @@ surface, not a new capability, so try agent view before building.
 `claude agents` with no flag refuses to run without a TTY; `--json` is the machine-readable
 form. `--all` adds completed background sessions.
 
+> **Do not cross-check the two without checking `CLAUDE_CONFIG_DIR` first.** `claude agents
+> --json` reports the folder *its own environment* points at, and a GUI app reports the one
+> it resolved. On this Mac that is 5 sessions against 19 — **disjoint sets, both correct**,
+> because the two config folders share nothing. Half an hour went into "why does the app
+> disagree with the CLI" before the answer turned out to be that the terminal had
+> `CLAUDE_CONFIG_DIR=~/.claude-skitrust` exported. See
+> [limits-accounts-and-terms.md](limits-accounts-and-terms.md#multiple-accounts-on-one-mac).
+
 ## The session registry
 
 One file per live session, named by PID:
@@ -113,6 +121,22 @@ Titles can also change late: "Cut a release" became "Continue" at line 47.
 file (p90 29.6KB). A **64KB tail read finds it in 96%** of 553 titled transcripts. The
 remaining 4% stopped re-appending titles long ago (p99 is 4MB from the end, max 13MB), so
 fall back to a full scan for those, and cache the result by file size or mtime.
+
+> **Correction, 2026-09-11: 96% is the wrong number for an app that watches live
+> sessions.** Measured against the 19 sessions live on this Mac while building Armada, the
+> tail read found the title in **3 of 19 — 16%**. The full scan is the common path, not the
+> rare one.
+>
+> Not noise, and not a contradiction: the two populations differ. The 553 above were
+> transcripts *active in the prior 3 weeks*, which is mostly short recent ones. A session
+> that is live **right now** skews long-running — 9 to 16 hours old and 0.6–9.5MB here — and
+> has therefore had plenty of time to stop re-appending its title. The measurement was
+> right about its population; the population was the wrong one to design against.
+>
+> Cost of the fallback, on the same 19: **54MB and 141ms**, which is too much to do on the
+> main thread at launch and grows with both session count and session age. Armada does the
+> tail read inline and the full scan in the background, at most once per session, and shows
+> the registry `name` until the title lands.
 
 A new session got its first title **0.8s** after its first prompt was submitted.
 

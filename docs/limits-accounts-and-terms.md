@@ -91,6 +91,39 @@ folder's 19. It is easy to miss, because a tool inheriting that environment (`cl
 folders hold **disjoint** session sets. Worth remembering when cross-checking anything that
 counts sessions.
 
+### A config folder is an organization, not an account
+
+The two folders on this Mac are the **same Anthropic account** — identical `accountUuid`
+(`fc70ad20-…`), identical `emailAddress`, identical `fullName`. What differs is the
+organization, and with it everything that matters:
+
+| `oauthAccount` field | `~/.claude` | `~/.claude-skitrust` |
+| --- | --- | --- |
+| `organizationName` | `<email>'s Organization` | `Skitrust` |
+| `organizationType` | `claude_max` | `claude_team` |
+| `organizationRateLimitTier` | `default_claude_max_20x` | `default_raven` |
+| `organizationUuid` | `086bea66-…` | `952d0683-…` |
+| `seatTier` | absent | `team_tier_1` |
+| live sessions | 19 | 5 |
+| 5-hour / 7-day | 17% / 69% | 26% / 11% |
+
+Consequences for anything displaying this:
+
+- **Label by organization.** The email is identical on both, so a per-account UI keyed on it
+  shows the same string twice and reads as a duplicate row.
+- **Never total two folders' usage.** They are separate rate limits against separate orgs;
+  a sum is the wrong number twice.
+- **`<email>'s Organization` is generated**, not chosen. Armada rewrites exactly that shape
+  to "Personal" and leaves any other name alone.
+- **The plan lives in the tier, not the type.** Both orgs are "Max"-ish by
+  `organizationType`; only `organizationRateLimitTier` separates Max 20x from the Team seat.
+- `oauthAccount` sits at the **top level** of `.claude.json`, beside
+  `cachedUsageUtilization` — one parse gets both.
+
+Unverified: whether an org switch inside a running Claude Code rewrites `oauthAccount` in
+place. Armada re-reads it on every usage refresh rather than caching it at launch, on the
+assumption that it can.
+
 ## Where plan-limit data is
 
 ### Claude Code
@@ -105,6 +138,23 @@ counts sessions.
    `fetchedAtMs`. Windows seen: `five_hour`, `seven_day`, `seven_day_opus`,
    `seven_day_sonnet`, `seven_day_oauth_apps`, `seven_day_cowork`, `extra_usage`, `spend`,
    `limits`, and several code names. Each has `utilization` (percent) and `resets_at`.
+
+   Three things measured while building against it, each silent when got wrong:
+
+   - **`resets_at` needs `.withFractionalSeconds`.** The real value is
+     `"2026-09-10T23:00:00.431496+00:00"` — six fractional digits and a numeric offset — and
+     a bare `ISO8601DateFormatter()` returns **nil** on it. Compiled and run against the live
+     string to confirm; `JSONDecoder`'s `.iso8601` strategy does parse it. The failure mode
+     is not an error: the percentage still renders and the reset time just never appears.
+   - **It is a cache, and it goes stale.** `fetchedAtMs` is there because Claude Code
+     refreshes this when an API response happens to update it, which on an idle account can
+     be hours ago. Seen in practice: a `five_hour` window whose `resets_at` was already
+     10 hours in the past. Anything showing these numbers should show their age too, or it
+     will state a stale figure as the current one.
+   - **Decode narrowly.** The object also carries `limit_dollars`, `used_dollars`,
+     `remaining_dollars`, `locked_reason`, a `limits` array, `extra_usage`, `spend` and a
+     dozen code-named windows. Reading only the two windows you want means an unrelated key
+     changing shape cannot break you.
 3. `~/.claude/stats-cache.json`: daily activity, token usage per model, session counts.
 
 ### Codex
