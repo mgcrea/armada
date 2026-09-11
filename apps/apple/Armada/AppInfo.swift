@@ -38,6 +38,25 @@ enum AppInfo {
     return value.isEmpty ? nil : value
   }
 
+  /// Where Armada keeps the little it writes.
+  ///
+  /// **Keyed by the bundle identifier, not the app's name.** The two configurations
+  /// carry different ids — `io.mgcrea.armada.debug` against `io.mgcrea.armada` — so a
+  /// `make run` dev build records its usage history beside the installed copy's
+  /// rather than into it. It is also the platform convention, which means a person
+  /// looking for what this app stores finds it where they expect.
+  ///
+  /// Nothing Armada writes ever goes inside `~/.claude`: the General pane promises
+  /// that in as many words, and it should stay literally true.
+  static var supportDirectory: URL? {
+    guard
+      let base = try? FileManager.default.url(
+        for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+    else { return nil }
+    return base.appending(
+      path: Bundle.main.bundleIdentifier ?? "io.mgcrea.armada", directoryHint: .isDirectory)
+  }
+
   /// One line naming this exact build, for pasting into a bug report. Everything
   /// a maintainer needs to reproduce what the reporter is running, and nothing
   /// that identifies them.

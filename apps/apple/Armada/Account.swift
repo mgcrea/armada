@@ -84,6 +84,11 @@ final class Account: Identifiable {
     if let identity = AccountIdentity(root: root) { self.identity = identity }
     // A nil decode leaves the last good snapshot in place rather than blanking
     // the pane: the common cause is catching the file mid-rewrite.
-    if let usage = UsageSnapshot.decode(root: root) { self.usage = usage }
+    if let usage = UsageSnapshot.decode(root: root) {
+      self.usage = usage
+      // Recorded here rather than in the poll, because this is the one place a new
+      // snapshot exists; the store itself drops anything it has already seen.
+      UsageHistory.shared.record(usage, for: id)
+    }
   }
 }

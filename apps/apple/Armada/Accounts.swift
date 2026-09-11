@@ -61,6 +61,9 @@ final class Accounts {
 
   func start() {
     guard all.isEmpty else { return }
+    // Before the accounts, so the first `refreshConfig` below appends to the
+    // recorded history rather than starting a fresh one every launch.
+    UsageHistory.shared.load()
     all = ClaudeConfigFolder.discoverAll().map(Account.init(folder:))
     for account in all { account.start() }
 
