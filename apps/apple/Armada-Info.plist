@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The only key here. Everything else about this app's Info.plist is
+	     INFOPLIST_KEY_* build settings merged in at build time —
+	     GENERATE_INFOPLIST_FILE stays YES. This one exists because there is no
+	     INFOPLIST_KEY_ spelling for a custom key.
+
+	     The commit this bundle was built from, substituted from the
+	     ARMADA_GIT_COMMIT build setting. CFBundleVersion is already the commit
+	     COUNT, which orders builds but does not identify one: two branches at the
+	     same depth share it. This is what turns a bug report into a diff.
+
+	     Empty in an Xcode-only build, because Xcode has no git; `make build` and
+	     CI both pass it. -->
+	<key>ArmadaGitCommit</key>
+	<string>$(ARMADA_GIT_COMMIT)</string>
+</dict>
+</plist>

@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  app:
+    name: App
+    runs-on: macos-latest
+    steps:
+      # fetch-depth: 0 because CURRENT_PROJECT_VERSION is the commit count. A
+      # shallow clone would silently count only what it fetched and produce a
+      # build number that moves on every re-run.
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # The formatting gate, before the build: it compiles nothing, so it is the
+      # fastest real signal in the repo and there is no reason to spend an Xcode
+      # build discovering that a file is misformatted. swift-format comes from the
+      # Xcode toolchain, so it exists on this runner and nowhere else.
+      - name: Format (swift) 🔍
+        run: make format-swift-check
+
+      # No signing on CI: there is no certificate on the runner, and this job
+      # answers "does it still compile", not "is it shippable".
+      - name: Build 🏗️
+        run: make build XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"

@@ -1,0 +1,6 @@
+# Formatting-only commits, skipped by `git blame`. Add a SHA here whenever a
+# whole-tree reformat lands, and run `make blame-setup` once per clone so your
+# terminal honours this file (GitHub reads it by itself).
+#
+# Armada has been swift-format clean since its first Swift commit, so there is no
+# reformat SHA to name yet.
