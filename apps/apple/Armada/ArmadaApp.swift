@@ -100,11 +100,42 @@ struct StatusMenu: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
-        Text("Armada").font(.headline)
+        // The title opens the window, same as the footer button. A heading that
+        // does something is worth a word: it is not a link and gets no link
+        // colour, because colouring it would make the one piece of plain text in
+        // the panel look like the only thing worth reading. The pointer and the
+        // tooltip are the affordance instead, which is how a Finder path bar or
+        // a Safari favicon says the same thing.
+        //
+        // No ⌘O here. The footer button already answers that chord and two
+        // views claiming one shortcut is ambiguous to SwiftUI, not redundant.
+        Button {
+          AppDelegate.shared?.showMain()
+        } label: {
+          Text("Armada").font(.headline)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help("Open Armada")
+
         Spacer()
-        Text(AppInfo.shortVersion)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+
+        // The version opens About, which is the pane that says what this number
+        // means — build, credits, the feedback links. Same treatment as the
+        // title beside it: no link colour, the pointer and the tooltip carry it.
+        // A version string is already the thing people click looking for the
+        // rest of the version, so this is the shortest route to the one surface
+        // that answers them.
+        Button {
+          AppDelegate.shared?.showSettings(.about)
+        } label: {
+          Text(AppInfo.shortVersion)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help("About Armada")
       }
 
       if accounts.all.isEmpty {
@@ -121,13 +152,36 @@ struct StatusMenu: View {
 
       Divider()
 
-      Button("Open Armada") { AppDelegate.shared?.showMain() }
-      Button("Settings…") { AppDelegate.shared?.showSettings() }
-        .keyboardShortcut(",", modifiers: .command)
-      Button("Quit Armada") { NSApp.terminate(nil) }
-        .keyboardShortcut("q", modifiers: .command)
+      // One row, as Bastion and Cupertino have it, and the same rule decides
+      // which side each thing lands on: what OPENS something sits left, what you
+      // GO TO sits right. "Open Armada" is the one being recommended, so it is
+      // the only tinted button; a gear is a route, not advice.
+      //
+      // Settings is a glyph rather than a word. Three text buttons stacked as
+      // three rows was the panel's own summary claim spent on chrome, and side
+      // by side they do not fit: the width the other two apps measured
+      // truncating "Open Cupertino" at 320pt is wider than this panel. A gear is
+      // the one glyph nobody needs taught, and its tooltip and ⌘, carry the name.
+      HStack {
+        Button("Open Armada") { AppDelegate.shared?.showMain() }
+          .buttonStyle(.glass)
+          .keyboardShortcut("o")
+
+        Spacer()
+
+        Button {
+          AppDelegate.shared?.showSettings()
+        } label: {
+          Image(systemName: "gearshape")
+        }
+        .keyboardShortcut(",")
+        .help("Settings (⌘,)")
+
+        Button("Quit") { NSApp.terminate(nil) }
+          .keyboardShortcut("q")
+      }
+      .controlSize(.small)
     }
-    .buttonStyle(.plain)
     .padding(12)
     .frame(width: 280)
   }
