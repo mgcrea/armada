@@ -11,9 +11,7 @@ struct ArmadaApp: App {
     MenuBarExtra {
       StatusMenu()
     } label: {
-      // SF Symbol for now. `design/armada-menubar.svg` replaces this with the
-      // template pair once `make icon` has run.
-      Image(systemName: "sailboat")
+      MenuBarLabel()
     }
     .menuBarExtraStyle(.window)
     .commands {
@@ -25,6 +23,26 @@ struct ArmadaApp: App {
       }
       SupportCommands(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
     }
+  }
+}
+
+/// The menu bar glyph: outlined when everything is idle, filled when something is
+/// working.
+///
+/// Both are template assets, so AppKit tints them for light, dark and the
+/// highlighted menu bar — which is why neither carries a colour of its own and why
+/// nothing here sets one.
+private struct MenuBarLabel: View {
+  @State private var watcher = SessionWatcher.shared
+
+  var body: some View {
+    Image(isWorking ? "MenuBarIconActive" : "MenuBarIcon")
+      .accessibilityLabel(
+        isWorking ? "Armada — a session is working" : "Armada — all sessions idle")
+  }
+
+  private var isWorking: Bool {
+    watcher.sessions.contains { $0.state != .idle }
   }
 }
 
