@@ -1,22 +1,59 @@
 import SwiftUI
 
+/// What the sidebar can be showing.
+///
+/// The selection used to be an account id and is now a choice between the overview
+/// and one account, which is the whole cost of adding a second sidebar section.
+///
+/// Round-trips through one defaults string because that is what `@AppStorage`
+/// stores. Account ids are absolute paths — `Account.id` guarantees it — so they
+/// always begin with a slash and can never be mistaken for the overview's token.
+enum SidebarItem: Hashable {
+  case usage
+  case account(String)
+
+  private static let usageToken = "usage"
+
+  var stored: String {
+    switch self {
+    case .usage: Self.usageToken
+    case .account(let id): id
+    }
+  }
+
+  init?(stored: String) {
+    if stored == Self.usageToken {
+      self = .usage
+    } else if stored.hasPrefix("/") {
+      self = .account(stored)
+    } else {
+      return nil
+    }
+  }
+}
+
 struct MainWindowView: View {
   @State private var accounts = Accounts.shared
 
-  /// The selected account's config-folder path.
+  /// What the sidebar had selected last time.
   ///
   /// A path rather than an index, so the window reopens on the same account even
   /// if a folder appeared or went away in between; `selection` below falls back
-  /// to the first account when the stored one is gone.
+  /// to the first account when the stored one is gone. The key keeps its old name
+  /// so an existing selection survives the upgrade — a stored path still decodes.
   @AppStorage("armada.selectedAccount") private var storedAccount: String = ""
 
   var body: some View {
     NavigationSplitView {
       List(selection: selection) {
+        Section("Overview") {
+          Label("Usage", systemImage: "gauge.with.dots.needle.bottom.50percent")
+            .tag(SidebarItem.usage)
+        }
         Section("Accounts") {
           ForEach(accounts.all) { account in
             AccountSidebarRow(account: account)
-              .tag(account.id)
+              .tag(SidebarItem.account(account.id))
           }
         }
       }
@@ -29,12 +66,17 @@ struct MainWindowView: View {
           .padding(.vertical, 8)
       }
     } detail: {
-      if let account = resolvedAccount {
-        AccountPaneView(account: account)
-          // Rebuild the pane when the account changes, so the session selection
-          // inside it does not carry across to a different folder's list.
-          .id(account.id)
-      } else {
+      switch resolved {
+      case .usage:
+        UsagePaneView()
+      case .account(let id):
+        if let account = accounts.account(id: id) {
+          AccountPaneView(account: account)
+            // Rebuild the pane when the account changes, so the session selection
+            // inside it does not carry across to a different folder's list.
+            .id(account.id)
+        }
+      case nil:
         ContentUnavailableView {
           Label("No Claude config folder", systemImage: "folder.badge.questionmark")
         } description: {
@@ -46,20 +88,27 @@ struct MainWindowView: View {
     }
   }
 
-  /// The stored account if it still exists, otherwise the first one.
-  private var resolvedAccount: Account? {
-    accounts.account(id: storedAccount) ?? accounts.all.first
+  /// The stored selection if it still resolves, otherwise the first account.
+  ///
+  /// An account that has gone away falls back rather than showing an empty pane;
+  /// the overview always resolves, because it does not depend on a folder existing.
+  private var resolved: SidebarItem? {
+    switch SidebarItem(stored: storedAccount) {
+    case .usage: .usage
+    case .account(let id) where accounts.account(id: id) != nil: .account(id)
+    default: accounts.all.first.map { .account($0.id) }
+    }
   }
 
-  /// Reading resolves to a real account; writing drops the `nil` that `List`
+  /// Reading resolves to a real row; writing drops the `nil` that `List`
   /// hands back on its way up, before the tagged rows have registered — folding
   /// that into a real value overwrites the selection a frame later.
-  private var selection: Binding<String?> {
+  private var selection: Binding<SidebarItem?> {
     Binding(
-      get: { resolvedAccount?.id },
+      get: { resolved },
       set: { newValue in
         guard let newValue else { return }
-        storedAccount = newValue
+        storedAccount = newValue.stored
       })
   }
 }

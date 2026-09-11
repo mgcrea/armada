@@ -12,11 +12,13 @@ import SwiftUI
 /// No entitlement pane: Armada sells nothing, so there is nothing to unlock.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
+  case usage
   case about
 
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
+    case .usage: "Usage"
     case .about: "About"
     }
   }
@@ -24,6 +26,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var systemImage: String {
     switch self {
     case .general: "gearshape"
+    case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
     }
   }
@@ -47,6 +50,7 @@ struct SettingsWindowView: View {
     SettingsScaffold(selection: Support.settings) { pane in
       switch pane {
       case .general: GeneralPane()
+      case .usage: UsageSettingsPane()
       case .about:
         AboutSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
       }
@@ -122,5 +126,108 @@ struct GeneralPane: View {
     }
     .formStyle(.grouped)
     .navigationTitle("General")
+  }
+}
+
+/// The pace profile, and what Armada has recorded.
+///
+/// Named with the `Settings` infix rather than matching `GeneralPane`, because the
+/// main window's pane is `UsagePaneView` and a `UsagePane` sitting next to it would
+/// be a name nobody can resolve at a glance.
+struct UsageSettingsPane: View {
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @State private var history = UsageHistory.shared
+
+  var body: some View {
+    Form {
+      Section {
+        ForEach(Array(orderedDays.enumerated()), id: \.element.index) { _, day in
+          LabeledContent {
+            HStack(spacing: 10) {
+              Slider(
+                value: binding(for: day.index), in: 0...2, step: 0.25)
+              Text(percentLabel(day.index))
+                .font(.caption.monospacedDigit())
+                .frame(width: 40, alignment: .trailing)
+                .foregroundStyle(.secondary)
+            }
+          } label: {
+            Text(day.name)
+          }
+        }
+        Button("Reset to an even week") { storedWeights = DayWeights.evenStored }
+          .disabled(DayWeights(stored: storedWeights).isEven)
+      } header: {
+        Text("Expected effort per day")
+      } footer: {
+        // Says plainly what these are not, because a row of percentages in a
+        // settings window reads as a cap until told otherwise.
+        Text(
+          "Relative weights, not limits — Armada cannot change your plan. They only decide where the pace marker sits, so a quiet weekend does not read as falling behind."
+        )
+      }
+
+      Section {
+        LabeledContent("Readings recorded") {
+          Text("\(history.totalSampleCount)")
+            .monospacedDigit()
+            .contentTransition(.numericText())
+        }
+        if let url = history.fileURL {
+          LabeledContent("Stored in") {
+            HStack(spacing: 6) {
+              Text(
+                (url.deletingLastPathComponent().path(percentEncoded: false) as NSString)
+                  .abbreviatingWithTildeInPath
+              )
+              .truncationMode(.head)
+              .lineLimit(1)
+              Button {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+              } label: {
+                Image(systemName: "arrow.up.forward.square")
+              }
+              .buttonStyle(.borderless)
+              .help("Show in Finder")
+            }
+          }
+        }
+        Button("Delete recorded history") { history.clear() }
+          .disabled(history.totalSampleCount == 0)
+      } header: {
+        Text("History")
+      } footer: {
+        Text(
+          "Armada records each new reading of your plan windows so it can draw the week rather than guess it. Readings stay on this Mac for 30 days, and nothing is ever written to your Claude configuration."
+        )
+      }
+    }
+    .formStyle(.grouped)
+    .navigationTitle("Usage")
+  }
+
+  /// Monday first for reading, `Calendar` order for storage.
+  ///
+  /// The two differ, and that is the point: the array index has to stay Foundation's
+  /// Sunday-first numbering because that is what indexes the weekday component, while
+  /// a list of days that starts on Sunday reads wrong to most of the people who will
+  /// see it.
+  private var orderedDays: [(index: Int, name: String)] {
+    let symbols = Calendar.current.standaloneWeekdaySymbols
+    return [2, 3, 4, 5, 6, 7, 1].map { (index: $0 - 1, name: symbols[$0 - 1]) }
+  }
+
+  private func binding(for index: Int) -> Binding<Double> {
+    Binding(
+      get: { DayWeights(stored: storedWeights).values[index] },
+      set: { newValue in
+        var values = DayWeights(stored: storedWeights).values
+        values[index] = newValue
+        storedWeights = DayWeights(values: values).stored
+      })
+  }
+
+  private func percentLabel(_ index: Int) -> String {
+    "\(Int((DayWeights(stored: storedWeights).values[index] * 100).rounded()))%"
   }
 }
