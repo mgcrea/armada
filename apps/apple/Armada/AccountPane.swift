@@ -66,12 +66,18 @@ struct UsageHeader: View {
   let account: Account
   let now: Date
 
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+
   var body: some View {
     VStack(spacing: 0) {
       HStack(alignment: .top, spacing: 24) {
         if let usage = account.usage, !usage.isEmpty {
-          CompactMeter(title: "Session", subtitle: "5 hours", window: usage.fiveHour)
-          CompactMeter(title: "Weekly", subtitle: "7 days", window: usage.sevenDay)
+          CompactMeter(
+            title: "Session", subtitle: "5 hours", window: usage.fiveHour,
+            forecast: forecast(usage.fiveHour, .fiveHour, usage.fetchedAt))
+          CompactMeter(
+            title: "Weekly", subtitle: "7 days", window: usage.sevenDay,
+            forecast: forecast(usage.sevenDay, .sevenDay, usage.fetchedAt))
           Spacer(minLength: 0)
           StalenessBadge(fetchedAt: usage.fetchedAt, now: now)
         } else {
@@ -90,6 +96,15 @@ struct UsageHeader: View {
     }
     .background(.bar)
   }
+
+  private func forecast(
+    _ window: UsageWindow?, _ length: UsageWindowLength, _ fetchedAt: Date?
+  ) -> UsageForecast? {
+    guard let window else { return nil }
+    return UsageForecast(
+      window: window, length: length, weights: DayWeights(stored: storedWeights),
+      asOf: fetchedAt, now: now)
+  }
 }
 
 /// A meter sized for the header strip.
@@ -97,6 +112,7 @@ struct CompactMeter: View {
   let title: LocalizedStringKey
   let subtitle: LocalizedStringKey
   let window: UsageWindow?
+  var forecast: UsageForecast?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -109,16 +125,10 @@ struct CompactMeter: View {
           Text("\(window.utilization)%")
             .font(.title3.monospacedDigit())
             .contentTransition(.numericText())
-          ProgressView(value: Double(window.utilization), total: 100)
-            .progressViewStyle(.linear)
-            .tint(UsageTint.for(window.utilization))
+          UsageBar(percent: window.utilization, forecast: forecast)
             .frame(width: 110)
         }
-        if let resetsAt = window.resetsAt {
-          Text("resets \(resetsAt, format: .relative(presentation: .named))")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
+        UsageCaption(window: window, forecast: forecast)
       } else {
         Text("—").foregroundStyle(.secondary)
       }
