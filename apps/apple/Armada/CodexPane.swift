@@ -16,6 +16,15 @@ struct CodexPaneView: View {
   @State private var route = MainWindowRoute.shared
   @State private var scrollTarget: String?
 
+  // The same two keys `AccountPaneView` reads, not a Codex-flavoured pair. The panes
+  // are twinned on purpose, and "how I like my sessions listed" is one preference.
+  @AppStorage(SessionSort.defaultsKey) private var storedSort = SessionSort.fallback.stored
+  @AppStorage(SessionGrouping.defaultsKey)
+  private var storedGrouping = SessionGrouping.fallback.stored
+
+  private var sort: SessionSort { SessionSort(stored: storedSort) }
+  private var grouping: SessionGrouping { SessionGrouping(stored: storedGrouping) }
+
   var body: some View {
     VStack(spacing: 0) {
       CodexUsageHeader(account: account, now: now)
@@ -34,14 +43,29 @@ struct CodexPaneView: View {
         // sends here can be anywhere in a list that also holds the day's finished
         // ones, and it has to be scrolled to rather than merely selected.
         ScrollViewReader { proxy in
-          List(account.sessions.sessions, selection: $selection) { session in
-            CodexSessionRow(session: session, now: now)
-              .tag(session.id)
+          // A builder `List` rather than `List(_:selection:)`: a grouped list is
+          // `Section`s, and the data-driven initializer takes one flat collection.
+          List(selection: $selection) {
+            if grouping == .none {
+              ForEach(SessionOrder.sorted(account.sessions.sessions, by: sort), content: row)
+            } else {
+              ForEach(
+                SessionOrder.arrange(account.sessions.sessions, sort: sort, grouping: grouping)
+              ) { group in
+                Section {
+                  ForEach(group.items, content: row)
+                } header: {
+                  SessionGroupHeader(group: group)
+                }
+              }
+            }
           }
           .onChange(of: scrollTarget) { _, target in
             guard let target else { return }
             scrollTarget = nil
-            proxy.scrollTo(target)
+            // `.center`, as in `AccountPaneView`: with grouping on, the routed row can
+            // land under a section header.
+            proxy.scrollTo(target, anchor: .center)
           }
         }
       }
@@ -65,6 +89,15 @@ struct CodexPaneView: View {
     guard let id = route.takeSession(in: .codex(account.id)) else { return }
     selection = id
     scrollTarget = id
+  }
+
+  /// One row, built the same way in both branches above. `.tag` is the `List`'s
+  /// selection; `.id` is what `ScrollViewReader.scrollTo` matches. See
+  /// `AccountPaneView.row(_:)` for why both are written out.
+  private func row(_ session: CodexSession) -> some View {
+    CodexSessionRow(session: session, now: now)
+      .tag(session.id)
+      .id(session.id)
   }
 
   private var selected: CodexSession? {
@@ -123,6 +156,8 @@ struct CodexUsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
+        // Where `UsageHeader` puts it, for the reasons given there.
+        SessionSortMenu()
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 10)

@@ -49,6 +49,8 @@ transcripts, separate rate limits.
 | `ProcessAncestry` | what the kernel says about a pid: parents, start time, tty, exe path |
 | `SessionHost` / `SessionHostLookup` | which app a session's process belongs to, cached |
 | `FocusSession` | brings that app forward — see [focusing-sessions.md](focusing-sessions.md) |
+| `SessionOrder` | how the session list is sorted and grouped — shared by both panes |
+| `SessionSortMenu` | that choice as one menu, and the grouped list's section header |
 
 The Codex half mirrors it, name for name, and shares only the icon lookup (`VendorIcon`)
 and the usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`):
@@ -70,6 +72,20 @@ inconsistency: each folder has its own directory trees worth a dedicated stream,
 
 Each of these cost time here, and none is visible from the code that depends on it.
 
+- **A session list group's id is the folder's `cwd`, never its name.** Two checkouts can
+  both be called `api`, and a `ForEach` keyed on the title then runs two sections under
+  one id — which renders as sections showing each other's rows and looks like a SwiftUI
+  bug. `SessionGroup.id` is the path; the name is only the title.
+- **`.tag` and `.id` on a session row are two different jobs.** `.tag` is what the list's
+  selection and `.contextMenu(forSelectionType:)` read; `.id` is what
+  `ScrollViewReader.scrollTo` matches, which is how the menu bar panel reaches a row a
+  long way down. `List(_:selection:)` supplied the second for free out of `Identifiable`;
+  the builder `List` the grouped list needs does not, so both are written out.
+- **`SessionWatcher.rescan`'s sort is the baseline order, not the presented one.** It
+  exists because `next` is a dictionary with no order, and it is also what the menu bar
+  panel reads through `Accounts.allSessions` — the panel shows three of nineteen, so its
+  three have to stay the newest three whatever the window is sorted by. The window layers
+  `SessionOrder` on top rather than changing it.
 - **`INFOPLIST_KEY_LSUIElement = YES`** is what makes this a menu bar app. Without it there
   is a permanent Dock icon and `DockPresence` is meaningless.
 - **Three package products**, each needing *both* a product dependency and a Frameworks

@@ -21,6 +21,17 @@ struct AccountPaneView: View {
   /// screen — never scrolls under the reader's cursor.
   @State private var scrollTarget: String?
 
+  // Shared with `CodexPaneView`, deliberately: this is one preference — how I like my
+  // sessions listed — and two keys would mean parameterising `SessionSortMenu` and
+  // letting the two panes drift. The defaults come from the enums rather than being
+  // typed out, so a fresh install cannot show one order with a checkmark on another.
+  @AppStorage(SessionSort.defaultsKey) private var storedSort = SessionSort.fallback.stored
+  @AppStorage(SessionGrouping.defaultsKey)
+  private var storedGrouping = SessionGrouping.fallback.stored
+
+  private var sort: SessionSort { SessionSort(stored: storedSort) }
+  private var grouping: SessionGrouping { SessionGrouping(stored: storedGrouping) }
+
   var body: some View {
     // A split view rather than an `.inspector`. The inspector is a system-owned
     // column sized for a few labels, and the context panel is the opposite of that:
@@ -81,9 +92,24 @@ struct AccountPaneView: View {
         // The `ScrollViewReader` is for the panel's sake: it can select a row a long
         // way down the list, and a selection nobody can see is no better than none.
         ScrollViewReader { proxy in
-          List(account.sessions.sessions, selection: $selection) { session in
-            SessionRow(session: session, now: now)
-              .tag(session.id)
+          // A builder `List` rather than `List(_:selection:)`, because a grouped list
+          // is `Section`s and the data-driven initializer takes one flat collection.
+          // The selection binding, its type, and therefore the context menu below are
+          // all unchanged by that swap.
+          List(selection: $selection) {
+            if grouping == .none {
+              ForEach(SessionOrder.sorted(account.sessions.sessions, by: sort), content: row)
+            } else {
+              ForEach(
+                SessionOrder.arrange(account.sessions.sessions, sort: sort, grouping: grouping)
+              ) { group in
+                Section {
+                  ForEach(group.items, content: row)
+                } header: {
+                  SessionGroupHeader(group: group)
+                }
+              }
+            }
           }
           // On the `List`, not on `SessionRow`. A row-level `.contextMenu` does not
           // move the List's selection, so right-clicking an unselected row opens a
@@ -105,11 +131,29 @@ struct AccountPaneView: View {
           .onChange(of: scrollTarget) { _, target in
             guard let target else { return }
             scrollTarget = nil
-            proxy.scrollTo(target)
+            // `.center`, not the default. With grouping on, the target can land under
+            // a section header, and a row the panel selected but nobody can see is no
+            // better than one it never scrolled to.
+            proxy.scrollTo(target, anchor: .center)
           }
         }
       }
     }
+  }
+
+  /// One row, built the same way in both branches above so the two cannot drift.
+  ///
+  /// **`.tag` and `.id` are not the same thing and both are needed.** `.tag` is what
+  /// the `List`'s selection and `.contextMenu(forSelectionType: String.self)` read,
+  /// and its type has to match that `String` exactly. `.id` is what
+  /// `ScrollViewReader.scrollTo` matches — the `List(_:selection:)` this replaced
+  /// supplied it out of `Identifiable` for free. An explicit `ForEach` does too, but
+  /// stating it means the panel's scroll cannot be broken later by someone giving the
+  /// `ForEach` an `id:` of its own or wrapping the row in something.
+  private func row(_ session: Session) -> some View {
+    SessionRow(session: session, now: now)
+      .tag(session.id)
+      .id(session.id)
   }
 
   private var selected: Session? {
@@ -163,6 +207,12 @@ struct UsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
+        // The list's control, in the pane's only existing chrome. Not a toolbar —
+        // both windows are hosted `NSWindow`s with no `NSToolbar`, see `HostedWindow`
+        // — and not a row of its own, because a new row adds height to a pane whose
+        // fitting size `OpeningResizeGuard` exists to defend. Outside the `if`, so a
+        // pane still reading its usage figures has it too.
+        SessionSortMenu()
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 10)
