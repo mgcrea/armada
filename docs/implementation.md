@@ -114,6 +114,12 @@ Each of these cost time here, and none is visible from the code that depends on 
   `thread-writer-locks/`, and the plan limits exist only inside `token_count` events in
   session logs. Both consequences are visible in the UI on purpose: the Codex list is
   "recent" rather than "live", and its header leads with how old the figures are.
+- **Plan limits are not a property of the sessions on screen.** They belong to the account,
+  and the newest figures on disk are usually in a rollout the session scan has no reason to
+  open — it is scoped to recent and locked sessions. Getting this wrong is silent: on
+  2026-09-12, with nothing run for 17 hours, the pane showed figures a further day older
+  than the newest that existed, because the only rollout in scope belonged to an idle
+  session. `CodexWatcher.scan` now always tails the newest rollout in the tree.
 
 ## Verifying it against reality
 
@@ -205,8 +211,8 @@ someone may want to make differently.
 - **No forecast on Codex meters.** `UsageForecast` projects from a reading that tracks the
   window, which Codex does not provide.
 - **The scan re-lists day directories on every event.** Bounded (≤8 directories, only files
-  inside the window, only re-reading a file whose size changed) and never measured under a
-  Codex session that is actually running.
+  inside the window, only re-reading a file whose size changed, plus one tail read of the
+  newest rollout) and never measured under a Codex session that is actually running.
 - **`~/.codex/state_5.sqlite` is left alone.** It would give exact titles, archived state
   and git branches, at the cost of depending on a versioned private schema. That trade is
   worth revisiting only if the plain files stop being enough.

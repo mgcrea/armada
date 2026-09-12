@@ -163,6 +163,9 @@ final class CodexWatcher {
     let cutoff = Date.now.addingTimeInterval(-recentWindow)
     var entries: [CodexScanEntry] = []
     var newest: CodexRateLimits?
+    /// The most recently written rollout in the whole tree, in scope or not, and
+    /// whether this pass already read it. See the fallback below the loop.
+    var newestRollout: (url: URL, modified: Date, read: Bool)?
 
     for day in home.dayDirectories(back: daysBack) {
       let names =
@@ -175,14 +178,20 @@ final class CodexWatcher {
         let size = (attributes[.size] as? UInt64) ?? 0
         let modified = (attributes[.modificationDate] as? Date) ?? .distantPast
 
+        let isNewest = modified > (newestRollout?.modified ?? .distantPast)
+
         // A locked session stays in scope however old its file is: a session that
         // has been sitting open since yesterday is exactly the one worth showing.
-        guard modified > cutoff || locked.contains(sessionId) else { continue }
+        guard modified > cutoff || locked.contains(sessionId) else {
+          if isNewest { newestRollout = (url, modified, false) }
+          continue
+        }
 
         let cached = known[sessionId]
         let unchanged = cached?.0 == size
         let meta = unchanged ? nil : CodexRollout.meta(at: url) ?? cached?.1
         let tail = unchanged ? nil : CodexRollout.tail(at: url)
+        if isNewest { newestRollout = (url, modified, tail != nil) }
 
         if let limits = tail?.rateLimits,
           limits.observedAt > (newest?.observedAt ?? .distantPast)
@@ -195,6 +204,23 @@ final class CodexWatcher {
             sessionId: sessionId, rollout: url, size: size, modified: modified,
             locked: locked.contains(sessionId), meta: meta, tail: tail))
       }
+    }
+
+    // **The plan limits are not a property of the recent sessions.** They are the
+    // account's, and the newest figures that exist are in the newest rollout —
+    // which is often not one this scan looked at, because the session list is
+    // scoped to `recentWindow` and to locked sessions. Found on 2026-09-12: with
+    // nothing run for 17 hours, the only rollout in scope was an idle session's,
+    // whose last `token_count` was a day older than the newest one on disk, so the
+    // pane quietly showed the wrong window as current.
+    //
+    // One extra bounded tail read, and only when the newest rollout was not already
+    // read for its own row.
+    if let candidate = newestRollout, !candidate.read,
+      let limits = CodexRollout.tail(at: candidate.url)?.rateLimits,
+      limits.observedAt > (newest?.observedAt ?? .distantPast)
+    {
+      newest = limits
     }
 
     // Only when something is untitled: the index is 104KB and re-reading it on
@@ -242,6 +268,11 @@ final class CodexWatcher {
     }
     if let limits = scan.rateLimits, limits.observedAt > (rateLimits?.observedAt ?? .distantPast) {
       rateLimits = limits
+      // Recorded here for the same reason `Account.refreshConfig` does it: this is
+      // the one place a reading Armada has not seen before exists. The store dedupes
+      // on the timestamp, so the 5-second sweep costs nothing — a Codex reading only
+      // changes when a turn writes a new `token_count`.
+      UsageHistory.shared.record(limits.asSnapshot, for: home.id)
     }
     didScan = true
 
