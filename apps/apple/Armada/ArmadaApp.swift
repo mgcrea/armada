@@ -301,38 +301,53 @@ struct AccountSummary: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       if showsName {
-        HStack(spacing: 6) {
-          ClaudeIconView(size: 14)
-          Text(account.displayName)
-            .font(.subheadline.weight(.medium))
-            .lineLimit(1)
-          // The count rides the name's line rather than taking one of its own. It is
-          // a clause about the account, not a heading, and at `.callout` on its own
-          // row it was the largest text in the block and read as the block's title —
-          // with the name it actually belongs to sitting above it in a smaller font.
-          // A line saved here is a line the session list and meters get back, which
-          // is what a panel holding three accounts is short of.
-          Text("• \(summary)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-          Spacer(minLength: 4)
-          if let plan = account.planLabel {
-            Text(plan)
-              .font(.caption2)
+        // The header is the block's own row: it opens the account's pane, with
+        // nothing selected in it. Same treatment as the session rows below, because
+        // it is the same promise — everything in this block, at full size.
+        PanelRow(help: "Show \(account.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.account(account.id))
+        } label: {
+          HStack(spacing: 6) {
+            ClaudeIconView(size: 14)
+            Text(account.displayName)
+              .font(.subheadline.weight(.medium))
+              .lineLimit(1)
+            // The count rides the name's line rather than taking one of its own. It is
+            // a clause about the account, not a heading, and at `.callout` on its own
+            // row it was the largest text in the block and read as the block's title —
+            // with the name it actually belongs to sitting above it in a smaller font.
+            // A line saved here is a line the session list and meters get back, which
+            // is what a panel holding three accounts is short of.
+            Text("• \(summary)")
+              .font(.caption)
               .foregroundStyle(.secondary)
+              .lineLimit(1)
+            Spacer(minLength: 4)
+            if let plan = account.planLabel {
+              Text(plan)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
           }
         }
       } else {
         // Nothing to hang it off: one account draws no name row, so the count is the
-        // block's opening line and keeps the weight to match.
-        Text(summary)
-          .font(.callout)
-          .foregroundStyle(sessions.isEmpty ? .secondary : .primary)
+        // block's opening line and keeps the weight to match. It still opens the
+        // pane — with one account it is the only header the block has.
+        PanelRow(help: "Show \(account.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.account(account.id))
+        } label: {
+          Text(summary)
+            .font(.callout)
+            .foregroundStyle(sessions.isEmpty ? .secondary : .primary)
+        }
       }
 
       ForEach(sessions.prefix(Self.visibleSessions)) { session in
-        SummaryRow(session: session, host: hosts[session.registry.pid] ?? nil)
+        SummaryRow(
+          session: session, accountID: account.id, host: hosts[session.registry.pid] ?? nil)
       }
       if sessions.count > Self.visibleSessions {
         Text("and \(sessions.count - Self.visibleSessions) more")
@@ -427,66 +442,104 @@ enum MenuBarPanel {
   }
 }
 
-/// One session in the popover, clickable when there is somewhere to go.
+/// A row in the menu bar panel that goes somewhere.
 ///
-/// This is the surface where Focus earns its keep: the panel is already open because
-/// something went idle, and the alternative is opening the window to click a row
-/// there. A session with no host stays plain text — a button that does nothing is
-/// worse than no button.
+/// Two affordances rather than one, because **`pointerStyle(.link)` does not show
+/// over a row in this panel** — the cursor stays an arrow, which is how the first
+/// clickable rows here shipped looking dead: the only feedback was the `.plain`
+/// press flash, after the click. The hover fill is what a menu row is expected to
+/// have anyway, and unlike a pointer style it is visible before committing. The
+/// pointer stays because it costs nothing where it does work.
 ///
-/// Two things that need no code and are worth writing down, because both look like
-/// omissions. The `MenuBarExtra(.window)` panel dismisses itself when Armada resigns
-/// active, which activating another app causes, so there is no explicit dismiss here
-/// — and if the activation is declined the panel stays open, which is honest. And
-/// `DockPresence` is untouched by any of this: it counts windows that `canBecomeMain`
-/// and the panel is not one, so focusing from here never flips the activation policy.
-struct SummaryRow: View {
-  let session: Session
-  let host: SessionHost?
+/// `contentShape` is the other half: `Spacer` does not hit-test, so without it most
+/// of a row's width is dead to both the click and the hover.
+struct PanelRow<Label: View>: View {
+  let help: String
+  let action: () -> Void
+  @ViewBuilder var label: Label
 
   @State private var hovering = false
 
   var body: some View {
-    if let host {
-      Button {
-        FocusSession.focus(host)
-        // Always, even when the activation changed nothing. Clicking a row for an
-        // app that is already frontmost is a legitimate no-op, and the panel
-        // staying open is what makes it read as a broken button.
-        MenuBarPanel.dismiss()
-      } label: {
-        label
-      }
-      .buttonStyle(.plain)
-      .pointerStyle(.link)
-      .help("Focus in \(host.name)")
-      // **The pointer is not enough on its own here**, which is how this shipped
-      // looking dead: over a row in the panel the cursor stays an arrow, so the only
-      // hint that a row does anything was the press flash after you had already
-      // clicked it. A hover fill is the affordance a menu row is expected to have
-      // anyway, and unlike a pointer style it is visible before committing.
-      .onHover { hovering = $0 }
-      .background(
-        hovering ? AnyShapeStyle(.selection.opacity(0.25)) : AnyShapeStyle(.clear),
-        in: .rect(cornerRadius: 4)
-      )
-    } else {
-      label
+    Button(action: action) {
+      label.contentShape(.rect)
     }
+    .buttonStyle(.plain)
+    .pointerStyle(.link)
+    .help(help)
+    .onHover { hovering = $0 }
+    .background(
+      hovering ? AnyShapeStyle(.selection.opacity(0.25)) : AnyShapeStyle(.clear),
+      in: .rect(cornerRadius: 4)
+    )
   }
+}
 
-  private var label: some View {
-    HStack(spacing: 6) {
-      StateDot(state: session.state)
-      Text(session.displayName)
-        .font(.caption)
-        .lineLimit(1)
-      Spacer(minLength: 0)
+/// One session in the popover: a click opens it in the window.
+///
+/// **This used to focus the session's terminal, and that was the wrong default.**
+/// The panel is 320pt of summary; everything it has to leave out — the transcript
+/// context, the folder, the model, the rest of the account's sessions — is in the
+/// pane behind this row, and sending the one click Armada gets to another
+/// application made its own detail view the harder thing to reach. Focusing the
+/// host is a right-click away instead, which is where a second intent belongs, and
+/// it is the rarer of the two: someone who wants to type at the session was going
+/// to switch to their terminal anyway.
+///
+/// A session with no host still gets a row that does something now, which is the
+/// other thing that changed: the destination is Armada's own pane, and that exists
+/// whether or not the lookup found an application to raise.
+///
+/// The panel is dismissed explicitly, always, and **before the window is opened**.
+/// `MenuBarExtra(.window)` closes itself when Armada resigns active, and opening one
+/// of Armada's own windows is the one destination that never makes it resign — so
+/// unlike the old focus click, this one would leave the panel hanging over the
+/// window it just opened. The order is load-bearing on top of that: `MenuBarPanel`
+/// finds the panel as the key window that cannot become main, and once the main
+/// window is key it is the main window that answers, so the dismissal correctly
+/// refuses to close anything.
+struct SummaryRow: View {
+  let session: Session
+  let accountID: String
+  let host: SessionHost?
+
+  var body: some View {
+    PanelRow(help: "Show \(session.displayName) in Armada") {
+      MenuBarPanel.dismiss()
+      MainWindowRoute.shared.open(.account(accountID), session: session.id)
+    } label: {
+      HStack(spacing: 6) {
+        StateDot(state: session.state)
+        Text(session.displayName)
+          .font(.caption)
+          .lineLimit(1)
+        Spacer(minLength: 0)
+      }
     }
-    // The whole row, not just the text, so the click target matches what looks
-    // clickable. Without this the `Spacer` does not hit-test and most of the row is
-    // dead to both the click and the hover.
-    .contentShape(.rect)
+    // Only when there is somewhere to go: an unconditional `contextMenu` with no
+    // buttons in it opens an empty menu on right-click, which is worse than none.
+    .modifier(FocusHostMenu(host: host))
+  }
+}
+
+/// "Focus in Ghostty", on the right-click, when the session has a host to focus.
+struct FocusHostMenu: ViewModifier {
+  let host: SessionHost?
+
+  func body(content: Content) -> some View {
+    if let host {
+      content.contextMenu {
+        Button("Focus in \(host.name)") {
+          FocusSession.focus(host)
+          // For the same reason the row itself dismisses: the panel is closed by
+          // Armada resigning active, and when the host is *already* frontmost
+          // nothing resigns and the click reads as dead.
+          MenuBarPanel.dismiss()
+        }
+      }
+    } else {
+      content
+    }
   }
 }
 

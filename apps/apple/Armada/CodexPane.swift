@@ -13,6 +13,9 @@ struct CodexPaneView: View {
   @State private var now = Date()
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+  @State private var route = MainWindowRoute.shared
+  @State private var scrollTarget: String?
+
   var body: some View {
     VStack(spacing: 0) {
       CodexUsageHeader(account: account, now: now)
@@ -27,9 +30,19 @@ struct CodexPaneView: View {
           )
         }
       } else {
-        List(account.sessions.sessions, selection: $selection) { session in
-          CodexSessionRow(session: session, now: now)
-            .tag(session.id)
+        // As in `AccountPaneView`: the panel lists live sessions only, so the row it
+        // sends here can be anywhere in a list that also holds the day's finished
+        // ones, and it has to be scrolled to rather than merely selected.
+        ScrollViewReader { proxy in
+          List(account.sessions.sessions, selection: $selection) { session in
+            CodexSessionRow(session: session, now: now)
+              .tag(session.id)
+          }
+          .onChange(of: scrollTarget) { _, target in
+            guard let target else { return }
+            scrollTarget = nil
+            proxy.scrollTo(target)
+          }
         }
       }
     }
@@ -43,6 +56,15 @@ struct CodexPaneView: View {
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
     }
+    .onAppear { applyRoute() }
+    .onChange(of: route.token) { applyRoute() }
+  }
+
+  /// Take the session the menu bar panel asked for, if it asked for one here.
+  private func applyRoute() {
+    guard let id = route.takeSession(in: .codex(account.id)) else { return }
+    selection = id
+    scrollTarget = id
   }
 
   private var selected: CodexSession? {
@@ -164,38 +186,56 @@ struct CodexSummary: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       if showsName {
-        HStack(spacing: 6) {
-          CodexIconView(size: 14)
-          Text(account.displayName)
-            .font(.subheadline.weight(.medium))
-            .lineLimit(1)
-          // On the name's line for the reason `AccountSummary` gives, and it has to
-          // stay in step with it: the two blocks sit in one panel, and a Codex header
-          // shaped differently from a Claude one reads as a different kind of thing.
-          Text("• \(summary)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-          Spacer(minLength: 4)
-          if let plan = account.planLabel {
-            Text(plan)
-              .font(.caption2)
+        PanelRow(help: "Show \(account.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.codex(account.id))
+        } label: {
+          HStack(spacing: 6) {
+            CodexIconView(size: 14)
+            Text(account.displayName)
+              .font(.subheadline.weight(.medium))
+              .lineLimit(1)
+            // On the name's line for the reason `AccountSummary` gives, and it has to
+            // stay in step with it: the two blocks sit in one panel, and a Codex header
+            // shaped differently from a Claude one reads as a different kind of thing.
+            Text("• \(summary)")
+              .font(.caption)
               .foregroundStyle(.secondary)
+              .lineLimit(1)
+            Spacer(minLength: 4)
+            if let plan = account.planLabel {
+              Text(plan)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
           }
         }
       } else {
-        Text(summary)
-          .font(.callout)
-          .foregroundStyle(live.isEmpty ? .secondary : .primary)
+        PanelRow(help: "Show \(account.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.codex(account.id))
+        } label: {
+          Text(summary)
+            .font(.callout)
+            .foregroundStyle(live.isEmpty ? .secondary : .primary)
+        }
       }
 
+      // Clickable here, where the Claude rows have always been, even though Codex
+      // has no host to focus and never did — the destination is Armada's own pane,
+      // which is exactly why these rows can do something now. See `SummaryRow`.
       ForEach(live.prefix(Self.visibleSessions)) { session in
-        HStack(spacing: 6) {
-          CodexStateDot(state: session.state)
-          Text(session.displayName)
-            .font(.caption)
-            .lineLimit(1)
-          Spacer(minLength: 0)
+        PanelRow(help: "Show \(session.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.codex(account.id), session: session.id)
+        } label: {
+          HStack(spacing: 6) {
+            CodexStateDot(state: session.state)
+            Text(session.displayName)
+              .font(.caption)
+              .lineLimit(1)
+            Spacer(minLength: 0)
+          }
         }
       }
       if live.count > Self.visibleSessions {

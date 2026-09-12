@@ -14,6 +14,13 @@ struct AccountPaneView: View {
   @State private var now = Date()
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+  @State private var route = MainWindowRoute.shared
+
+  /// A row the panel asked for, waiting for the list to scroll to it. Separate from
+  /// `selection` so that an ordinary click — which selects a row that is already on
+  /// screen — never scrolls under the reader's cursor.
+  @State private var scrollTarget: String?
+
   var body: some View {
     // A split view rather than an `.inspector`. The inspector is a system-owned
     // column sized for a few labels, and the context panel is the opposite of that:
@@ -39,6 +46,19 @@ struct AccountPaneView: View {
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
     }
+    // Both, because either can be the one that runs. Clicking a row in the panel for
+    // the account already on screen changes nothing about this view's identity, so
+    // only `onChange` fires; clicking one for a different account rebuilds the pane
+    // — `MainWindowView` keys it on the account id — so only `onAppear` does.
+    .onAppear { applyRoute() }
+    .onChange(of: route.token) { applyRoute() }
+  }
+
+  /// Take the session the menu bar panel asked for, if it asked for one here.
+  private func applyRoute() {
+    guard let id = route.takeSession(in: .account(account.id)) else { return }
+    selection = id
+    scrollTarget = id
   }
 
   /// The left half: the usage strip and the session list.
@@ -58,25 +78,34 @@ struct AccountPaneView: View {
           )
         }
       } else {
-        List(account.sessions.sessions, selection: $selection) { session in
-          SessionRow(session: session, now: now)
-            .tag(session.id)
-        }
-        // On the `List`, not on `SessionRow`. A row-level `.contextMenu` does not
-        // move the List's selection, so right-clicking an unselected row opens a
-        // menu that acts on whatever was selected before — which here would focus
-        // the wrong session. This form hands over the right-clicked item instead.
-        //
-        // The type has to match the row's `tag` exactly. Rows tag `session.id`, a
-        // `String`; a mismatch compiles and the menu silently never appears.
-        //
-        // No `primaryAction:`: double-clicking a row stays plain selection.
-        .contextMenu(forSelectionType: String.self) { ids in
-          // Built on demand, so this is one cached lookup per right-click.
-          if let session = session(for: ids),
-            let host = SessionHostLookup.host(for: session.registry)
-          {
-            Button("Focus in \(host.name)") { FocusSession.focus(host) }
+        // The `ScrollViewReader` is for the panel's sake: it can select a row a long
+        // way down the list, and a selection nobody can see is no better than none.
+        ScrollViewReader { proxy in
+          List(account.sessions.sessions, selection: $selection) { session in
+            SessionRow(session: session, now: now)
+              .tag(session.id)
+          }
+          // On the `List`, not on `SessionRow`. A row-level `.contextMenu` does not
+          // move the List's selection, so right-clicking an unselected row opens a
+          // menu that acts on whatever was selected before — which here would focus
+          // the wrong session. This form hands over the right-clicked item instead.
+          //
+          // The type has to match the row's `tag` exactly. Rows tag `session.id`, a
+          // `String`; a mismatch compiles and the menu silently never appears.
+          //
+          // No `primaryAction:`: double-clicking a row stays plain selection.
+          .contextMenu(forSelectionType: String.self) { ids in
+            // Built on demand, so this is one cached lookup per right-click.
+            if let session = session(for: ids),
+              let host = SessionHostLookup.host(for: session.registry)
+            {
+              Button("Focus in \(host.name)") { FocusSession.focus(host) }
+            }
+          }
+          .onChange(of: scrollTarget) { _, target in
+            guard let target else { return }
+            scrollTarget = nil
+            proxy.scrollTo(target)
           }
         }
       }

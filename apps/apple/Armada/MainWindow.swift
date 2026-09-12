@@ -16,6 +16,11 @@ enum SidebarItem: Hashable {
   case account(String)
   case codex(String)
 
+  /// Where the window's selection is stored, and the one thing the menu bar panel
+  /// has to write to steer the sidebar. The key keeps its original name so an
+  /// existing selection survives the upgrade to a stored `SidebarItem`.
+  static let defaultsKey = "armada.selectedAccount"
+
   private static let usageToken = "usage"
   private static let codexPrefix = "codex:"
 
@@ -48,9 +53,11 @@ struct MainWindowView: View {
   ///
   /// A path rather than an index, so the window reopens on the same account even
   /// if a folder appeared or went away in between; `selection` below falls back
-  /// to the first account when the stored one is gone. The key keeps its old name
-  /// so an existing selection survives the upgrade — a stored path still decodes.
-  @AppStorage("armada.selectedAccount") private var storedAccount: String = ""
+  /// to the first account when the stored one is gone.
+  ///
+  /// `MainWindowRoute` writes this same key to steer the sidebar from the menu bar
+  /// panel, which is why it is a named constant rather than a literal here.
+  @AppStorage(SidebarItem.defaultsKey) private var storedAccount: String = ""
 
   var body: some View {
     NavigationSplitView {
