@@ -125,7 +125,9 @@ struct AccountPaneView: View {
             if let session = session(for: ids),
               let host = SessionHostLookup.host(for: session.registry)
             {
-              Button("Focus in \(host.name)") { FocusSession.focus(host) }
+              Button("Focus in \(host.name)") {
+                FocusSession.focus(host, cwd: session.registry.cwd)
+              }
             }
           }
           .onChange(of: scrollTarget) { _, target in

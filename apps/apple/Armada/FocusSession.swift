@@ -2,9 +2,10 @@ import AppKit
 
 /// Bring the application a session is running in to the front.
 ///
-/// Kept apart from `SessionHostLookup` because this is the *action*, and because the
-/// deferred exact-window work in `docs/focusing-sessions.md` grows here rather than
-/// in the lookup.
+/// Kept apart from `SessionHostLookup` because this is the *action*: the lookup
+/// answers which application owns a session, and this decides what to do about it.
+/// The window half lives in `HostWindow`, for the same reason and behind the same
+/// line. See `docs/focusing-sessions.md`.
 @MainActor
 enum FocusSession {
   /// **`NSRunningApplication` has no no-argument `activate()`.** That one belongs to
@@ -19,12 +20,25 @@ enum FocusSession {
   /// Armada is normally frontmost when this runs: the popover is open, or the main
   /// window is key. That is the case that would have worked anyway. The yield is
   /// what keeps it working when it is not.
+  ///
+  /// **The window first, then the application.** Activating raises whichever window
+  /// of the host was frontmost last, which for a Mac with eleven VS Code windows is
+  /// almost never the session's own — so `HostWindow` gets the first word, and the
+  /// activation that follows carries the window it just raised. The other order
+  /// shows the wrong window for a frame before correcting itself.
+  ///
+  /// `cwd` rather than anything on `SessionHost`, because the folder is this
+  /// action's input and not part of the host's identity; `SessionHost` names an
+  /// application and carries no path on purpose.
   @discardableResult
-  static func focus(_ host: SessionHost) -> Bool {
+  static func focus(_ host: SessionHost, cwd: String) -> Bool {
     guard let app = NSRunningApplication(processIdentifier: host.pid) else { return reopen(host) }
+    let raised = HostWindow.raise(inApplication: host.pid, cwd: cwd)
     NSApp.yieldActivation(to: app)
     if app.activate(from: .current, options: []) { return true }
-    return reopen(host)
+    // A raise that landed is a visible result even when the activation was
+    // declined, so it is not worth going through LaunchServices after one.
+    return raised || reopen(host)
   }
 
   /// LaunchServices, the way `open -a` does it.

@@ -81,6 +81,7 @@ struct GeneralPane: View {
   @State private var accounts = Accounts.shared
   @State private var launchAtLogin = LoginItem.isEnabled
   @State private var loginError: String?
+  @State private var trust = AccessibilityTrust.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
 
   var body: some View {
@@ -119,6 +120,25 @@ struct GeneralPane: View {
         // record. The sails fill on their own and are not part of this choice.
         Text(
           "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex session that is merely open counts as waiting on you."
+        )
+      }
+
+      Section {
+        LabeledContent("Accessibility") {
+          HStack(spacing: 8) {
+            Text(trust.isTrusted ? "Allowed" : "Not allowed")
+            Button("Open System Settings…") { HostWindow.openAccessibilitySettings() }
+              .buttonStyle(.borderless)
+          }
+        }
+      } header: {
+        Text("Focusing sessions")
+      } footer: {
+        // Says what the grant changes rather than asking for it, and says what
+        // Armada does with it — a permission request with no stated ceiling is the
+        // kind people deny. The ceiling is real: the window, never the panel in it.
+        Text(
+          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles and raises windows, nothing else."
         )
       }
 

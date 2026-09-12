@@ -23,11 +23,24 @@ struct SessionRow: View {
         .lineLimit(1)
       }
       Spacer(minLength: 8)
-      if let started = session.registry.startedAtDate {
-        Text(Self.elapsed(from: started, to: now))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
-          .help("Started this long ago")
+      // Stacked rather than set side by side: two monospaced numbers on one line read
+      // as one number in two parts. This also costs the row no height — the trailing
+      // column is now as tall as the title and subtitle beside it.
+      VStack(alignment: .trailing, spacing: 2) {
+        if let started = session.registry.startedAtDate {
+          Text(Self.elapsed(from: started, to: now))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .help("Started this long ago")
+        }
+        if let tokens = session.context?.total {
+          Text(TokenCount.short(tokens))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .help(
+              "\(TokenCount.short(tokens)) tokens of context in use. Not what this session has cost — the figure falls when it compacts."
+            )
+        }
       }
     }
     .padding(.vertical, 2)
@@ -83,18 +96,26 @@ struct SessionDetail: View {
               Text(session.state.label)
             }
           }
+          // What it wants, in Claude Code's own words. Shown verbatim and never
+          // matched against: `SessionRegistry.waitingFor` is display text built from a
+          // per-dialog table, and the set grows with every new kind of prompt.
+          if let waitingFor = session.waitingFor {
+            LabeledContent("Waiting for", value: waitingFor)
+          }
           if session.state.isBestEffort {
             Text(
-              "Inferred from an unanswered tool_use in the transcript. Claude Code writes nothing while a tool runs, and this cannot tell a running tool from one waiting for your approval."
+              "Inferred from an unanswered tool_use in the transcript: Claude Code reports the session as busy but writes nothing while a tool runs, so a running tool and one waiting for your approval look the same here. A session stopped at a prompt usually reports that itself, and shows as \"Waiting for you\"."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
           }
-          FocusButton(host: host, didLookUp: didLookUpHost)
+          FocusButton(host: host, cwd: session.registry.cwd, didLookUp: didLookUpHost)
         }
         // Above "Session": the context is the live fact worth checking, while the
         // pid and the folder are reference you look up once.
-        ContextSection(session: session, accountModelID: account.modelID, now: now)
+        ContextSection(
+          session: session, accountModelID: account.modelID,
+          composition: account.compositions.composition(for: session.registry.cwd), now: now)
         Section("Session") {
           LabeledContent("Project", value: session.registry.projectName)
           LabeledContent("Folder", value: session.registry.cwd)
@@ -143,26 +164,50 @@ struct SessionDetail: View {
       guard let session else { return }
       host = SessionHostLookup.host(for: session.registry)
       didLookUpHost = true
+      // Only the project being looked at is ever probed. A process per project in the
+      // list, on a dashboard built for sixteen sessions, is exactly the cost
+      // `ClaudeControl` measured and refused.
+      await account.compositions.probe(cwd: session.registry.cwd)
     }
   }
 }
 
 /// "Focus in Visual Studio Code", or an explanation of why there is nothing to focus.
 ///
-/// **The label names the application, never the window.** "Go to session" or "Open
-/// session" would promise the tab, and the process tree cannot deliver one: it says
-/// which app owns the session and stops there. Naming the app is also the more
-/// useful label, because it tells you where you are about to be sent.
+/// **The label still names the application, even now that this can reach a window.**
+/// "Go to session" or "Open session" would promise the tab, and nothing delivers a
+/// tab: with the Accessibility grant this lands on the window whose title names the
+/// session's folder, and the Claude panel inside it is still wherever it was. Naming
+/// the app is also the more useful label, because it tells you where you are about
+/// to be sent.
 struct FocusButton: View {
   let host: SessionHost?
+  let cwd: String
   let didLookUp: Bool
+
+  @State private var trust = AccessibilityTrust.shared
 
   var body: some View {
     if let host {
       Button {
-        FocusSession.focus(host)
+        FocusSession.focus(host, cwd: cwd)
       } label: {
         Label("Focus in \(host.name)", systemImage: "arrow.up.forward.app")
+      }
+      // Only while it is missing, and only here. This is the one place someone is
+      // looking at the button that disappoints them, so it is the one place worth
+      // spending three lines explaining what would fix it; the popover's
+      // right-click menu gets no room for a sentence and says nothing.
+      if !trust.isTrusted {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            "Armada can only bring \(host.name) itself forward, so the window you were last in wins. Allowing Accessibility lets it raise the window this session's folder is open in."
+          )
+          Button("Allow in System Settings…") { HostWindow.openAccessibilitySettings() }
+            .buttonStyle(.link)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
     } else if didLookUp {
       Text(

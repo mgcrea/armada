@@ -524,19 +524,20 @@ struct SummaryRow: View {
     }
     // Only when there is somewhere to go: an unconditional `contextMenu` with no
     // buttons in it opens an empty menu on right-click, which is worse than none.
-    .modifier(FocusHostMenu(host: host))
+    .modifier(FocusHostMenu(host: host, cwd: session.registry.cwd))
   }
 }
 
 /// "Focus in Ghostty", on the right-click, when the session has a host to focus.
 struct FocusHostMenu: ViewModifier {
   let host: SessionHost?
+  let cwd: String
 
   func body(content: Content) -> some View {
     if let host {
       content.contextMenu {
         Button("Focus in \(host.name)") {
-          FocusSession.focus(host)
+          FocusSession.focus(host, cwd: cwd)
           // For the same reason the row itself dismisses: the panel is closed by
           // Armada resigning active, and when the host is *already* frontmost
           // nothing resigns and the click reads as dead.
