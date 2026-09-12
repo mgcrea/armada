@@ -12,6 +12,7 @@ import SwiftUI
 /// week's actual climb. The header strip stays — it is the glance; this is the look.
 struct UsagePaneView: View {
   @State private var accounts = Accounts.shared
+  @State private var codex = CodexAccounts.shared
   @State private var history = UsageHistory.shared
   @State private var now = Date()
 
@@ -23,17 +24,24 @@ struct UsagePaneView: View {
 
   var body: some View {
     Group {
-      if accounts.all.isEmpty {
+      if accounts.all.isEmpty && codex.isEmpty {
         ContentUnavailableView {
-          Label("No Claude config folder", systemImage: "folder.badge.questionmark")
+          Label("No agents found", systemImage: "folder.badge.questionmark")
         } description: {
-          Text("Armada looks for ~/.claude and any ~/.claude-<name> beside it.")
+          Text("Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex.")
         }
       } else {
         ScrollView {
           VStack(alignment: .leading, spacing: 20) {
             ForEach(accounts.all) { account in
               AccountUsageCard(account: account, weights: weights, now: now)
+            }
+            // After the Claude cards, in the sidebar's order. Not interleaved and not
+            // merged: these are separate plans from separate vendors, and the one
+            // thing this pane must never invite is reading two vendors' percentages
+            // as one budget.
+            ForEach(codex.all) { account in
+              CodexUsageCard(account: account, weights: weights, now: now)
             }
             PaceFooter(weights: weights)
           }
@@ -49,9 +57,17 @@ struct UsagePaneView: View {
 
   private var weights: DayWeights { DayWeights(stored: storedWeights) }
 
+  /// Counts cards, not accounts, and says so in the vendors' own words when they
+  /// differ — "3 accounts" over two Claude organizations and a Codex home is three
+  /// of nothing in particular.
   private var subtitle: String {
-    let count = accounts.all.count
-    return count == 1 ? "1 account" : "\(count) accounts"
+    let claude = accounts.all.count
+    let codexCount = codex.all.count
+    if codexCount == 0 { return claude == 1 ? "1 account" : "\(claude) accounts" }
+    if claude == 0 { return codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes" }
+    let accountLabel = claude == 1 ? "1 Claude account" : "\(claude) Claude accounts"
+    let codexLabel = codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes"
+    return "\(accountLabel) · \(codexLabel)"
   }
 }
 
@@ -129,6 +145,69 @@ struct AccountUsageCard: View {
 
   private func corrected(_ length: UsageWindowLength, in usage: UsageSnapshot) -> UsageWindow? {
     usage.window(length, correctedBy: account.quotaHit, now: now)
+  }
+}
+
+/// One Codex home's windows, and its week so far.
+///
+/// Deliberately the same card as `AccountUsageCard`, down to the row heights, and it
+/// reuses every part below the header — `CodexRateLimits.asSnapshot` hands the shared
+/// views the shape they already take. What differs is only what genuinely differs
+/// between the vendors:
+///
+/// - **no `limits` array**, so two flat windows rather than a per-model breakdown;
+/// - **no quota correction**, because a refusal is read out of a Claude transcript
+///   and Codex's logs have not been mined for the equivalent;
+/// - **no "binding" flag**, which is Claude's own marker for the window it is
+///   measuring you against.
+struct CodexUsageCard: View {
+  let account: CodexAccount
+  let weights: DayWeights
+  let now: Date
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 8) {
+        CodexIconView(size: 16)
+        Text(account.displayName).font(.headline)
+        if let plan = account.planLabel {
+          Text(plan).font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 12)
+        StalenessBadge(fetchedAt: account.usage?.observedAt, now: now, source: .sessionLog)
+      }
+
+      if let usage = account.usage, !usage.isEmpty {
+        let snapshot = usage.asSnapshot
+        ForEach(rows(for: snapshot)) { row in
+          WindowRow(row: row, weights: weights, fetchedAt: snapshot.fetchedAt, now: now)
+        }
+        WeeklyChart(
+          accountID: account.id, window: snapshot.sevenDay, weights: weights,
+          fetchedAt: snapshot.fetchedAt, now: now)
+      } else {
+        Text(account.sessions.didScan ? "No usage reported yet" : "Reading usage…")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(16)
+    .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
+  }
+
+  private func rows(for snapshot: UsageSnapshot) -> [WindowRowModel] {
+    [
+      snapshot.fiveHour.map {
+        WindowRowModel(
+          id: "codex-five-hour", title: "Session", subtitle: "5 hours", window: $0,
+          length: .fiveHour, isBinding: false)
+      },
+      snapshot.sevenDay.map {
+        WindowRowModel(
+          id: "codex-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
+          length: .sevenDay, isBinding: false)
+      },
+    ].compactMap { $0 }
   }
 }
 

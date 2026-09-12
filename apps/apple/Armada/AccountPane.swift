@@ -230,7 +230,17 @@ struct StalenessBadge: View {
   /// Comfortably past `Accounts.probeInterval`, so an ordinary gap never trips it.
   private static let liveStale: TimeInterval = 15 * 60
 
-  private var staleAfter: TimeInterval { source == .live ? Self.liveStale : Self.stale }
+  private var staleAfter: TimeInterval {
+    switch source {
+    case .live: Self.liveStale
+    case .cache: Self.stale
+    // Never. A Codex figure does not decay — it was true when its turn wrote it, and
+    // the only thing that can invalidate it is its window rolling over, which the
+    // figure itself already renders as "—". A warning triangle here would be
+    // pointing at a number that is still right.
+    case .sessionLog: .infinity
+    }
+  }
 
   var body: some View {
     if let fetchedAt {
@@ -273,6 +283,8 @@ struct StalenessBadge: View {
       "Read from Claude Code's usage cache."
     case (.cache, true):
       "Claude Code refreshes this cache when it next talks to the API, so these figures may be behind."
+    case (.sessionLog, _):
+      "Codex reports its limits only inside a session log, so these are the figures from its last turn."
     }
   }
 }

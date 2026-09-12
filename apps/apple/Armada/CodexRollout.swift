@@ -57,6 +57,33 @@ nonisolated struct CodexRateLimits: Sendable, Hashable {
 
   var isEmpty: Bool { primary == nil && secondary == nil }
 
+  /// The window of a given length, found by its `window_minutes` rather than by
+  /// whether Codex called it `primary` or `secondary`. Those two names say nothing
+  /// about duration, and the minutes do.
+  func window(_ length: UsageWindowLength) -> UsageWindow? {
+    [primary, secondary].compactMap { $0 }.first { $0.length == length }?.usage
+  }
+
+  /// These figures in the shape the rest of the app already knows.
+  ///
+  /// **The reason the Usage pane needed almost no new code.** `WindowRow`,
+  /// `WeeklyChart`, `StalenessBadge` and `UsageHistory` all take a `UsageSnapshot`,
+  /// and none of them cares which vendor filled it in — so Codex gets the pace line,
+  /// the projection, the rolled-window handling and the recorded week for free, and
+  /// any later fix to those lands on both vendors at once.
+  ///
+  /// `limits` is empty on purpose: that array is Claude's per-model breakdown, and
+  /// Codex publishes no equivalent. The pane falls back to the two flat windows,
+  /// which is exactly the path it already had for a Claude cache without the array.
+  var asSnapshot: UsageSnapshot {
+    UsageSnapshot(
+      fiveHour: window(.fiveHour),
+      sevenDay: window(.sevenDay),
+      limits: [],
+      fetchedAt: observedAt,
+      source: .sessionLog)
+  }
+
   var planLabel: String? {
     guard let planType, !planType.isEmpty else { return nil }
     // "plus" → "Plus". Codex sends these lowercase.

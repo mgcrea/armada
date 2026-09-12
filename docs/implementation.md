@@ -19,9 +19,10 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
-  limits, read from `~/.codex`. See below — it is real code and shipped behaviour, but it
-  was written in one pass to find out what Codex makes possible, and it is the part most
-  likely to want revisiting.
+  limits, read from `~/.codex`, and a card in the global Usage pane beside the Claude
+  accounts. See below — it is real code and shipped behaviour, but it was written in one
+  pass to find out what Codex makes possible, and it is the part most likely to want
+  revisiting.
 
 Not built, and all of it deliberate: **messaging** (v1's third feature), hooks, `hubctl`,
 the Unix socket, the MCP surface, and anything that writes to a vendor's config. This app
@@ -120,6 +121,9 @@ Each of these cost time here, and none is visible from the code that depends on 
   2026-09-12, with nothing run for 17 hours, the pane showed figures a further day older
   than the newest that existed, because the only rollout in scope belonged to an idle
   session. `CodexWatcher.scan` now always tails the newest rollout in the tree.
+  `UsageSnapshot.Source.sessionLog` is the other half of the same point: those figures do
+  not decay the way a cache does, so they get their age shown and no staleness warning —
+  only a rolled-over window voids them.
 
 ## Verifying it against reality
 
@@ -220,6 +224,10 @@ someone may want to make differently.
 - **The scan re-lists day directories on every event.** Bounded (≤8 directories, only files
   inside the window, only re-reading a file whose size changed, plus one tail read of the
   newest rollout) and never measured under a Codex session that is actually running.
+- **Nothing reads Codex logs for a rate-limit refusal.** The Claude side corrects a stale
+  cache with a `QuotaHit` mined from a transcript; the Codex equivalent has not been looked
+  for, so a Codex window that a refusal has already closed keeps showing its last cheerful
+  percentage until the next turn writes one.
 - **`~/.codex/state_5.sqlite` is left alone.** It would give exact titles, archived state
   and git branches, at the cost of depending on a versioned private schema. That trade is
   worth revisiting only if the plain files stop being enough.

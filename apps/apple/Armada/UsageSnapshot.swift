@@ -128,6 +128,14 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
     case live
     /// `cachedUsageUtilization` in `.claude.json`.
     case cache
+    /// A `token_count` event inside a Codex rollout. See `CodexRateLimits`.
+    ///
+    /// The third kind, and it ages differently from the other two. `.cache` and
+    /// `.live` are both attempts at "what is true now" that can fall behind; a
+    /// session-log figure was simply *correct when it was written* and stays correct
+    /// until its window rolls over — which `UsageWindow.hasRolled` already shows.
+    /// So this one gets no staleness warning, only its age.
+    case sessionLog
   }
 
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }
