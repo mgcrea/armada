@@ -11,7 +11,7 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
 ## What it does
 
 - **Sessions**, per account: every live Claude Code session with its title, project, age and
-  inferred state, plus a detail inspector.
+  inferred state, beside a detail pane that includes how full its context window is.
 - **Usage**, per account: the 5-hour and 7-day windows with reset times and a staleness
   badge.
 - **Menu bar**: an accessory app (`LSUIElement`) with a popover summarising every account,
@@ -41,7 +41,9 @@ transcripts, separate rate limits.
 | `SessionWatcher` | one per account — FSEvents on its `sessions/` and `projects/` |
 | `SessionRegistry` | decodes `sessions/<pid>.json` |
 | `TranscriptLocator` | session → transcript path, with the encoding fallbacks |
-| `TranscriptTitle` | tail read for the title, and the unanswered-`tool_use` state check |
+| `TranscriptTitle` | tail and head reads, the title, and the unanswered-`tool_use` state check |
+| `TranscriptContext` | context totals, the growth series, the baseline and the compaction record |
+| `ContextWindow` | how big the window is, and which of four sources said so |
 | `UsageSnapshot` / `AccountIdentity` | the two halves of `.claude.json` |
 | `ProcessAncestry` | what the kernel says about a pid: parents, start time, tty, exe path |
 | `SessionHost` / `SessionHostLookup` | which app a session's process belongs to, cached |
@@ -80,6 +82,18 @@ Each of these cost time here, and none is visible from the code that depends on 
   it says otherwise. `TranscriptTitle`, `UsageSnapshot` and `AccountIdentity` are
   `nonisolated` so their file I/O is real background work; dropping that keyword silently
   puts 54MB of transcript reading back on the thread drawing the window.
+- **The three token figures must be summed.** `input_tokens` was **2** on a 389k prompt,
+  because everything else was a cache read. Any one of them read as "the context" reports an
+  empty session.
+- **A 64KB tail can hold no `assistant` entry at all.** A session writing file-history
+  entries during a long edit burst pushed its last turn 140KB out of range. Context figures
+  are held, never cleared, for the same reason `quotaHit` is.
+- **`apiBlockIndex` repeats a request's `usage` object** across its blocks. Harmless for the
+  newest reading, and it triples the sample count in a growth series — which is why
+  `TranscriptContext.series` filters to block 0 and `newestReading` deliberately does not.
+- **`message.model` never carries the `[1m]` suffix**, so it cannot tell a 1M session from a
+  200k one. `settings.json` `.model` can (`"opus[1m]"`), and is the account default rather
+  than the session's truth. See `ContextWindow`.
 - **`resets_at` needs `.withFractionalSeconds`** — see
   [limits-accounts-and-terms.md](limits-accounts-and-terms.md#where-plan-limit-data-is).
 - **`sessions/` holds `<pid>.<hash>.key` files** beside the registry JSON. Scan `*.json` or
@@ -110,6 +124,15 @@ ls ~/.claude/sessions/*.json | wc -l                       # session count per f
 jq '.cachedUsageUtilization.utilization
     | {five_hour, seven_day}' ~/.claude.json               # the two windows
 grep -o '"aiTitle":"[^"]*"' <transcript>.jsonl | tail -1   # the title, last match wins
+
+# The context panel's figures, against the session it describes:
+tail -c 65536 <transcript>.jsonl | grep '"type":"assistant"' | tail -1 \
+  | jq '.message.usage | .input_tokens + .cache_creation_input_tokens
+        + .cache_read_input_tokens'                        # "x / y tokens"
+head -c 262144 <transcript>.jsonl | grep -m1 '"type":"assistant"' \
+  | jq '.message.usage | .input_tokens + .cache_creation_input_tokens
+        + .cache_read_input_tokens'                        # "Loaded at start"
+grep -o '"compactMetadata":{[^}]*}' <transcript>.jsonl | tail -1
 
 # Codex. The pane's row count, its ordering, and its figures:
 find ~/.codex/sessions -name '*.jsonl' -newermt "$(date -d '12 hours ago' -Iseconds)" | wc -l
@@ -142,6 +165,13 @@ shows an empty usage strip, and neither crashes.
 - **No tests**, and so no `make test`. A target that ran nothing would be worse than none.
 - **Folder discovery is not watched**: a config folder created while Armada is running does
   not appear until relaunch.
+- **The context panel cannot show what `/context` shows.** It gives the total, the cache
+  split, the opening figure and the compaction record, all exact — but not the split of the
+  fixed prefix into system prompt, tools, memory files and skills. Claude Code works those
+  out as it runs and never writes them down, and the control-protocol route that does expose
+  them (`get_context_usage`) is answerable only by whoever owns the session's pipes. The
+  panel says so in place of the rows it cannot fill; the measurements are in
+  [claude-code-sessions.md](claude-code-sessions.md#context-usage).
 - **State is inference, not truth.** Write-recency plus the unanswered-`tool_use` rule, which
   `claude-code-sessions.md` still files as unverified and which cannot tell a running tool
   from one waiting for approval. The UI marks it best-effort. Hooks would settle it, and

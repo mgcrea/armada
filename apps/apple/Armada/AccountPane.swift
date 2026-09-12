@@ -15,6 +15,34 @@ struct AccountPaneView: View {
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
   var body: some View {
+    // A split view rather than an `.inspector`. The inspector is a system-owned
+    // column sized for a few labels, and the context panel is the opposite of that:
+    // a bar, a headline, two captions and a table, which at 280pt wrapped into an
+    // unreadable stack. `HSplitView` makes the detail a first-class half of the
+    // pane, with a divider the reader can move, and it cannot be collapsed away by
+    // something outside this view.
+    //
+    // **`OpeningResizeGuard` is what makes this safe** — `HostedWindow` already
+    // pins the window's frame for 750ms against SwiftUI resizing a hosted
+    // `NavigationSplitView` on its own. Without it, changing the pane's internal
+    // layout moves SwiftUI's idea of the fitting size and the window jumps on open.
+    HSplitView {
+      sessions
+        .frame(minWidth: 320, idealWidth: 420)
+      SessionDetail(session: selected, account: account, now: now)
+        .frame(minWidth: 300, idealWidth: 340)
+    }
+    .navigationTitle(account.displayName)
+    .navigationSubtitle(subtitle)
+    .onReceive(clock) { now = $0 }
+    // A session ending should not leave the detail on a row that is gone.
+    .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
+      if let selection, !ids.contains(selection) { self.selection = nil }
+    }
+  }
+
+  /// The left half: the usage strip and the session list.
+  private var sessions: some View {
     // The header is a sibling above the list, not a `safeAreaInset` on it. As an
     // inset it floats and the list scrolls under — which looks right at rest and
     // clips the first row on arrival, because the list starts at the container's
@@ -52,17 +80,6 @@ struct AccountPaneView: View {
           }
         }
       }
-    }
-    .inspector(isPresented: .constant(true)) {
-      SessionDetail(session: selected, account: account)
-        .inspectorColumnWidth(min: 240, ideal: 280)
-    }
-    .navigationTitle(account.displayName)
-    .navigationSubtitle(subtitle)
-    .onReceive(clock) { now = $0 }
-    // A session ending should not leave the inspector on a row that is gone.
-    .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
-      if let selection, !ids.contains(selection) { self.selection = nil }
     }
   }
 

@@ -217,30 +217,106 @@ final class SessionWatcher {
       session.quotaHit = hit
     }
 
+    refreshContext(session, tail: tail)
+
     if let title = TranscriptTitle.newestTitle(
       inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
     {
       session.title = title
-      return
     }
-    guard session.title == nil, !session.didFullScan else { return }
+
+    // **Runs whether or not the title was found**, unlike the earlier cut of this,
+    // because two of the three things it now returns have nothing to do with titles:
+    // the opening context reading and the compaction record are wanted for every
+    // session. That widens the full scan from the 16 of 19 live sessions that needed
+    // it for a title to all of them — a bounded one-off, still detached, still at
+    // most once per session.
+    guard !session.didFullScan else { return }
     session.didFullScan = true
-    scanTitleInBackground(sessionId: session.id, transcript: transcript)
+    deepScanInBackground(sessionId: session.id, transcript: transcript)
   }
 
-  /// The full scan, off the main actor.
+  /// The context figures, off the tail buffer the caller already read.
+  ///
+  /// Everything here is a recorded number. What Claude Code's `/context` shows and
+  /// this cannot is the *composition* of the fixed prefix — see `TranscriptContext`.
+  ///
+  /// **Nothing found leaves what is already held**, the same rule as `quotaHit`. A
+  /// 64KB tail can legitimately contain no `assistant` entry at all: measured on a
+  /// live session here, a burst of edits wrote 140KB of `file-history` entries after
+  /// the last turn, putting both of the file's assistant lines outside the window.
+  /// Clearing on that would blank the panel of a session that is merely busy, and the
+  /// next assistant turn is appended at the end of the file — so the tail is
+  /// guaranteed to carry it — which makes holding the previous reading correct rather
+  /// than merely convenient.
+  private func refreshContext(_ session: Session, tail: (chunk: Data, droppingFirstLine: Bool)) {
+    // The unfiltered reading, not `series.last`. Every block of one request repeats
+    // the same `usage` object, and a tail can start part-way through a request and
+    // hold only its blocks 1 and 2 — which `series` drops, because it filters to
+    // block 0 to keep its per-request rate honest. The totals are identical, so the
+    // current figure should take whichever block it can get.
+    if let newest = TranscriptContext.newestReading(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+    {
+      session.context = newest
+    }
+
+    let series = TranscriptContext.series(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+    if series.count >= 2 { session.previousContext = series.dropLast().last }
+    if let growth = ContextGrowth(series: series) { session.growth = growth }
+
+    // Newest wins, and an absent one leaves what is held: this attachment is written
+    // when the model is set, so it scrolls out of the tail as the session carries on
+    // and its absence is not a change of model.
+    if let modelID = TranscriptContext.newestModelID(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+    {
+      session.sessionModelID = modelID
+    }
+  }
+
+  /// The once-per-session deep scan, off the main actor.
+  ///
+  /// Three answers out of **one** read of the file, which is the whole reason they
+  /// share a pass:
+  ///
+  /// - the title, when the tail did not have it (the common case — 16 of this
+  ///   machine's 19 live sessions);
+  /// - the opening context reading, from the head of the same buffer. The first
+  ///   `assistant` entry sits a median 61.6KB in, max 193KB across 30 transcripts;
+  /// - the newest compaction, which no tail can reach: measured across 40 transcripts
+  ///   over 500KB, the 4 that had compacted carried the boundary 160KB to 8.7MB from
+  ///   the end.
   ///
   /// Keyed by session id rather than capturing the `Session`, which is
-  /// `@Observable` and main-actor state: the answer is applied to whichever
-  /// session still holds that id when it lands, and dropped if the session ended
+  /// `@Observable` and main-actor state: the answers are applied to whichever
+  /// session still holds that id when they land, and dropped if the session ended
   /// while the scan was running.
-  private func scanTitleInBackground(sessionId: String, transcript: URL) {
+  private func deepScanInBackground(sessionId: String, transcript: URL) {
     Task.detached(priority: .utility) { [weak self] in
-      guard let title = TranscriptTitle.newestTitle(at: transcript, fullScanFallback: true)
+      guard let handle = try? FileHandle(forReadingFrom: transcript),
+        let whole = try? handle.readToEnd()
       else { return }
+      try? handle.close()
+
+      let title = TranscriptTitle.newestTitle(inChunk: whole, droppingFirstLine: false)
+      // Seeds the panel for a session whose newest turn is already out of tail range
+      // — see `refreshContext`. Applied below only if nothing better has arrived.
+      let reading = TranscriptContext.newestReading(inChunk: whole, droppingFirstLine: false)
+      // The baseline is in the first entries, so it is read off a prefix rather than
+      // by walking a 50MB buffer that has already answered everything else.
+      let baseline = TranscriptContext.baseline(
+        inChunk: whole.prefix(TranscriptTitle.headBytes))
+      let compaction = TranscriptContext.newestCompaction(
+        inChunk: whole, droppingFirstLine: false)
+
       await MainActor.run {
-        guard let self, let session = self.byId[sessionId], session.title == nil else { return }
-        session.title = title
+        guard let self, let session = self.byId[sessionId] else { return }
+        if let title, session.title == nil { session.title = title }
+        if let reading, session.context == nil { session.context = reading }
+        session.baseline = baseline
+        session.compaction = compaction
       }
     }
   }

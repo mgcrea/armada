@@ -65,6 +65,7 @@ struct StateDot: View {
 struct SessionDetail: View {
   let session: Session?
   let account: Account
+  let now: Date
 
   /// Resolved on a selection change rather than on every redraw — the lookup behind
   /// it reaches LaunchServices. See `SessionHostLookup`.
@@ -90,6 +91,9 @@ struct SessionDetail: View {
           }
           FocusButton(host: host, didLookUp: didLookUpHost)
         }
+        // Above "Session": the context is the live fact worth checking, while the
+        // pid and the folder are reference you look up once.
+        ContextSection(session: session, accountModelID: account.modelID, now: now)
         Section("Session") {
           LabeledContent("Project", value: session.registry.projectName)
           LabeledContent("Folder", value: session.registry.cwd)

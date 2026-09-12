@@ -19,6 +19,10 @@ final class Account: Identifiable {
   /// "not yet" from "nothing there".
   private(set) var didReadUsage = false
 
+  /// This account's configured model, with its variant suffix — `"opus[1m]"` here.
+  /// The default a session starts on, not what any session is necessarily using.
+  private(set) var modelID: String?
+
   let sessions: SessionWatcher
 
   /// The folder path, without a trailing slash.
@@ -94,6 +98,11 @@ final class Account: Identifiable {
   /// `adopt`.
   func refreshConfig() {
     didReadUsage = true
+    // One field, and only because nothing else on disk records a model id with its
+    // variant suffix — see `ClaudeConfigFolder.settingsJSON`. A missing or
+    // unreadable file leaves this nil, which `ContextWindow` treats as "fall back",
+    // not as an error.
+    modelID = ClaudeConfigDocument.read(folder.settingsJSON)?["model"] as? String
     guard let root = ClaudeConfigDocument.read(folder.usageJSON) else { return }
     if let identity = AccountIdentity(root: root) { self.identity = identity }
     // A nil decode leaves the last good snapshot in place rather than blanking

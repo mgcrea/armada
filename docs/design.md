@@ -319,6 +319,11 @@ Starting points:
   keychain?
 - **Does `SendMessage` reach sessions under a different `CLAUDE_CONFIG_DIR`?**
 - **Addressing across a resume:** does a resumed Claude session keep its `name`?
+- **Does the peer socket carry control requests?** `get_context_usage` returns the exact
+  `/context` breakdown, and is answered only by whoever owns a session's stdin/stdout or by
+  the Remote Control bridge. If `/tmp/cc-socks/<pid>.sock` also accepts a `control_request`,
+  a watcher can have it locally. See
+  [claude-code-sessions.md](claude-code-sessions.md#what-cannot-be-reconstructed-and-the-route-that-could).
 
 ## Tests to run before building
 
@@ -342,6 +347,7 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-10 | A standalone native app, not only an MCP server | Monitoring isn't MCP-shaped; the app is the long-running process an MCP-only design lacked |
 | 2026-09-10 | Standalone, not a Bastion feature | Security (own release channel), flexibility, research; the crowded market was accepted |
 | 2026-09-10 | v1 watches sessions rather than running them | Running agents (Claudexor's model) raises subscription-terms questions for client distribution; the author works in the VS Code extension |
+| 2026-09-12 | Context usage is read from transcripts, exact figures only, no estimated categories | `get_context_usage` gives the real breakdown but only to whoever owns the session's pipes or holds Remote Control, both out of scope; re-tokenizing attachment text by character count would put a guess in a table of measurements. **New input to the "watch, don't launch" decision above: a session Armada launched itself would yield the exact breakdown for free.** |
 | 2026-09-10 | No Claude sign-in; no credentials held | Anthropic's terms bar third-party Claude.ai login and credential handling |
 | 2026-09-10 | Local, several accounts per vendor, across vendors | Multi-machine sync and multi-user weren't needed |
 | 2026-09-10 | Direct messages first; board, handoff and forward-suggestions on the roadmap | — |

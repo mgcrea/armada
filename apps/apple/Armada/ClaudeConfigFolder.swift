@@ -138,4 +138,19 @@ struct ClaudeConfigFolder: Sendable, Hashable {
 
   /// One directory per encoded cwd, each holding `<sessionId>.jsonl` transcripts.
   var projectsDir: URL { base.appending(path: "projects", directoryHint: .isDirectory) }
+
+  /// This account's `settings.json`.
+  ///
+  /// Read for exactly one field, `model`, and read nowhere else. It is the only
+  /// place on disk that records a model id with its variant suffix intact —
+  /// `"opus[1m]"` here on 2026-09-12, against a bare `claude-opus-5` in every
+  /// transcript — which is what decides whether a session's window is 200k or 1M.
+  ///
+  /// **Always inside the folder**, unlike `usageJSON`, whose location depends on
+  /// whether the folder is the default one.
+  ///
+  /// It is the account's *default*, not any session's truth: a session that ran
+  /// `/model` has diverged and nothing here can tell. `ContextWindow.Source` carries
+  /// that caveat to the UI rather than dropping it.
+  var settingsJSON: URL { base.appending(path: "settings.json") }
 }

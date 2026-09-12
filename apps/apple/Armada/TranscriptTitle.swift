@@ -39,6 +39,27 @@ nonisolated enum TranscriptTitle {
     return (chunk, start > 0)
   }
 
+  /// The first `headBytes` of a transcript.
+  ///
+  /// The counterpart to `tail(of:)`, and it needs no `droppingFirstLine` flag: a read
+  /// that starts at byte zero starts on a line boundary by definition.
+  ///
+  /// Only one thing wants this — the session's *opening* context reading, which is
+  /// everything Claude Code loaded before the first prompt. That figure never
+  /// changes, so this is read at most once per session and never on the hot path.
+  ///
+  /// **256KB, and the number is measured.** Across 30 transcripts over 100KB on
+  /// 2026-09-12, the first `assistant` entry sat a median 61.6KB into the file, p90
+  /// 98KB, max 193KB — the preamble ahead of it is the queued prompt, attachments and
+  /// file-history entries. 256KB covered every one of them with room to spare.
+  static let headBytes = 256 * 1024
+
+  static func head(of url: URL) -> Data? {
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
+    return try? handle.read(upToCount: headBytes)
+  }
+
   /// The title Claude Code shows for this session, or nil.
   ///
   /// **Keeps the LAST match, not the first.** Titles are rewritten throughout a

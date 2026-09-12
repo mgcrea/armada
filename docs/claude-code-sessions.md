@@ -211,15 +211,143 @@ FSEvents with `kFSEventStreamCreateFlagFileEvents` doesn't.
 Bastion (`../bastion`) is a Swift 6 menu-bar app (`LSUIElement`) by the same author, a
 reasonable source for the app shell.
 
+## Context usage
+
+Measured 2026-09-12 against 2.1.267, while building Armada's context panel.
+
+### What the transcript records
+
+Every `assistant` entry carries `message.usage`, and the three input figures sum to the
+whole prompt:
+
+```json
+{"input_tokens":2,"cache_creation_input_tokens":796,"cache_read_input_tokens":388215,
+ "output_tokens":914,"output_tokens_details":{"thinking_tokens":0},
+ "cache_creation":{"ephemeral_1h_input_tokens":796,"ephemeral_5m_input_tokens":0}}
+```
+
+`input_tokens + cache_creation_input_tokens + cache_read_input_tokens` is the same sum
+Claude Code's own status line calls `total_input_tokens`. **All three, always** —
+`input_tokens` alone was 2 on that 389k prompt, so reading any one of them as "the context"
+reports an empty session.
+
+`apiBlockIndex` repeats the same `usage` object across every block of one `requestId`.
+Harmless when taking the newest reading; **counts one request two or three times** when
+building a series, which understates a growth rate by roughly two thirds.
+
+### Three reads, three costs
+
+| Figure | Where | Cost |
+| --- | --- | --- |
+| Context now | newest `assistant` in the tail | free — rides the existing 64KB tail read |
+| Loaded before the first prompt | first `assistant` in the file | a head read; see below |
+| Compaction | `system` / `compact_boundary` | needs the whole file |
+
+**A 64KB tail can contain no `assistant` entry at all**, and this is not rare. Measured on
+a live session on 2026-09-12: a burst of edits appended ~140KB of `file-history-snapshot`
+and `file-history-delta` entries after the last turn, so both of the file's two assistant
+lines sat at ~140KB in a 283KB file while the tail window began at 217KB. A reader that
+clears its figures when the tail yields nothing blanks the panel of a session that is merely
+busy. Hold the last reading instead — the next assistant turn is appended at the *end* of
+the file, so the tail is guaranteed to carry it.
+
+Related: a tail can also begin part-way through a request and hold only its blocks 1 and 2.
+They carry the same `usage` object as block 0, so the current total should take whichever
+block it finds; only a *series* needs the block-0 filter.
+
+**The first `assistant` entry sits a median 61.6KB into the file** (p90 98KB, max 193KB
+across 30 transcripts over 100KB); the preamble ahead of it is the queued prompt,
+attachments and file-history entries. 256KB covered every one sampled.
+
+**Compaction cannot be reached from a tail.** Across 40 transcripts over 500KB, only **4
+had compacted at all**, and the newest boundary sat **160KB to 8.7MB from the end**. The
+record:
+
+```json
+{"type":"system","subtype":"compact_boundary",
+ "compactMetadata":{"trigger":"manual","preTokens":497468,"postTokens":17143,
+   "cumulativeDroppedTokens":…,"durationMs":…,"preCompactDiscoveredTools":[…]}}
+```
+
+A compaction that happens *after* a one-off deep scan is still detectable with no re-read:
+it is the only thing that makes the running total **fall** between two consecutive
+readings, and both are in the tail.
+
+### The context window size is not recorded
+
+Neither is a model id precise enough to derive it. **`message.model` never carries the
+`[1m]` suffix** — every distinct value across every transcript on this Mac was a bare id
+(`claude-opus-5`, `claude-sonnet-5`, `claude-fable-5-1`), while the same machine's
+`settings.json` held `"opus[1m]"`. Four sources, best first:
+
+1. An `attachment` entry of type `model`, which is structured and exact:
+   `{"type":"model","identity":{"modelId":"claude-opus-5[1m]","marketingName":"Opus 5 (1M context)"}}`.
+   **Present in only 10 of 60 transcripts sampled**, and absent from the largest file on the
+   machine — a bonus, not a mechanism.
+2. The account's `settings.json` `.model`. Always inside the config folder, unlike
+   `.claude.json`. It is the account default, so a session that ran `/model` has diverged.
+3. `message.model` against a table, defaulting to 200k.
+4. **The session's own usage, as a floor.** A reading above the resolved limit proves the
+   window is larger, whatever the table said.
+
+### What cannot be reconstructed, and the route that could
+
+`/context`'s per-category breakdown is **assembled live and never serialized** — not to the
+transcript, not to any file under `~/.claude`, not to any stream event. The system prompt
+text and CLAUDE.md contents are never written to disk at all, so those two rows are beyond
+any reader of the filesystem.
+
+**But `get_context_usage` exists**, a control-protocol subtype beside `get_usage`:
+
+```text
+subtype: "get_context_usage", detail: ["summary","full"]?
+  "Requests a breakdown of current context window usage by category."
+  'full' counts each category with the token-count API; 'summary' answers from the last
+  response's usage and local estimates without the per-category token-count calls.
+```
+
+Its response is richer than the TUI draws: `categories`, `totalTokens`/`maxTokens`,
+`memoryFiles: [{path, type, tokens}]`, `systemPromptSections`, `skills.skillFrontmatter`,
+`mcpTools`, `agents`, and a `messageBreakdown` (tool calls by type, attachments by type,
+unattributed). The SDK exposes it as a plain `getContextUsage(…)` with **no**
+`EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` warning, unlike `get_usage`.
+
+**It is unreachable from a watcher, and the reason is structural.** `get_usage` answers
+standalone because rate limits are account-scoped; context is session-scoped state in
+another process's memory, and the subtype takes no session id. The builder has three
+callers:
+
+- the **local stream-json handler**, which answers for the session whose stdin and stdout
+  the caller owns — VS Code's, not ours;
+- the **Remote Control bridge** (`[bridge:repl]`), gated on *"This session is outbound-only.
+  Enable Remote Control locally to allow inbound control."*, with the inbound-allowed set
+  `{initialize, file_suggestions, read_file, get_workspace_diff, get_context_usage,
+  get_usage, mcp_status}`. It blanks `memoryFiles` unconditionally;
+- the interactive `/context` TUI, which on a thin client is *itself* implemented as a
+  `get_context_usage` control request.
+
+`claude -p '/context'` is real (a headless-only `type:"local"` command, resolved with no
+model call) and equally useless here: it reports the fresh process, not the session being
+watched.
+
+**So any session Armada launched itself would yield the exact breakdown for free.** That is
+a genuine argument for the launching side of a decision `design.md` left open, and it was
+not available when that decision was framed.
+
 ## Open questions, in priority order
 
 1. Does the unanswered-`tool_use` rule fix false idle? Verify with a session running a
    long command.
-2. Where does VS Code keep a resumed session's title? That decides whether resumed
+2. **Does `/tmp/cc-socks/<pid>.sock` carry `control_request`?** If it does,
+   `get_context_usage` becomes reachable locally and the whole disk-reading approach above
+   is superseded by an exact one. It needs the session's messaging token and the protocol
+   is unreversed, so this is the same last resort as question 3 below — but the prize is
+   now much larger than busy/idle.
+3. Where does VS Code keep a resumed session's title? That decides whether resumed
    sessions can ever show one.
-3. Is the messaging socket protocol simple enough to read busy/idle directly, and is that
+4. Is the messaging socket protocol simple enough to read busy/idle directly, and is that
    worth coupling to?
-4. Which states are worth showing beyond working/idle, such as waiting for a permission
+5. Which states are worth showing beyond working/idle, such as waiting for a permission
    prompt? Permission waits weren't tested.
 
 ## The spike code
