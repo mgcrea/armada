@@ -29,11 +29,28 @@ protocol SessionListItem: Identifiable where ID == String {
   var stateKey: String { get }
   var stateLabel: String { get }
 
-  /// Where that state sorts among its own vendor's others. 0 is the busiest.
+  /// Where that state sorts among its own vendor's others. 0 comes first.
+  ///
+  /// **Ordered by what wants you, not by what is busy.** A session stopped on a
+  /// permission prompt is the one row in the list you can actually do something about,
+  /// so it leads; work in progress follows; finished work sinks. Grouping by state is
+  /// a triage view, and triage does not start with the things that need nothing.
   ///
   /// Lives here rather than on the enums because it is a property of *this list's*
   /// reading order, not of the state: nothing else in the app ranks states.
   var stateRank: Int { get }
+
+  /// How full this session's context window is, in tokens, as of its newest turn.
+  ///
+  /// **Occupancy, not spend.** This is the size of the current prompt — it falls when
+  /// a session compacts, and it counts the cached prefix that every turn re-reads. It
+  /// is emphatically not "tokens this session has cost", and the two must not share a
+  /// column: `CodexSession.totalTokens` is the cumulative figure, Codex reports it
+  /// only for itself, and Claude Code records no equivalent anywhere on disk.
+  ///
+  /// Nil for a session that has never been prompted, and for the moment between a
+  /// session appearing and its first transcript read.
+  var contextTokens: Int? { get }
 }
 
 extension Session: SessionListItem {
@@ -41,22 +58,30 @@ extension Session: SessionListItem {
   var projectPath: String { registry.cwd }
   var startedAt: Date? { registry.startedAtDate }
 
-  /// `lastWrite ?? startedAt`, which is the expression `CodexWatcher` already sorts
-  /// on — consistency rather than invention. The fallback still matters even with
-  /// `SessionWatcher.refreshTitle` seeding `lastWrite` from the transcript's mtime: a
-  /// session that has never been prompted has no transcript at all, and its start
-  /// time is the only activity it has.
-  var lastActivity: Date? { lastWrite ?? registry.startedAtDate }
+  /// The registry's own `updatedAt` first, then the transcript, then the start time.
+  ///
+  /// **`updatedAt` is the authority and the other two are fallbacks.** Claude Code
+  /// rewrites the registry on every status change, so it moves for a session waiting
+  /// on a permission prompt — which writes no transcript and which the mtime seeding
+  /// in `SessionWatcher.refreshTitle` therefore cannot see. `lastWrite` still covers
+  /// a folder on an older build that writes no `updatedAt`, and `startedAt` covers a
+  /// session that has never been prompted and so has no transcript at all.
+  var lastActivity: Date? {
+    registry.updatedAtDate ?? lastWrite ?? registry.startedAtDate
+  }
 
   var stateKey: String { state.rawValue }
   var stateLabel: String { state.label }
   var stateRank: Int {
     switch state {
-    case .working: 0
-    case .runningTool: 1
-    case .idle: 2
+    case .waiting: 0
+    case .working: 1
+    case .runningTool: 2
+    case .idle: 3
     }
   }
+
+  var contextTokens: Int? { context?.total }
 }
 
 extension CodexSession: SessionListItem {
@@ -69,11 +94,17 @@ extension CodexSession: SessionListItem {
   var stateLabel: String { state.label }
   var stateRank: Int {
     switch state {
-    case .working: 0
-    case .awaitingInput: 1
+    case .awaitingInput: 0
+    case .working: 1
     case .ended: 2
     }
   }
+
+  /// `context`, not `totalTokens`. Codex is the only vendor that reports a cumulative
+  /// figure, and putting it here would make one column mean occupancy in the Claude
+  /// pane and lifetime spend in the Codex one. `totalTokens` keeps its own row in
+  /// `CodexSessionDetail`, which is where a number with no counterpart belongs.
+  var contextTokens: Int? { context?.total }
 }
 
 /// How the session list is ordered.
@@ -139,7 +170,15 @@ enum SessionGrouping: String, CaseIterable, Identifiable {
   case state
 
   static let defaultsKey = "armada.sessionGrouping"
-  static let fallback = SessionGrouping.none
+
+  /// Project, not `.none`. The list's most common question is "what is running in
+  /// this checkout", and answering it flat means reading every row for a folder name
+  /// that is already written on each of them. Sections say it once.
+  ///
+  /// It costs nothing when there is only one project — a single header, naming the
+  /// folder the pane is otherwise silent about — and pays off at the nineteen
+  /// sessions across six checkouts this was built against.
+  static let fallback = SessionGrouping.project
 
   var id: String { rawValue }
   var stored: String { rawValue }
@@ -166,6 +205,21 @@ struct SessionGroup<Item: SessionListItem>: Identifiable {
   /// The full path, for the tooltip that tells those two "api" sections apart.
   let subtitle: String?
   let items: [Item]
+
+  /// The context these sessions are holding between them.
+  ///
+  /// A sum of occupancies, which is a real quantity — "this checkout has 1.2M tokens
+  /// of context open" is the thing worth knowing when several sessions in one project
+  /// are all approaching their windows. It is **not** a bill, and it drops when any
+  /// one of them compacts.
+  ///
+  /// Sessions with no reading yet contribute nothing rather than zero, and a group
+  /// where none of them has one totals nil so the header stays quiet instead of
+  /// claiming 0.
+  var contextTokens: Int? {
+    let known = items.compactMap(\.contextTokens)
+    return known.isEmpty ? nil : known.reduce(0, +)
+  }
 }
 
 /// What order the session list is in.
@@ -189,31 +243,76 @@ enum SessionOrder {
     switch sort {
     case .activity:
       items.sorted {
-        ($0.lastActivity ?? .distantPast, $0.id) > ($1.lastActivity ?? .distantPast, $1.id)
+        let (left, right) = (bucket($0.lastActivity), bucket($1.lastActivity))
+        return left == right ? stable($0, $1) : left > right
       }
     case .started:
-      items.sorted {
-        ($0.startedAt ?? .distantPast, $0.id) > ($1.startedAt ?? .distantPast, $1.id)
-      }
+      items.sorted(by: stable)
     case .name:
-      items.sorted { ascending($0.displayName, $1.displayName, tie: ($0.id, $1.id)) }
+      items.sorted {
+        switch $0.displayName.localizedStandardCompare($1.displayName) {
+        case .orderedAscending: true
+        case .orderedDescending: false
+        case .orderedSame: stable($0, $1)
+        }
+      }
     case .project:
       // Alphabetical by folder, newest activity inside each. The secondary key is
       // fixed rather than a second menu: "sort by project" with the folders in order
       // and the rows inside them in no particular order would be half a sort.
       items.sorted {
-        if $0.projectName.localizedStandardCompare($1.projectName) != .orderedSame {
-          return ascending($0.projectName, $1.projectName, tie: ($0.id, $1.id))
-        }
-        return ($0.lastActivity ?? .distantPast, $0.id) > ($1.lastActivity ?? .distantPast, $1.id)
+        let byName = $0.projectName.localizedStandardCompare($1.projectName)
+        if byName != .orderedSame { return byName == .orderedAscending }
+        // Two checkouts can share a folder name. Splitting on the path keeps each
+        // one's sessions contiguous, which is the whole promise of "sort by project";
+        // without it `~/work/api` and `~/oss/api` interleave by activity.
+        if $0.projectPath != $1.projectPath { return $0.projectPath < $1.projectPath }
+        let (left, right) = (bucket($0.lastActivity), bucket($1.lastActivity))
+        return left == right ? stable($0, $1) : left > right
       }
     }
+  }
+
+  /// How long two sessions have to differ by before the list is willing to reorder
+  /// them.
+  ///
+  /// **This is what stops the list jumping.** `lastActivity` reads the registry's
+  /// `updatedAt`, and Claude Code rewrites that on *every* status change — busy →
+  /// waiting → busy is three moves in as many seconds. Sorting on the raw value means
+  /// a row leapfrogs its neighbours every time a tool starts, and since any session's
+  /// registry write triggers a full rescan, the whole list re-sorts with it.
+  ///
+  /// A minute is the coarsest bucket that still reads as "just now" versus "a while
+  /// ago", which is all this sort is really claiming.
+  private static let activityBucket: TimeInterval = 60
+
+  private static func bucket(_ date: Date?) -> Date {
+    guard let date else { return .distantPast }
+    let seconds = date.timeIntervalSinceReferenceDate
+    return Date(
+      timeIntervalSinceReferenceDate: (seconds / activityBucket).rounded(.down) * activityBucket)
+  }
+
+  /// The order two sessions fall into when the chosen key cannot separate them.
+  ///
+  /// Newest-started first, then id — both of which are fixed for the life of a
+  /// session, so this can never be the thing that moves a row. Every comparator ends
+  /// here, which is also what makes them total orders: `sorted(by:)` is introsort and
+  /// is not stable, so two items that compare equal would otherwise be free to swap on
+  /// any re-sort.
+  private static func stable<Item: SessionListItem>(_ lhs: Item, _ rhs: Item) -> Bool {
+    let (left, right) = (lhs.startedAt ?? .distantPast, rhs.startedAt ?? .distantPast)
+    return left == right ? lhs.id > rhs.id : left > right
   }
 
   /// `localizedStandardCompare`, which is what Finder sorts filenames with: case- and
   /// diacritic-insensitive, and number-aware, so `armada-2` comes before `armada-10`.
   /// A plain `<` puts `Z` before `a` and `armada-10` before `armada-2`, and both look
   /// like bugs in a list of project folders.
+  ///
+  /// **The tiebreak is not optional.** Two checkouts can share a folder name, so a
+  /// name comparison alone is not a total order and `sorted(by:)` may return either
+  /// arrangement from one call to the next.
   private static func ascending(_ lhs: String, _ rhs: String, tie: (String, String)) -> Bool {
     switch lhs.localizedStandardCompare(rhs) {
     case .orderedAscending: true
@@ -222,13 +321,17 @@ enum SessionOrder {
     }
   }
 
-  /// Buckets, in the order their first member appears.
+  /// Buckets, in an order that does not depend on the sort.
   ///
-  /// **That one rule gives the right group order for every sort without a second
-  /// decision.** Sorted by name the projects come out alphabetically, because their
-  /// first members do; sorted by last activity the folder you just touched is on top.
-  /// `.state` is the single exception and overrides it: somebody scanning for what is
-  /// running wants that block first however the rows inside are ordered.
+  /// **Section order is fixed: alphabetical for projects, triage rank for states.** An
+  /// earlier cut ordered groups by where their first member landed, which read well —
+  /// sort by activity and the folder you just touched floats up — and was the single
+  /// worst thing in the list. Group order then inherited every twitch of the sort key,
+  /// so one session changing status did not move one row, it threw an entire section
+  /// past three others. Rows moving is a nuisance; sections moving loses your place.
+  ///
+  /// The rows inside each group still follow the chosen sort, which is where that
+  /// expressiveness belongs — it costs a glance, not the whole page.
   ///
   /// `.none` returns one untitled group rather than an empty array, so a caller that
   /// forgets to branch still renders every row.
@@ -239,16 +342,14 @@ enum SessionOrder {
       return [SessionGroup(id: "", title: "", subtitle: nil, items: items)]
     }
 
-    var keys: [String] = []
     var buckets: [String: [Item]] = [:]
     for item in items {
       let key = grouping == .project ? item.projectPath : item.stateKey
-      if buckets[key] == nil { keys.append(key) }
       buckets[key, default: []].append(item)
     }
 
-    let groups = keys.compactMap { key -> SessionGroup<Item>? in
-      guard let first = buckets[key]?.first, let bucket = buckets[key] else { return nil }
+    let groups = buckets.compactMap { key, bucket -> SessionGroup<Item>? in
+      guard let first = bucket.first else { return nil }
       return SessionGroup(
         id: key,
         title: grouping == .project ? first.projectName : first.stateLabel,
@@ -256,7 +357,17 @@ enum SessionOrder {
         items: bucket)
     }
 
-    guard grouping == .state else { return groups }
-    return groups.sorted { ($0.items.first?.stateRank ?? 0) < ($1.items.first?.stateRank ?? 0) }
+    // Both comparisons end on `id` — the cwd, or the state's raw value. Neither is a
+    // formality: two checkouts can share a folder name, so title alone is not a total
+    // order, and `sorted(by:)` would be free to return either arrangement each time.
+    switch grouping {
+    case .state:
+      return groups.sorted {
+        let (left, right) = ($0.items.first?.stateRank ?? 0, $1.items.first?.stateRank ?? 0)
+        return left == right ? $0.id < $1.id : left < right
+      }
+    default:
+      return groups.sorted { ascending($0.title, $1.title, tie: ($0.id, $1.id)) }
+    }
   }
 }

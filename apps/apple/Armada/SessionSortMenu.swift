@@ -20,6 +20,9 @@ struct SessionSortMenu: View {
   @AppStorage(SessionGrouping.defaultsKey)
   private var storedGrouping = SessionGrouping.fallback.stored
 
+  private var sort: SessionSort { SessionSort(stored: storedSort) }
+  private var grouping: SessionGrouping { SessionGrouping(stored: storedGrouping) }
+
   var body: some View {
     Menu {
       // The tags are `String`, matching what `@AppStorage` binds, exactly. The same
@@ -41,19 +44,32 @@ struct SessionSortMenu: View {
       }
       .pickerStyle(.inline)
     } label: {
-      // `arrow.up.arrow.down`, not `line.3.horizontal.decrease`. This menu orders and
-      // filters nothing; the filter glyph should stay free for a filter field rather
-      // than be spent here and have to move later.
-      Label("Sort and group", systemImage: "arrow.up.arrow.down")
+      // **The label names the sort, not the control.** A bare glyph was too quiet to
+      // find, and "Sort" would have been a word that says nothing: the sort key is the
+      // one half of this choice the list cannot show you. Grouping needs no label
+      // because a grouped list is visibly sections, with the folder written on each.
+      //
+      // The sort's own glyph rather than a fixed `arrow.up.arrow.down`, so the icon
+      // carries meaning at a glance and matches the checkmarked row in the menu.
+      Label(sort.label, systemImage: sort.systemImage)
+        .font(.caption)
     }
     .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .menuIndicator(.hidden)
-    .labelStyle(.iconOnly)
-    // Icon-only and fixed, so the control adds neither height nor width to the header.
-    // See `AccountPaneView.body` for why the pane's fitting size is worth defending.
+    // `.accessoryBar` is the system's style for exactly this — a list's own options
+    // control, as in Finder and Mail. It reads as pressable at rest, which
+    // `.borderless` did not, without carrying the weight of a full push button.
+    .buttonStyle(.accessoryBar)
+    // Fixed, so the header's `Spacer` keeps it hard against the trailing edge and it
+    // never stretches. It costs the pane a caption's width, and no height at all —
+    // see `AccountPaneView.body` for why the fitting size is worth defending.
     .fixedSize()
-    .help("How this list is ordered")
+    .help(helpText)
+  }
+
+  /// Says both halves, since the button only shows one of them.
+  private var helpText: String {
+    let by = grouping == .none ? "not grouped" : "grouped by \(grouping.label.lowercased())"
+    return "Sorted by \(sort.label.lowercased()), \(by)"
   }
 }
 
@@ -66,7 +82,20 @@ struct SessionGroupHeader<Item: SessionListItem>: View {
   let group: SessionGroup<Item>
 
   var body: some View {
-    Text(group.title)
-      .help(group.subtitle ?? group.title)
+    HStack(spacing: 8) {
+      Text(group.title)
+      Spacer(minLength: 8)
+      if let tokens = group.contextTokens {
+        // Tertiary and unlabelled: it sits directly above a column of the same
+        // numbers, which is what says what it is. The tooltip carries the noun, and
+        // the warning — this is context held right now, not what the work has cost.
+        Text(TokenCount.short(tokens))
+          .monospacedDigit()
+          .foregroundStyle(.tertiary)
+          .help(
+            "\(group.items.count == 1 ? "1 session is" : "\(group.items.count) sessions are") holding \(TokenCount.short(tokens)) tokens of context here. Not a running total of what they have cost."
+          )
+      }
+    }
   }
 }
