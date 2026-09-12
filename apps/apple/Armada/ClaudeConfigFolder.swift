@@ -116,6 +116,23 @@ struct ClaudeConfigFolder: Sendable, Hashable {
     return found
   }
 
+  /// The folder Claude Code uses when `CLAUDE_CONFIG_DIR` is **unset**.
+  ///
+  /// Load-bearing for `UsageProbe`, which has to decide whether to set that variable
+  /// on the `claude` it spawns. Setting it to this folder's own path is not a no-op:
+  /// a custom folder keeps its account file *inside* it, so `CLAUDE_CONFIG_DIR` sends
+  /// Claude Code looking for `~/.claude/.claude.json` — which does not exist, because
+  /// the default folder's lives *beside* it. Measured 2026-09-12: the probe then
+  /// comes back `subscription_type: null, rate_limits_available: false`, as if signed
+  /// out. Told apart by the same asymmetry `usageJSON` exists to record.
+  ///
+  /// Derived from the pairing rather than from the folder's name, so a
+  /// `CLAUDE_CONFIG_DIR` that happens to end in `.claude` is not mistaken for it.
+  var isDefault: Bool {
+    usageJSON.deletingLastPathComponent().standardizedFileURL.path(percentEncoded: false)
+      != base.standardizedFileURL.path(percentEncoded: false)
+  }
+
   /// One JSON file per live session, named by pid. Prunes itself.
   var sessionsDir: URL { base.appending(path: "sessions", directoryHint: .isDirectory) }
 

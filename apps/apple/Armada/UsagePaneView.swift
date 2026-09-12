@@ -70,7 +70,9 @@ struct AccountUsageCard: View {
           Text(plan).font(.caption).foregroundStyle(.secondary)
         }
         Spacer(minLength: 12)
-        StalenessBadge(fetchedAt: account.usage?.fetchedAt, now: now)
+        StalenessBadge(
+          fetchedAt: account.usage?.fetchedAt, now: now,
+          source: account.usage?.source ?? .cache)
       }
 
       if let usage = account.usage, !usage.isEmpty {

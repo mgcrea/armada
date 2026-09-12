@@ -34,10 +34,26 @@ final class Accounts {
   /// floor; the watch below only shortens the wait when a write does land.
   static let refreshInterval: TimeInterval = 30
 
+  /// How often to ask the accounts directly. See `UsageProbe`.
+  ///
+  /// **Two orders of magnitude slower than the file poll, deliberately.** Each probe
+  /// is a `claude` process and about a second, per config folder; at the poll's
+  /// cadence that would be a process every 30 seconds forever to redraw two meters.
+  /// Three minutes is inside the five-hour window's own resolution — a percentage
+  /// point of it is three minutes — so nothing observable is lost, and the popover
+  /// opening probes anyway, which covers the moment somebody actually looks.
+  static let probeInterval: TimeInterval = 3 * 60
+
+  /// Floor between probes of the same account, so that opening and closing the
+  /// popover repeatedly does not spawn a process each time.
+  static let probeThrottle: TimeInterval = 20
+
   private(set) var all: [Account] = []
 
   private var stream: FSEventStreamRef?
   private var timer: DispatchSourceTimer?
+  private var probeTimer: DispatchSourceTimer?
+  private var lastProbe: [String: Date] = [:]
   private let queue = DispatchQueue(label: "io.mgcrea.armada.config")
 
   /// Every live session across every account, newest first — what the menu bar
@@ -73,6 +89,15 @@ final class Accounts {
     tick.resume()
     timer = tick
 
+    // Straight away as well as on the interval: the cache read above may be hours
+    // old, and the first thing anyone does after launching is open the panel.
+    probeAll()
+    let probe = DispatchSource.makeTimerSource(queue: .main)
+    probe.schedule(deadline: .now() + Self.probeInterval, repeating: Self.probeInterval)
+    probe.setEventHandler { MainActor.assumeIsolated { self.probeAll() } }
+    probe.resume()
+    probeTimer = probe
+
     startWatchingConfigFiles()
   }
 
@@ -84,6 +109,19 @@ final class Accounts {
   /// cache already holds, and a decode that fails leaves the last good snapshot.
   func refreshAll() {
     for account in all { account.refreshConfig() }
+  }
+
+  /// Ask every account for its current windows, throttled per account.
+  ///
+  /// Each folder gets its own task rather than a serial loop: the cost is almost all
+  /// process start-up, so two accounts probed together take about as long as one.
+  func probeAll() {
+    let now = Date()
+    for account in all
+    where now.timeIntervalSince(lastProbe[account.id] ?? .distantPast) >= Self.probeThrottle {
+      lastProbe[account.id] = now
+      Task { await account.probeUsage() }
+    }
   }
 
   /// Watch each usage file's *directory*, because an atomic rewrite replaces the

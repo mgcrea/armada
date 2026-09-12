@@ -90,9 +90,11 @@ nonisolated struct UsageLimit: Sendable, Hashable, Identifiable {
 /// unread because they are `null` on every window of both folders on this Mac;
 /// nothing here should be built on a figure that has never been observed.
 ///
-/// There is no supported alternative. `docs/limits-accounts-and-terms.md` checked:
-/// the documented status-line JSON almost certainly never runs under the VS Code
-/// extension, and the Admin API does not cover Pro/Max 5-hour and 7-day windows.
+/// **No longer the primary source.** `UsageProbe` asks the account directly, the way
+/// the VS Code extension does, and this is the fallback behind it — for a Mac where
+/// `claude` cannot be found, and for `oauthAccount`, which the probe does not carry.
+/// It is still read on every poll, and still the thing that must never be shown
+/// without its age: see `UsageSnapshot.Source`.
 ///
 /// **Per organization, not per person.** The two config folders on this Mac are
 /// one Anthropic account in two organizations, and they carry entirely separate
@@ -112,6 +114,21 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
   /// cadence tied to API responses, so a six-hour-old figure rendered as current
   /// truth is the one way this feature can actively mislead.
   let fetchedAt: Date?
+
+  /// Which of the two readings this is.
+  ///
+  /// Both carry a `fetchedAt`, but it means something different in each, and the UI
+  /// has to say which. A `.live` figure was asked for and answered a second ago; a
+  /// `.cache` figure is a copy Claude Code left behind whenever it last felt like it,
+  /// and its age is a warning rather than a timestamp.
+  var source: Source = .cache
+
+  nonisolated enum Source: Sendable, Hashable {
+    /// `get_usage`, answered by the user's own `claude`. See `UsageProbe`.
+    case live
+    /// `cachedUsageUtilization` in `.claude.json`.
+    case cache
+  }
 
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }
 
@@ -149,15 +166,28 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
 
   static func decode(root: [String: Any]) -> UsageSnapshot? {
     guard let cached = root["cachedUsageUtilization"] as? [String: Any] else { return nil }
+    return decode(
+      windows: cached["utilization"] as? [String: Any] ?? [:],
+      // Milliseconds here. `QuotaHit` reads seconds out of a transcript two files
+      // over, which is the kind of thing that is silent when got wrong.
+      fetchedAt: (cached["fetchedAtMs"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) },
+      source: .cache)
+  }
 
-    let utilization = cached["utilization"] as? [String: Any] ?? [:]
-    let fetchedAtMs = cached["fetchedAtMs"] as? Double
-
-    return UsageSnapshot(
-      fiveHour: window(utilization["five_hour"]),
-      sevenDay: window(utilization["seven_day"]),
-      limits: limits(utilization["limits"]),
-      fetchedAt: fetchedAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
+  /// The one decoder both sources go through.
+  ///
+  /// `cachedUsageUtilization.utilization` and the `rate_limits` object `get_usage`
+  /// answers with are **the same shape** — same `five_hour`/`seven_day` objects, same
+  /// `limits` array — which is the single reason adding a live source cost no new
+  /// parsing. Keeping one function is what holds that true: a field that moves breaks
+  /// both paths at once rather than leaving one of them quietly wrong.
+  static func decode(windows: [String: Any], fetchedAt: Date?, source: Source) -> UsageSnapshot {
+    UsageSnapshot(
+      fiveHour: window(windows["five_hour"]),
+      sevenDay: window(windows["seven_day"]),
+      limits: limits(windows["limits"]),
+      fetchedAt: fetchedAt,
+      source: source
     )
   }
 

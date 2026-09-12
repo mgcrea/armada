@@ -59,7 +59,7 @@ only session logs and an empty lock file, and it **never opens `auth.json`** —
 arrives inside the rate limits as `plan_type`, so no credential file is touched at all. The
 same "watches agents rather than running them, holds no credentials" argument applies.
 
-### No official way for a third-party app to read subscription limits, and why the local route stays local
+### How to read subscription limits without holding a credential
 
 - `claude setup-token` makes a one-year OAuth token for Claude Code itself to use (CI,
   scripts).
@@ -67,22 +67,25 @@ same "watches agents rather than running them, holds no credentials" argument ap
   Admin API has rate-limit reports for those, but not the Pro and Max 5-hour and 7-day
   windows.
 
-**Settled 2026-09-11, so it is not re-argued.** Given how stale `cachedUsageUtilization`
-turned out to be (above), three routes to a live figure were weighed and all three declined:
+**Settled 2026-09-12. Ask the user's own `claude`, over the SDK control protocol.**
+This is what the VS Code extension does, and it is why the extension is accurate while a
+file reader is not — see source 1 below. It needs no credential, costs no tokens, and is
+the path the legal page treats as normal: the unmodified program, the user's own sign-in,
+run headless. Armada spawns it, asks one question, and reads the answer.
+
+Three alternatives were weighed first and all three declined. Recorded so they are not
+re-argued:
 
 - **Read the OAuth token from the Keychain** (`Claude Code-credentials` is there) and call
-  the usage endpoint directly. This is the only way to get an exact, current number. It is
-  also the one thing the Consumer Terms name — developers may not "collect, store, or
-  intermediate Claude.ai credentials or session tokens" — and it contradicts the sentence
-  this whole document ends on: Armada watches agents and holds no Claude credentials.
-- **Force a refresh by running `claude -p`.** Spends the user's quota to measure the user's
-  quota, and is exactly the "automated or non-human means" the terms carve out.
+  the usage endpoint directly. Exact and current, and the one thing the Consumer Terms name
+  outright — developers may not "collect, store, or intermediate Claude.ai credentials or
+  session tokens". It also contradicts the sentence this document ends on.
+- **Force a cache refresh by running `claude -p`.** Spends the user's quota to measure the
+  user's quota, and is exactly the "automated or non-human means" the terms carve out. The
+  control request below is not this: it runs no prompt and bills nothing.
 - **Install a `statusLine` shim** that dumps the documented `rate_limits` block to a file.
-  The data is real, but it runs only under the terminal UI (see 1 below) and would mean
+  The data is real, but it runs only under the terminal UI (see source 2) and would mean
   Armada writing to the user's `settings.json`, which `docs/design.md` puts out of scope.
-
-What was taken instead is source 3 below — a signal already on disk, in files Armada
-already reads.
 
 ## Multiple accounts on one Mac
 
@@ -158,13 +161,58 @@ assumption that it can.
 
 ### Claude Code
 
-1. **Status-line JSON (documented).** The command configured as `statusLine` receives
+Four sources, in the order Armada now prefers them.
+
+1. **The `get_usage` control request (undocumented, and the live one).** Read out of the
+   VS Code extension's `extension.js` 2.1.268 on 2026-09-12; `get_usage`,
+   `rate_limit_event` and `unifiedWindows` are all in the CLI binary too.
+
+   **The extension never reads `cachedUsageUtilization`.** It drives `claude` in
+   stream-json mode and takes usage off that channel two ways:
+
+   - **Pushed.** The CLI emits `{"type":"rate_limit_event","rate_limit_info":{...}}` with
+     `unifiedWindows` whenever an API response carries new limits; the extension relays it
+     to its webview as `panel_usage_update`. Live by construction — the response that
+     spends the quota reports the new figure. Only its parent process can take this.
+   - **Pulled.** A `get_usage` control request, which the webview triggers with
+     `request_usage_update`. The SDK wrapper is named, in full,
+     `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` — take the hint.
+
+   The pull works standalone, which is what Armada uses:
+
+   ```console
+   $ echo '{"type":"control_request","request_id":"r1","request":{"subtype":"get_usage"}}' \
+       | claude --input-format stream-json --output-format stream-json --verbose
+   ```
+
+   Measured against both folders on 2026-09-12:
+
+   - **Free.** `total_cost_usd: 0`, `total_api_duration_ms: 0`. A control request is not a
+     prompt. No session registry file and no transcript are written, so the spawned process
+     does not show up in Armada's own session list.
+   - **~1.2s warm**, and one process per config folder. Too expensive for the 30s file
+     poll; fine on a 3-minute timer and when the popover opens.
+   - **Same shape as the cache.** The `rate_limits` object it answers with has the same
+     `five_hour` / `seven_day` / `limits[]` as `cachedUsageUtilization.utilization`, so one
+     decoder serves both — see `UsageSnapshot.decode(windows:fetchedAt:source:)`.
+   - **`CLAUDE_CONFIG_DIR` selects the account, and must be *unset* for `~/.claude`.**
+     Setting it to the default folder's own path makes Claude Code look for
+     `~/.claude/.claude.json`, which does not exist, and the probe comes back
+     `subscription_type: null, rate_limits_available: false` as if signed out. The same
+     asymmetry as the usage file itself. It fails safely — Armada falls back to the cache —
+     but it fails silently, so `ClaudeConfigFolder.isDefault` exists to get it right.
+   - It also returns a `behaviors` block — request and session counts, and which skills,
+     agents and MCP servers the person uses. Armada reads none of it.
+
+2. **Status-line JSON (documented).** The command configured as `statusLine` receives
    `rate_limits.five_hour.used_percentage` and `.resets_at`, the same for `seven_day`, and
    `spend_limit` behind a Claude apps gateway. Pro and Max only, only after the first API
    response in a session, and each window may be missing. **It very likely never runs in the
    VS Code extension:** the extension drives the CLI in stream-json mode with no terminal
    UI, and `statusLine` appears in its code only in the settings schema.
-2. **`cachedUsageUtilization` in `~/.claude.json` (undocumented).** A cached copy with
+3. **`cachedUsageUtilization` in `~/.claude.json` (undocumented).** Armada's fallback,
+   for a Mac where `claude` cannot be found and for the identity, which source 1 does not
+   carry. A cached copy with
    `fetchedAtMs`. Windows seen: `five_hour`, `seven_day`, `seven_day_opus`,
    `seven_day_sonnet`, `seven_day_oauth_apps`, `seven_day_cowork`, `extra_usage`, `spend`,
    `limits`, and several code names. Each has `utilization` (percent) and `resets_at`.
@@ -201,7 +249,7 @@ assumption that it can.
      `remaining_dollars`, `locked_reason`, a `limits` array, `extra_usage`, `spend` and a
      dozen code-named windows. Reading only the two windows you want means an unrelated key
      changing shape cannot break you.
-3. **`quotaLimits` in a session transcript (undocumented).** The one rate-limit fact on
+4. **`quotaLimits` in a session transcript (undocumented).** The one rate-limit fact on
    this Mac that is not a cache: written by the process it happened to, at the moment a
    request was actually refused. As seen on 2026-09-11 in
    `~/.claude-skitrust/projects/…/c8c404ba-….jsonl`:
@@ -227,7 +275,7 @@ assumption that it can.
      for a window that ended at 13:00, and by 14:10 it said nothing about the allowance in
      hand. It also sits megabytes from the end of a session that carried on afterwards, so a
      64KB tail read finds it only while it is fresh — which is the only time it is useful.
-4. `~/.claude/stats-cache.json`: daily activity, token usage per model, session counts.
+5. `~/.claude/stats-cache.json`: daily activity, token usage per model, session counts.
 
 ### Codex
 

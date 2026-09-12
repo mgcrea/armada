@@ -85,17 +85,58 @@ final class Account: Identifiable {
   /// Both live in the same 153KB document, and the identity is re-read rather
   /// than cached at launch because switching organization inside Claude Code
   /// rewrites it under a running Armada.
+  ///
+  /// **The cache is the fallback now, not the source.** `probeUsage` asks the
+  /// account directly and is what the meters normally show; this keeps running
+  /// because it is nearly free, it is the only source of the identity, and it is
+  /// what answers on a Mac where `claude` cannot be found. A cached reading is
+  /// therefore never allowed to overwrite a live one that is still current — see
+  /// `adopt`.
   func refreshConfig() {
     didReadUsage = true
     guard let root = ClaudeConfigDocument.read(folder.usageJSON) else { return }
     if let identity = AccountIdentity(root: root) { self.identity = identity }
     // A nil decode leaves the last good snapshot in place rather than blanking
     // the pane: the common cause is catching the file mid-rewrite.
-    if let usage = UsageSnapshot.decode(root: root) {
-      self.usage = usage
-      // Recorded here rather than in the poll, because this is the one place a new
-      // snapshot exists; the store itself drops anything it has already seen.
-      UsageHistory.shared.record(usage, for: id)
+    if let usage = UsageSnapshot.decode(root: root) { adopt(usage) }
+  }
+
+  /// Ask this folder's account for its current windows, off the main actor.
+  ///
+  /// The expensive one — a `claude` process and about a second — so it is driven by
+  /// `Accounts`' slow timer and by the popover opening, never by the 30-second file
+  /// poll. A failure is silent and changes nothing: `UsageProbe` returns nil for
+  /// everything from a missing binary to a timeout, and the cached reading stands.
+  func probeUsage() async {
+    let folder = self.folder
+    guard
+      let probed = await Task.detached(
+        priority: .utility,
+        operation: {
+          UsageProbe.run(folder: folder)
+        }
+      ).value
+    else { return }
+    adopt(probed)
+  }
+
+  /// Take a new reading, unless it would be a step backwards.
+  ///
+  /// **A cached reading may not displace a live one that is still fresher.** Both
+  /// arrive on their own schedules — the file poll every 30s, the probe every few
+  /// minutes — so without this the meters would flip between the two on every tick,
+  /// and a cache that is hours stale would win simply by arriving last. Same
+  /// `staleFraction` the forecast uses for the same reason, rather than a second
+  /// idea of how old is too old.
+  private func adopt(_ new: UsageSnapshot) {
+    if let current = usage, current.source == .live, new.source == .cache,
+      let live = current.fetchedAt, let cached = new.fetchedAt, live > cached
+    {
+      return
     }
+    usage = new
+    // Recorded here rather than at either call site, because this is the one place
+    // a new snapshot is accepted; the store itself drops anything it has seen.
+    UsageHistory.shared.record(new, for: id)
   }
 }

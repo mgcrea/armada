@@ -107,7 +107,7 @@ struct UsageHeader: View {
             title: "Weekly", subtitle: "7 days", window: seven,
             forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now)
           Spacer(minLength: 0)
-          StalenessBadge(fetchedAt: usage.fetchedAt, now: now)
+          StalenessBadge(fetchedAt: usage.fetchedAt, now: now, source: usage.source)
         } else {
           Label(
             account.didReadUsage ? "No usage data yet" : "Reading usage…",
@@ -182,16 +182,20 @@ enum UsageTint {
   }
 }
 
-/// How old the cached figures are.
+/// How old these figures are, and whether their age is even a worry.
 ///
-/// `cachedUsageUtilization` carries `fetchedAtMs` because it is a cache, not a
-/// live reading: Claude Code refreshes it when an API response happens to update
-/// it, which can be hours ago on an idle account. Showing the age is what stops a
-/// stale percentage from reading as the current one — silence here would be the
-/// one way this strip can actively mislead.
+/// **Both sources date their readings, and the date means opposite things.** A
+/// `.live` figure was asked for and answered — its age is how long ago Armada last
+/// asked, and a few minutes of it is nothing. A `.cache` figure is a copy Claude
+/// Code left behind whenever it last felt like it, measured at 95 minutes old on
+/// 2026-09-11 while sessions were running in the same folder, and its age is the
+/// warning. So the wording and the threshold both turn on the source: silence about
+/// a stale cache is the one way this can actively mislead, and a warning triangle
+/// over a two-minute-old live reading is the way it cries wolf.
 struct StalenessBadge: View {
   let fetchedAt: Date?
   let now: Date
+  var source: UsageSnapshot.Source = .cache
   var style: Style = .full
 
   /// `.compact` is the popover's. The two-line stack below is sized for a header
@@ -204,11 +208,18 @@ struct StalenessBadge: View {
   private static let fresh: TimeInterval = 5 * 60
   private static let stale: TimeInterval = 60 * 60
 
+  /// A live reading only goes doubtful once the probe has been failing long enough
+  /// that something is wrong — `claude` moved, or every attempt has timed out.
+  /// Comfortably past `Accounts.probeInterval`, so an ordinary gap never trips it.
+  private static let liveStale: TimeInterval = 15 * 60
+
+  private var staleAfter: TimeInterval { source == .live ? Self.liveStale : Self.stale }
+
   var body: some View {
     if let fetchedAt {
       let age = now.timeIntervalSince(fetchedAt)
       HStack(spacing: 5) {
-        if age > Self.stale {
+        if age > staleAfter {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
             .font(style == .full ? nil : .caption2)
@@ -221,18 +232,30 @@ struct StalenessBadge: View {
               .foregroundStyle(age > Self.fresh ? .secondary : .primary)
           }
         } else {
-          Text("figures from \(fetchedAt, format: .relative(presentation: .named))")
-            .font(.caption2)
-            .foregroundStyle(
-              age > Self.stale ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
-            )
-            .lineLimit(1)
+          Text(
+            "\(source == .live ? "checked" : "figures from") \(fetchedAt, format: .relative(presentation: .named))"
+          )
+          .font(.caption2)
+          .foregroundStyle(
+            age > staleAfter ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
+          )
+          .lineLimit(1)
         }
       }
-      .help(
-        age > Self.stale
-          ? "Claude Code refreshes this cache when it next talks to the API, so these figures may be behind."
-          : "When Claude Code last refreshed its usage cache.")
+      .help(help(age: age))
+    }
+  }
+
+  private func help(age: TimeInterval) -> String {
+    switch (source, age > staleAfter) {
+    case (.live, false):
+      "Asked your account directly, through Claude Code."
+    case (.live, true):
+      "Armada has not been able to reach Claude Code for a while, so these figures may be behind."
+    case (.cache, false):
+      "Read from Claude Code's usage cache."
+    case (.cache, true):
+      "Claude Code refreshes this cache when it next talks to the API, so these figures may be behind."
     }
   }
 }

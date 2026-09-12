@@ -221,12 +221,14 @@ struct StatusMenu: View {
     .frame(width: 320)
     .onReceive(clock) { now = $0 }
     // Belt and braces beside the tick above. The tick keeps the *rendering* honest;
-    // this asks the watchers for a fresh *reading* the moment the panel is opened,
-    // rather than waiting out the rest of a 30-second poll in front of someone who
-    // just clicked to find out. Both are cheap: a re-read of a document already in
-    // the page cache, and a scan the Codex watcher coalesces anyway.
+    // this asks for a fresh *reading* the moment the panel is opened, rather than
+    // waiting out the rest of a poll in front of someone who just clicked to find
+    // out. The file re-reads and the Codex scan are nearly free; `probeAll` is not,
+    // which is why it throttles itself — opening the panel twice in a row is one
+    // process, not two.
     .onAppear {
       accounts.refreshAll()
+      accounts.probeAll()
       codex.refreshAll()
     }
   }
@@ -303,7 +305,8 @@ struct AccountSummary: View {
         // The panel was the one surface showing a percentage with nothing to say how
         // old it was, which is exactly where a stale figure does the most damage: it
         // is the surface people check *instead of* opening the window.
-        StalenessBadge(fetchedAt: usage.fetchedAt, now: now, style: .compact)
+        StalenessBadge(
+          fetchedAt: usage.fetchedAt, now: now, source: usage.source, style: .compact)
         // Only when there is something to act on. "On pace" in a menu is a line of
         // chrome in a 320pt panel whose job is the session list above it, and the
         // weekly window is the one worth interrupting someone about.
