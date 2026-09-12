@@ -168,7 +168,8 @@ struct UsageResetLine: View {
 
   /// `.compact` is for the menu bar popover, where the reset sits at the end of a
   /// row beside the bar. It renders the same instant as "in 19h" where the panes say
-  /// "in 19 hours" — which is what keeps the row short enough to leave the bar room.
+  /// "in 19 hours", and it lets a clock glyph say "resets" — which is what keeps the
+  /// row short enough to leave the bar room.
   enum Style { case full, compact }
 
   private static let compactFormat = Date.RelativeFormatStyle(
@@ -183,11 +184,15 @@ struct UsageResetLine: View {
           // percentage belongs to a window that no longer exists. Observed on
           // 2026-09-10, when the cache was written two minutes after the five-hour
           // window it described had rolled.
-          Text(style == .full ? "window has since reset" : "already reset")
+          if style == .full {
+            Text("window has since reset")
+          } else {
+            compact("clock.arrow.circlepath", Text("reset"), label: "already reset")
+          }
         } else if style == .full {
           Text("resets \(resetsAt, format: .relative(presentation: .named))")
         } else {
-          Text("resets \(resetsAt, format: Self.compactFormat)")
+          compact("clock", Text(resetsAt, format: Self.compactFormat), label: "resets")
         }
       }
       .font(.caption2)
@@ -196,6 +201,22 @@ struct UsageResetLine: View {
       // The exact moment on hover. "in 3 days" is the right thing to read at a
       // glance and the wrong thing to plan a Monday around.
       .help(help(rolled: rolled, resetsAt: resetsAt))
+    }
+  }
+
+  /// A glyph in place of the word "resets".
+  ///
+  /// **The word was the longest fixed thing on a row whose bar wanted the space.**
+  /// "resets in 19h" is about 66pt at `.caption2` and six of those points are a verb
+  /// that never changes, on a row that already reads as a meter. The clock says it in
+  /// ten, the tooltip still spells the moment out, and the accessibility label keeps
+  /// the word for anyone not looking at the glyph.
+  private func compact(_ symbol: String, _ text: Text, label: String) -> some View {
+    HStack(spacing: 3) {
+      Image(systemName: symbol)
+        .imageScale(.small)
+        .accessibilityLabel(label)
+      text
     }
   }
 

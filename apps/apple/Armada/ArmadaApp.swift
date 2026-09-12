@@ -262,27 +262,33 @@ struct AccountSummary: View {
           Text(account.displayName)
             .font(.subheadline.weight(.medium))
             .lineLimit(1)
-          Spacer(minLength: 0)
+          // The count rides the name's line rather than taking one of its own. It is
+          // a clause about the account, not a heading, and at `.callout` on its own
+          // row it was the largest text in the block and read as the block's title —
+          // with the name it actually belongs to sitting above it in a smaller font.
+          // A line saved here is a line the session list and meters get back, which
+          // is what a panel holding three accounts is short of.
+          Text("• \(summary)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          Spacer(minLength: 4)
           if let plan = account.planLabel {
             Text(plan)
               .font(.caption2)
               .foregroundStyle(.secondary)
           }
         }
+      } else {
+        // Nothing to hang it off: one account draws no name row, so the count is the
+        // block's opening line and keeps the weight to match.
+        Text(summary)
+          .font(.callout)
+          .foregroundStyle(sessions.isEmpty ? .secondary : .primary)
       }
 
-      Text(summary)
-        .font(.callout)
-        .foregroundStyle(sessions.isEmpty ? .secondary : .primary)
-
       ForEach(sessions.prefix(Self.visibleSessions)) { session in
-        HStack(spacing: 6) {
-          StateDot(state: session.state)
-          Text(session.displayName)
-            .font(.caption)
-            .lineLimit(1)
-          Spacer(minLength: 0)
-        }
+        SummaryRow(session: session, host: hosts[session.registry.pid] ?? nil)
       }
       if sessions.count > Self.visibleSessions {
         Text("and \(sessions.count - Self.visibleSessions) more")
@@ -449,22 +455,33 @@ struct SummaryRow: View {
 /// sits at the end of its own row where it needs no label to say which window it
 /// belongs to, and the bars line up under each other for comparison.
 ///
-/// The fixed label and figure widths are what make that alignment hold: the figure is
-/// trailing-aligned so "5%" and "100%" put their last digit in the same place.
+/// The fixed label, figure and reset widths are what make that alignment hold: the
+/// figure is trailing-aligned so "5%" and "100%" put their last digit in the same
+/// place, and the bar is the one flexible thing on the row, so it takes whatever the
+/// fixed columns leave and every row's bar starts and ends on the same two points.
+///
+/// **Everything fixed on the row is sized to its own longest string, and the bar gets
+/// the rest.** A bar with a width of its own was how this drifted: 88pt was set when
+/// the panel was 256pt wide and never revisited when it grew to 320, which left the
+/// widest surface in the app showing the narrowest meter with 60pt of dead air beside
+/// it. The figure is the other half of that — at `.callout` it was the largest text
+/// in a row of `.caption2`, sized for a pane rather than for a 320pt panel, and
+/// reading it never needed that much weight next to the bar it annotates.
 struct CompactUsage: View {
   let label: String
   let window: UsageWindow?
   var forecast: UsageForecast?
   let now: Date
 
-  /// **Sized from what is left of the row, not from what a bar needs.** The panel is
-  /// 320pt wide and everything else on the row is fixed: 16pt of label, 38pt of
-  /// figure, two 6pt gaps and the longest reset this renders ("already reset", about
-  /// 70pt at caption2). That leaves a shade over 150pt, and the bar takes 128 of it
-  /// so the gap before the reset stays wide enough to read as a gap. The 88pt it had
-  /// before was inherited from the 256pt panel and never revisited when the panel
-  /// grew, which is how the widest surface ended up with the narrowest meter.
-  private static let barWidth: CGFloat = 128
+  /// Fits "100%" at `.caption` with a point to spare.
+  private static let figureWidth: CGFloat = 30
+
+  /// Fits the longest reset this renders — a clock glyph and "in 19h" — with enough
+  /// slack that it stays one line rather than truncating. Fixed rather than hugging
+  /// its text so a row whose window has no reset leaves the column empty instead of
+  /// handing the space to its bar and making that one row's meter longer than the
+  /// others.
+  private static let resetWidth: CGFloat = 52
 
   var body: some View {
     HStack(spacing: 6) {
@@ -473,19 +490,19 @@ struct CompactUsage: View {
         .foregroundStyle(.secondary)
         .frame(width: 16, alignment: .leading)
       if let window {
-        UsageFigure(window: window, now: now)
-          .frame(width: 38, alignment: .trailing)
+        UsageFigure(window: window, now: now, font: .caption)
+          .frame(width: Self.figureWidth, alignment: .trailing)
         UsageBar(
           percent: window.utilization, forecast: forecast, height: 5,
           voided: window.hasRolled(asOf: now)
         )
-        .frame(width: Self.barWidth)
-        Spacer(minLength: 6)
+        .frame(maxWidth: .infinity)
         UsageResetLine(window: window, now: now, style: .compact)
+          .frame(width: Self.resetWidth, alignment: .trailing)
       } else {
         Text("—")
-          .font(.callout.monospacedDigit())
-          .frame(width: 38, alignment: .trailing)
+          .font(.caption.monospacedDigit())
+          .frame(width: Self.figureWidth, alignment: .trailing)
         Spacer(minLength: 0)
       }
     }

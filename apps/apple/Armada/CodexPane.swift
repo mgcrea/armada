@@ -157,18 +157,25 @@ struct CodexSummary: View {
           Text(account.displayName)
             .font(.subheadline.weight(.medium))
             .lineLimit(1)
-          Spacer(minLength: 0)
+          // On the name's line for the reason `AccountSummary` gives, and it has to
+          // stay in step with it: the two blocks sit in one panel, and a Codex header
+          // shaped differently from a Claude one reads as a different kind of thing.
+          Text("• \(summary)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          Spacer(minLength: 4)
           if let plan = account.planLabel {
             Text(plan)
               .font(.caption2)
               .foregroundStyle(.secondary)
           }
         }
+      } else {
+        Text(summary)
+          .font(.callout)
+          .foregroundStyle(live.isEmpty ? .secondary : .primary)
       }
-
-      Text(summary)
-        .font(.callout)
-        .foregroundStyle(live.isEmpty ? .secondary : .primary)
 
       ForEach(live.prefix(Self.visibleSessions)) { session in
         HStack(spacing: 6) {
