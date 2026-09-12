@@ -210,8 +210,13 @@ someone may want to make differently.
   nothing else: unlike Claude Code, Codex documents no `~/.codex-<name>` pattern, so
   scanning for one would be inventing a convention rather than following one. Someone with
   two Codex accounts in custom homes sees only the one this process was told about.
-- **No forecast on Codex meters.** `UsageForecast` projects from a reading that tracks the
-  window, which Codex does not provide.
+- ~~**No forecast on Codex meters.**~~ Withdrawn 2026-09-12. The blanket refusal was the
+  right worry acted on in the wrong place: `UsageForecast` already declines a reading older
+  than 10% of its window — 30 minutes for the session window, 16.8 hours for the weekly —
+  and measures the rate to `asOf` rather than to `now`, so a reading that passes that guard
+  is sound whatever produced it. Both Codex surfaces now offer the forecast and let the
+  shared rule decide, which is also what stopped the Usage pane and the Codex header
+  disagreeing about the same number.
 - **The scan re-lists day directories on every event.** Bounded (≤8 directories, only files
   inside the window, only re-reading a file whose size changed, plus one tail read of the
   newest rollout) and never measured under a Codex session that is actually running.

@@ -72,11 +72,9 @@ struct CodexPaneView: View {
 struct CodexUsageHeader: View {
   let account: CodexAccount
 
-  /// Not read anywhere below, and not dead. The relative times here — "last turn
-  /// 2 hours ago", and the reset lines inside the meters — are rendered against
-  /// `Date.now` at draw time, so something has to make the view redraw as the
-  /// clock moves. Taking the pane's tick as a property is what does that.
   let now: Date
+
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
 
   var body: some View {
     VStack(spacing: 0) {
@@ -116,10 +114,17 @@ struct CodexUsageHeader: View {
   /// case this header cares most about is handled by the shared component rather
   /// than by a second treatment invented here.
   ///
-  /// No forecast. `UsageForecast` projects a rate from how far into a window the
-  /// figures were taken, which needs a reading that tracks the window; Codex only
-  /// produces one when a turn happens to run. Passing it anyway would put a
-  /// confident "at this rate" under a number nobody has updated since breakfast.
+  /// The forecast is offered and `UsageForecast` decides, which is not what this
+  /// did at first.
+  ///
+  /// It passed `nil` outright, reasoning that Codex figures are too intermittent to
+  /// project from. That was the right worry and the wrong place to act on it:
+  /// `UsageForecast` already refuses a reading older than 10% of its window —
+  /// 30 minutes for the session window, 16.8 hours for the weekly one — and it
+  /// measures the rate to `asOf` rather than to `now`, so a reading that passes the
+  /// guard gives sound arithmetic however it was obtained. Refusing here as well
+  /// meant the same Codex numbers showed a pace tick in the Usage pane and none in
+  /// this header, which is a disagreement between two views of one fact.
   @ViewBuilder
   private func meter(_ window: CodexWindow?) -> some View {
     if let window {
@@ -127,9 +132,16 @@ struct CodexUsageHeader: View {
         title: LocalizedStringKey(window.title),
         subtitle: LocalizedStringKey(window.subtitle),
         window: window.usage,
-        forecast: nil,
+        forecast: forecast(window),
         now: now)
     }
+  }
+
+  private func forecast(_ window: CodexWindow) -> UsageForecast? {
+    guard let length = window.length else { return nil }
+    return UsageForecast(
+      window: window.usage, length: length, weights: DayWeights(stored: storedWeights),
+      asOf: account.usage?.observedAt, now: now)
   }
 }
 
