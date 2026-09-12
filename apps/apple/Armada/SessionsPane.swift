@@ -27,6 +27,7 @@ struct SessionRow: View {
         Text(Self.elapsed(from: started, to: now))
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
+          .help("Started this long ago")
       }
     }
     .padding(.vertical, 2)
