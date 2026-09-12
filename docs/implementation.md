@@ -12,17 +12,18 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
 
 - **Sessions**, per account: every live Claude Code session with its title, project, age and
   inferred state, beside a detail pane that includes how full its context window is.
-- **Usage**, per account: the 5-hour and 7-day windows with reset times and a staleness
-  badge.
+- **Usage**, per account: the 5-hour and 7-day windows with reset times, asked of the
+  account directly through a headless `claude` and falling back to the cache on disk, with
+  a badge saying which answered and how old it is.
 - **Menu bar**: an accessory app (`LSUIElement`) with a popover summarising every account,
   and a template glyph that fills when anything is working.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
-  limits, read from `~/.codex`, and a card in the global Usage pane beside the Claude
-  accounts. See below — it is real code and shipped behaviour, but it was written in one
-  pass to find out what Codex makes possible, and it is the part most likely to want
-  revisiting.
+  limits, read from `~/.codex`, a card in the global Usage pane beside the Claude accounts,
+  and the same context panel in its detail pane. See below — it is real code and shipped
+  behaviour, but it was written in one pass to find out what Codex makes possible, and it is
+  the part most likely to want revisiting.
 
 Not built, and all of it deliberate: **messaging** (v1's third feature), hooks, `hubctl`,
 the Unix socket, the MCP surface, and anything that writes to a vendor's config. This app
@@ -46,14 +47,22 @@ transcripts, separate rate limits.
 | `TranscriptContext` | context totals, the growth series, the baseline and the compaction record |
 | `ContextWindow` | how big the window is, and which of four sources said so |
 | `UsageSnapshot` / `AccountIdentity` | the two halves of `.claude.json` |
+| `ClaudeControl` | one control request to a headless `claude`, and its answer |
+| `UsageProbe` | `get_usage` — the live figures, the way the VS Code extension gets them |
+| `ContextProbe` | `get_context_usage` — the prefix breakdown a transcript cannot give |
+| `ContextCompositions` | those breakdowns per project, cached for the life of the process |
 | `ProcessAncestry` | what the kernel says about a pid: parents, start time, tty, exe path |
 | `SessionHost` / `SessionHostLookup` | which app a session's process belongs to, cached |
 | `FocusSession` | brings that app forward — see [focusing-sessions.md](focusing-sessions.md) |
+| `HostWindow` | picks the app's window by title, when Accessibility is allowed |
 | `SessionOrder` | how the session list is sorted and grouped — shared by both panes |
 | `SessionSortMenu` | that choice as one menu, and the grouped list's section header |
 
-The Codex half mirrors it, name for name, and shares only the icon lookup (`VendorIcon`)
-and the usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`):
+The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
+usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
+(`SessionOrder`, `SessionSortMenu`), and the context panel — `ContextPanel` takes figures
+rather than a session, so `ContextSection` and `CodexContextSection` are two short adapters
+over one renderer and cannot drift:
 
 | Type | Holds |
 | --- | --- |
@@ -63,6 +72,7 @@ and the usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`):
 | `CodexRollout` | bounded head and tail reads of a rollout — meta, state, limits |
 | `CodexLocks` / `CodexTitleIndex` | who is live; what things are called |
 | `CodexSession` / `CodexSessionState` | one session, and the three states it can be in |
+| `CodexContext` | `token_count` → `ContextReading`, the growth series, the opening figure |
 
 Session watching is per account and config watching is shared, which is not an
 inconsistency: each folder has its own directory trees worth a dedicated stream, while the
@@ -72,6 +82,14 @@ inconsistency: each folder has its own directory trees worth a dedicated stream,
 
 Each of these cost time here, and none is visible from the code that depends on it.
 
+- **`Session.registry` is replaced on every rescan, not held from adoption.** Claude Code
+  rewrites the registry file in place — `status`, `waitingFor` and `updatedAt` all move
+  inside it — so a cached copy silently freezes the session's state and its last-activity
+  time at the moment the row first appeared. `SessionWatcher.rescan` assigns the fresh
+  one onto the surviving `Session`.
+- **`SessionRegistry.waitingFor` is display text, not an enum.** Claude Code builds it
+  from a per-dialog table and the set grows with each release. Render it; never branch on
+  it. `status` is the closed vocabulary — see `SessionState.init(registryStatus:)`.
 - **A session list group's id is the folder's `cwd`, never its name.** Two checkouts can
   both be called `api`, and a `ForEach` keyed on the title then runs two sections under
   one id — which renders as sections showing each other's rows and looks like a SwiftUI
@@ -99,6 +117,22 @@ Each of these cost time here, and none is visible from the code that depends on 
   it says otherwise. `TranscriptTitle`, `UsageSnapshot` and `AccountIdentity` are
   `nonisolated` so their file I/O is real background work; dropping that keyword silently
   puts 54MB of transcript reading back on the thread drawing the window.
+- **Codex's `total_token_usage` is cumulative and its `input_tokens` includes the cached
+  part** — both the reverse of Claude's `usage`, and both silent when confused. Reading
+  `total_token_usage` as occupancy puts a session at 133% of a window it is inside; summing
+  Codex's input and cached figures double-counts a prefix that is 99% of a warm prompt. See
+  [codex-sessions.md](codex-sessions.md#context-window).
+- **Occupancy and spend are different numbers, and only one vendor reports both.**
+  *Occupancy* is `Session.context?.total` and `CodexSession.context?.total` — the size of the
+  current prompt, which falls on compaction and re-counts the cached prefix every turn. That
+  is what both panes show. *Cumulative spend* is `CodexSession.totalTokens`, and it is
+  **Codex-only**: Claude Code records no equivalent anywhere on disk, and the spawned probe
+  cannot supply it either. Do not put them in one column — a figure meaning occupancy in one
+  pane and lifetime spend in the other is worse than a figure missing from one of them.
+  Building a Claude cumulative would mean accumulating `TranscriptContext.series(…)` per
+  request, which needs the formula settled first: excluding `cacheRead` measures new work,
+  including it matches what the API bills, and Codex's own formula is known to match
+  neither.
 - **The three token figures must be summed.** `input_tokens` was **2** on a 389k prompt,
   because everything else was a cache read. Any one of them read as "the context" reports an
   empty session.
@@ -191,13 +225,18 @@ shows an empty usage strip, and neither crashes.
 - **No tests**, and so no `make test`. A target that ran nothing would be worse than none.
 - **Folder discovery is not watched**: a config folder created while Armada is running does
   not appear until relaunch.
-- **The context panel cannot show what `/context` shows.** It gives the total, the cache
-  split, the opening figure and the compaction record, all exact — but not the split of the
-  fixed prefix into system prompt, tools, memory files and skills. Claude Code works those
-  out as it runs and never writes them down, and the control-protocol route that does expose
-  them (`get_context_usage`) is answerable only by whoever owns the session's pipes. The
-  panel says so in place of the rows it cannot fill; the measurements are in
-  [claude-code-sessions.md](claude-code-sessions.md#context-usage).
+- **The prefix breakdown describes a comparable session, not the watched one.** The panel's
+  totals are exact and per-session; the split of the fixed prefix into system prompt, tools,
+  memory files and skills comes from `ContextProbe`, which spawns its own `claude` and asks
+  `get_context_usage`. That answer is about the process it spawned — same project, same
+  config, **fresh conversation** — so the prefix rows are "what a session started here now
+  would load" and the `Messages` part of them is always zero.
+
+  This corrects what this list said until 2026-09-12: that the route was "answerable only by
+  whoever owns the session's pipes". A spawned process does answer it; the catch is subtler,
+  and it is the reason the per-session figures still come from transcripts.
+  [claude-code-sessions.md](claude-code-sessions.md#correction-2026-09-12-a-spawned-probe-answers-it-about-itself)
+  has the measurement.
 - **State is inference, not truth.** Write-recency plus the unanswered-`tool_use` rule, which
   `claude-code-sessions.md` still files as unverified and which cannot tell a running tool
   from one waiting for approval. The UI marks it best-effort. Hooks would settle it, and
@@ -218,6 +257,16 @@ someone may want to make differently.
   `CodexSession` exist with no `CodexSessionMeta` — perhaps 15 lines in `scan` and `apply`,
   plus a row that says "Not started yet". Not done here: the file was being edited
   concurrently, and this is worth doing deliberately rather than racing it.
+- **No "Focus in …" button on a Codex row.** The Claude one walks the session's pid up the
+  process tree to the app that owns it; a Codex session has no pid anywhere on disk. The
+  process holding its lock does know, but reading that means enumerating another process's
+  file descriptors, which is a great deal of machinery for one button.
+- **The growth projection is suppressed on an ended Codex session.** It would otherwise
+  extrapolate a rate measured over 13 seconds yesterday into "~full in 18 minutes" for a
+  session with no future. The Claude pane needs no such guard because its list is live by
+  construction. Worth knowing that the same line on an *idle but live* session of either
+  vendor is still projecting from history — it is right about the rate and assumes work
+  resumes now.
 - **The 12-hour recency window is a guess**, and it decides what the pane is. A Codex
   session that ended is still listed; one that ended 13 hours ago is not. There is nothing
   behind the number but "a working morning".

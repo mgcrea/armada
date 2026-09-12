@@ -317,9 +317,17 @@ Starting points:
 - **Multiple accounts:** can `claudeCode.environmentVariables` set `CLAUDE_CONFIG_DIR` per
   VS Code workspace? Do separate `CODEX_HOME`s share credentials when Codex uses the
   keychain?
-- **Does `SendMessage` reach sessions under a different `CLAUDE_CONFIG_DIR`?**
+- **Does `SendMessage` reach sessions under a different `CLAUDE_CONFIG_DIR`?** Partly
+  answered 2026-09-12: the **transport** already does — the socket directory is per uid,
+  not per config folder, and this Mac's held both accounts' sessions at once. What does
+  not cross is **discovery**, since the registry lives inside each folder. So the untested
+  half is whether `SendMessage` accepts an address it did not enumerate. See
+  [reaching-agents.md](reaching-agents.md#the-transport-underneath-sendmessage).
 - **Addressing across a resume:** does a resumed Claude session keep its `name`?
-- **Does the peer socket carry control requests?** `get_context_usage` returns the exact
+- ~~**Does the peer socket carry control requests?**~~ **Answered 2026-09-12: no.** The
+  socket is a messaging inbox with no query verb of any kind — see
+  [claude-code-sessions.md](claude-code-sessions.md#what-cannot-be-reconstructed-and-the-route-that-could).
+  Superseded, kept for the record: `get_context_usage` returns the exact
   `/context` breakdown, and is answered only by whoever owns a session's stdin/stdout or by
   the Remote Control bridge. If `/tmp/cc-socks/<pid>.sock` also accepts a `control_request`,
   a watcher can have it locally. See
@@ -348,6 +356,7 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-10 | Standalone, not a Bastion feature | Security (own release channel), flexibility, research; the crowded market was accepted |
 | 2026-09-10 | v1 watches sessions rather than running them | Running agents (Claudexor's model) raises subscription-terms questions for client distribution; the author works in the VS Code extension |
 | 2026-09-12 | Context usage is read from transcripts, exact figures only, no estimated categories | `get_context_usage` gives the real breakdown but only to whoever owns the session's pipes or holds Remote Control, both out of scope; re-tokenizing attachment text by character count would put a guess in a table of measurements. **New input to the "watch, don't launch" decision above: a session Armada launched itself would yield the exact breakdown for free.** |
+| 2026-09-12 | The prefix breakdown comes from a probe Armada spawns, the per-session figures stay on transcripts | The row above rests on "only to whoever owns the session's pipes", which turned out to be wrong: a headless `claude` answers `get_context_usage` too. It answers about **itself** — same project and config, empty conversation — so it supplies exactly the part a transcript cannot (system prompt, tools, memory files, skills) and none of the part a transcript already has. `ContextProbe` and `ContextCompositions` ship it, cached per project. Kept as a second row rather than a correction to the first: the first decision was right on the evidence it had, and this one only became possible once a probe existed for `get_usage`. |
 | 2026-09-10 | No Claude sign-in; no credentials held | Anthropic's terms bar third-party Claude.ai login and credential handling |
 | 2026-09-10 | Local, several accounts per vendor, across vendors | Multi-machine sync and multi-user weren't needed |
 | 2026-09-10 | Direct messages first; board, handoff and forward-suggestions on the roadmap | — |

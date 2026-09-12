@@ -192,6 +192,40 @@ does differently:
 To find the current figures: take the newest `token_count` across recent rollouts, tracked
 by the event's own timestamp rather than the file's mtime.
 
+## Context window
+
+Measured 2026-09-12, while porting the Claude pane's context panel across. **Codex states
+what Claude Code only implies.** Every `token_count` event carries `model_context_window`
+beside the usage, so there is no equivalent of `ContextWindow`'s four-source resolution and
+nothing to hedge: the number is recorded.
+
+```json
+"info": {
+  "total_token_usage": { "input_tokens": 342314, "cached_input_tokens": 316544,
+                         "output_tokens": 1029, "total_tokens": 343343 },
+  "last_token_usage":  { "input_tokens": 43060,  "cached_input_tokens": 42752,
+                         "output_tokens": 59,    "total_tokens": 43119 },
+  "model_context_window": 258400
+}
+```
+
+- **`total_token_usage` is cumulative, and it is the trap.** It adds up every request since
+  the session began — 343,343 on a session whose window is 258,400. Read as "the context",
+  it puts a session comfortably inside its window at 133% of it. `last_token_usage` is the
+  one that describes the current prompt.
+- **`input_tokens` includes `cached_input_tokens`**, the opposite of Claude's `usage`, where
+  `input_tokens` excludes both cache figures and the three must be summed. So the fresh
+  input is `input − cached − cache_write`. Getting this backwards double-counts the cached
+  prefix, which on a warm turn is almost the whole prompt (42,752 of 43,060 here).
+- **The first `token_count` is a long way in**: byte 332,171 of a 13.7MB rollout. So the
+  opening figure — the analogue of `/context`'s fixed prefix, 29,120 tokens on that session
+  — costs a much deeper read than the head parse, which is why Armada does it once per
+  session and off the main actor.
+- The last 64KB held 1–6 `token_count` events in every rollout measured, so one bounded tail
+  read yields both the current occupancy and a growth series.
+- **No compaction record.** Nothing in a rollout marks one; the only occurrences of the word
+  on this Mac are inside system-prompt text. Claude's `compact_boundary` has no counterpart.
+
 ## As an MCP client
 
 - Sends `initialize` as `codex-mcp-client`, protocol `2025-06-18`.

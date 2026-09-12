@@ -1,7 +1,8 @@
 # Focusing a session: getting from a row back to the window
 
 Measured on 2026-09-11 on one Mac running Claude Code 2.1.267–2.1.268, VS Code with the
-Claude Code extension, and Terminal.app.
+Claude Code extension, and Terminal.app. The window half was measured on 2026-09-12 on
+the same Mac.
 
 Armada's session rows offer one action: **Focus**, which brings forward the application a
 session is running inside. This is what that can reach, what it cannot, and why.
@@ -35,14 +36,17 @@ caches and why nothing calls it from a row body.
 
 ## What this reaches, and what it does not
 
-**It names the application, never the window or the tab.** That is the honest ceiling of a
-process walk, and it is why the button reads "Focus in Visual Studio Code" rather than "Go
-to session" — the label promises exactly what it delivers.
+**The walk names the application, never the window or the tab.** That is the honest
+ceiling of a process walk, and it is why the button reads "Focus in Visual Studio Code"
+rather than "Go to session" — the label promises exactly what it delivers.
 
 The uncomfortable consequence: **on a Mac running many sessions in one VS Code, every
-session resolves to the same application**, so Focus is the same action for all of them. It
-is still worth having (it is right for terminal users, and right when Armada is not the
-frontmost app), but it does not disambiguate.
+session resolves to the same application**, so activating it is the same action for all of
+them and macOS picks the window — whichever was frontmost last, which is almost never the
+session's own. That is what [the window, by title](#the-window-by-title) below fixes, and it
+needs a permission the walk does not. Without that permission this is still what happens,
+and it is still worth having: it is right for terminal users, and right when Armada is not
+the frontmost app.
 
 Sessions with no host at all, where the button is replaced by an explanation:
 
@@ -60,6 +64,84 @@ launchd, so the ppid walk reaches pid 1 without passing through iTerm. But that 
 lives *inside* the bundle, so the executable path names the application the process tree
 does not. Untested — neither iTerm2 nor Ghostty is installed on the Mac this was measured
 on.
+
+## The window, by title
+
+Measured 2026-09-12. The process walk shipped first and the complaint came back straight
+away — six VS Code windows, and Focus landed on the wrong one every time the right one was
+not already in front. So the VS Code tier that the last section of this document deferred
+was built, with the Accessibility grant it always needed.
+
+`HostWindow.raise` reads the host application's window titles through the Accessibility API
+and raises the one whose title names the session's folder. Here is what those titles
+actually are, read live from the six windows of pid 3280:
+
+```
+Menubar icon halo border — armada — Skitrust
+X metrics support — almanac — Skitrust
+Sentry MCP latest error — lisphoto-shopify-apps — TypeScript
+Sandro lookbook commits … — smcp-lookbook-platform — Swift
+Direct sales apps settin… — apps — Skitrust
+Progress bar and pro-mod… — cadence — TypeScript
+```
+
+Three things in that, and not one of them was safe to assume:
+
+- **It is not `<file> — <folder> — Visual Studio Code`**, which is what VS Code's default
+  `window.title` template reads as. The first segment is the *active tab*, and in all six
+  the active tab is the Claude Code panel — so it is the panel's own session title. The last
+  segment is the VS Code **profile**, not the application name.
+- **The first segment is truncated with an ellipsis. The folder segment never is.**
+- The folder segment is the one dependable thing in the line, and it is exactly what the
+  registry's `cwd` already names.
+
+So the match is on segments, split on the dashes, and a segment that *equals* the folder
+wins. A bounded substring search — word boundaries, so `armada` matches neither
+`armada-old` nor `armada.ts` — is a second pass, for an application whose titles are shaped
+some other way. Exact segments are tried across every candidate before any loose match, and
+**no bundle identifier appears anywhere**, which is why Cursor, VSCodium and Windsurf get
+this for free and why a terminal window whose title carries the folder does too.
+
+**Repository roots go before deeper folders.** A session in a subfolder walks up — a window
+on `~/Projects/apps` holding a session in `~/Projects/apps/armada` is found by `apps` once
+`armada` has found nothing. Deepest-first alone gets `~/Projects/apps/armada/apps/apple`
+wrong, though: its `apps` is nearer than `armada`, so it wins, and it matches the *other*
+window, the one holding `~/Projects/apps`. Two unrelated directories sharing a name is
+precisely what matching on names cannot see. Preferring a candidate that is a repository
+root costs four `stat` calls and settles it; a `.git` that is a file counts, because that is
+what a worktree has.
+
+Nine cases were run against those six live titles — every window by its own `cwd`, the
+subfolder collision above, a project with no window open, and `~` itself. All nine pick what
+they should, and the two that should find nothing do.
+
+**What it still cannot do**, and the button's label stays honest about all of it:
+
+- The window, never the tab, and never the Claude panel inside the window.
+- Two windows on the same folder are indistinguishable. The frontmost of the matches wins,
+  which is at worst what would have happened anyway.
+- A `window.title` customised to drop `${rootName}`, or a folder whose name appears in no
+  title, matches nothing and falls back to activating the application.
+- Terminal.app tabs: only the active tab's title is the window's title, so a session in a
+  background tab falls back. That is the tty tier below, still deferred and still the right
+  answer for an exact *tab*.
+
+**The grant.** `AXIsProcessTrusted()` is asked silently — its `WithOptions` sibling puts a
+system alert on screen and this never does. Settings carries the row that offers it and says
+what it buys; the Focus button carries a caption only while the grant is missing. Nothing
+prompts at launch. The grant is keyed to the code signature and Debug builds have their own
+bundle identifier, so granting `io.mgcrea.armada.debug` says nothing about the shipped
+`io.mgcrea.armada` — expect to grant twice while working on this.
+
+**One trap that is not about windows at all.** Accessibility calls are synchronous IPC on
+the calling thread and the default timeout is six seconds, so a wedged Electron app would
+freeze Armada's UI for as long as it stayed wedged. `AXUIElementSetMessagingTimeout` on the
+application element covers every message sent to it; 0.2s caps the whole walk at a fraction
+of a second per window.
+
+Not yet observed on screen: whether raising before activating is visibly one transition. The
+order is deliberate — activating first shows the wrong window for a frame before the raise
+corrects it — but it has not been watched happening, and if it flickers the two lines swap.
 
 ## Two traps worth writing down
 
@@ -116,10 +198,12 @@ readable out of it (see `CodexLocks.swift`). There is nothing to walk. `CodexPan
 Focus affordance rather than a disabled one, because a greyed-out button with no
 explanation reads as a bug in Armada rather than a limitation of Codex.
 
-## Deferred: the exact window or tab
+## Deferred: the exact tab
 
-Not built. Both tiers below cost a TCC grant, and neither reaches the thing people actually
-mean, so they wait for evidence that app-level focus is not enough.
+Both tiers below cost a TCC grant and neither reaches the thing people actually mean, so
+they waited for evidence that app-level focus was not enough. That evidence arrived for the
+second one, which is now built; the first is still waiting, and is what an exact *tab* would
+need.
 
 **Terminal.app and iTerm2, by controlling tty.** Both expose a `tty` property on the
 scripting object that owns a pane, so `ProcessAncestry.controllingTTY` (already written,
@@ -134,16 +218,19 @@ Note that **the tty is nil for every VS Code-hosted session** — measured, all 
 processes on this Mac show `??` under `ps -o tty`, because the extension speaks to the CLI
 over pipes and allocates no pty. So this tier buys nothing for the common case here.
 
-**VS Code, by `AXRaise`.** Needs an Accessibility grant (no plist key, no entitlement),
-gated on `AXIsProcessTrustedWithOptions`. The grant is keyed to the code signature, so
-rebuilding revokes it — painful during development. And the ceiling is low: VS Code titles
-are `<file> — <folder>`, two windows on the same folder are indistinguishable, and even a
-perfect match raises the *window*, never the Claude panel inside it.
+**VS Code, by `AXRaise`.** No longer deferred — built on 2026-09-12 and written up under
+[the window, by title](#the-window-by-title) above. The ceilings named here when it was
+deferred all turned out to be real: two windows on the same folder are still
+indistinguishable, and a perfect match still raises the *window* and never the Claude panel
+inside it. The one thing that was wrong was the title format, which is not
+`<file> — <folder>`.
 
-`SessionHost.containerPID` — the extension-host pid, one per window — is the only exact
-handle that separates two sessions in the same application, and it is captured already. It
-can *group* sessions ("these three are in the same window") without ever resolving which
-window that is; there is no supported way to map it to an AX window.
+`SessionHost.containerPID` — the extension-host pid, one per window — would have been an
+*exact* handle where a title is a heuristic, and it is captured already. There is still no
+supported way to map it to an AX window, and `~/.claude/ide/<port>.lock` does not help:
+every lock on this Mac reports `"pid": 3280`, which is the application, not the extension
+host. It can still *group* sessions ("these three are in the same window") without ever
+resolving which window that is.
 
 ## On "v1 watches; it doesn't launch agents"
 

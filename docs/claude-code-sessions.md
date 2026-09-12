@@ -15,9 +15,11 @@ opened through the VS Code extension; 16–17 were live during the spike.
   milliseconds.
 - **Titles: solved, with two gaps.** The title VS Code shows is stored in the transcript,
   but resumed sessions and never-prompted sessions don't have one on disk.
-- **State: has to be inferred, and the inference is wrong in one common case.** No state
-  field exists anywhere on disk. Inferring it from transcript writes works for genuinely
-  idle sessions but reports a session running a long tool call as idle.
+- **State: reported since 2.1.269, inferred before it.** The registry now carries
+  `status` (`busy` / `waiting` / `idle`) and names what a waiting session wants in
+  `waitingFor`. It did not in 2.1.266, which is what the inference below was built for;
+  that inference survives as the fallback and as the one refinement `status` cannot
+  make. See [Correction, 2026-09-12](#correction-2026-09-12-the-registry-reports-state).
 
 **Everything here is undocumented Claude Code internals** except `claude agents --json`.
 Formats can change in any release. Design the app to degrade, not crash.
@@ -30,7 +32,7 @@ surface, not a new capability, so try agent view before building.
 
 | Source | Gives you | Stability |
 | --- | --- | --- |
-| `~/.claude/sessions/<pid>.json` | The live session list, with no state | Undocumented |
+| `~/.claude/sessions/<pid>.json` | The live session list, with state since 2.1.269 | Undocumented |
 | `claude agents --json` | The same list minus `version`, `entrypoint`, socket path | Supported CLI |
 | `~/.claude/projects/<enc-cwd>/<sessionId>.jsonl` | Title, plus write activity to infer state from | Undocumented |
 | `/tmp/cc-socks/<pid>.sock` | Authoritative busy/idle (used by `ListAgents`) | Undocumented protocol, not reverse-engineered |
@@ -157,7 +159,11 @@ A new session got its first title **0.8s** after its first prompt was submitted.
 
 ## State
 
-No state field exists in the registry, `claude agents --json`, or the transcript format.
+> **Superseded for Claude Code 2.1.269 and later.** The registry reports state directly;
+> see [the correction below](#correction-2026-09-12-the-registry-reports-state). What
+> follows describes 2.1.266, and is still what Armada falls back to on an older build.
+
+No state field existed in the registry, `claude agents --json`, or the transcript format.
 The options:
 
 1. **Transcript-write recency (what the spike uses).** A write marks the session working;
@@ -176,6 +182,44 @@ The options:
    investigated, and it needs the session's messaging token, so treat it as a last resort.
    The registry's `peerFeatures` includes `notify_idle`, and `SendMessage` has a
    `notify_when_idle` option, which hints at what the protocol carries.
+
+### Correction, 2026-09-12: the registry reports state
+
+Measured against Claude Code **2.1.269**, five live registries, all five carrying every
+field below. The 2.1.266 sample earlier in this document has none of them, so this landed
+somewhere in between.
+
+```json
+"status": "waiting",
+"waitingFor": "permission prompt",
+"statusUpdatedAt": 1789241495061,
+"updatedAt": 1789241495061
+```
+
+- **`status` is a closed set: `busy`, `waiting`, `idle`.** Confirmed from the CLI's own
+  reading of the field, which maps busy → `active`, waiting → `blocked`, anything else →
+  `idle`. Live sample: 2 busy, 2 waiting, 1 idle.
+- **`waitingFor` is free-form display text and must never be matched against.** The CLI
+  builds it from a per-dialog table; values seen in the binary include `permission
+  prompt`, `dialog open`, `input needed` and `sandbox request`, and the set grows with
+  every new kind of prompt. Show it verbatim.
+- **`updatedAt` moves on every status change**, which makes it a better "last activity"
+  than the transcript's mtime: a session parked on a permission prompt writes no
+  transcript but does move this.
+- **The registry is a live document.** All of the above are rewritten in place under the
+  same filename, so a reader that caches the decoded registry when a session first
+  appears pins state and activity to that instant. Re-read it on every rescan.
+
+What this fixes: option 1's false-idle-during-long-tool-calls, and the case the original
+verdict called "wrong in one common case" — a session stopped on a permission prompt,
+which inference reports as "running a tool" and which now reports itself. What it does
+**not** give is which *kind* of busy a busy session is; the unanswered-`tool_use` check in
+option 2 is still the only thing that separates a running tool from a model writing, and
+it is still a guess.
+
+The messaging socket in option 3 remains uninvestigated, and is now less urgent: the two
+things it was wanted for — authoritative busy/idle, and "waiting for you" — are both in
+the registry. Per-session token usage is not, and would still need it.
 
 ## Measured latencies
 
@@ -312,6 +356,52 @@ Its response is richer than the TUI draws: `categories`, `totalTokens`/`maxToken
 unattributed). The SDK exposes it as a plain `getContextUsage(…)` with **no**
 `EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` warning, unlike `get_usage`.
 
+### Correction, 2026-09-12: a spawned probe answers it, about itself
+
+The paragraph below was written from the binary and is right about the *watched*
+session. It was wrong about what is recoverable at all, and the difference matters.
+
+Running the request against a headless `claude` **works**, in ~1.0–1.3s:
+
+```json
+{"categories":[{"name":"System prompt","tokens":3013},{"name":"System tools","tokens":29589},
+               {"name":"Memory files","tokens":422},{"name":"Skills","tokens":9417},
+               {"name":"System tools (deferred)","tokens":21884,"isDeferred":true},
+               {"name":"Autocompact buffer","tokens":33000},{"name":"Free space",...}],
+ "totalTokens":42441,"maxTokens":1000000,
+ "memoryFiles":[{"path":"~/.claude/CLAUDE.md","tokens":256},{"path":"…/memory/MEMORY.md","tokens":166}],
+ "messageBreakdown":{"toolCallTokens":0,"userMessageTokens":0,…}}
+```
+
+Three things follow:
+
+- **`memoryFiles` is NOT blanked on the local path.** Only the Remote Control bridge
+  strips it (`memoryFiles: []`, unconditionally). A local probe returns per-file paths
+  and token counts. An earlier draft here carried the bridge's restriction across to
+  the local path; that was wrong.
+- **`messageBreakdown` is all zeros**, which is the proof that the answer describes the
+  *probe's own* fresh session and not any watched one. That half of the reasoning below
+  holds: the subtype takes no session id, and a spawned process has its own context.
+- **Deferred categories are excluded from `totalTokens`.** One probe reported
+  `MCP tools (deferred): 222,156` against a total of 39,974 — counting them would put a
+  session at a quarter of a million tokens before its first prompt. Filtering to
+  non-deferred and dropping `Free space` and `Autocompact buffer` reproduces Claude
+  Code's own `totalTokens` exactly, which is the check worth keeping.
+
+So the composition of the *startup prefix* is exactly recoverable for a comparable
+fresh session in a given cwd and config folder — it is what `ContextProbe` reads — while
+a watched session's live total still comes only from its transcript. The probe's cwd is
+load-bearing: `claude` resolves project settings and `CLAUDE.md` from it.
+
+**Do not hold the process open.** One process does answer repeated control requests
+(verified). An idle one measured **128.4MB RSS, a 206.2MB physical footprint, and three
+child MCP server processes** — and what it reports does not change until the config
+does, so there is nothing to poll for. Spawn per answer, cache per (folder, cwd).
+
+> **Beware the cleanup.** `pkill -f "input-format stream-json"` matches **every VS Code
+> session on the machine** — the extension launches `claude` with exactly those flags.
+> It killed 18 of 24 live sessions here on 2026-09-12. Kill the pid you spawned.
+
 **It is unreachable from a watcher, and the reason is structural.** `get_usage` answers
 standalone because rate limits are account-scoped; context is session-scoped state in
 another process's memory, and the subtype takes no session id. The builder has three
@@ -334,15 +424,60 @@ watched.
 a genuine argument for the launching side of a decision `design.md` left open, and it was
 not available when that decision was framed.
 
+## The peer socket is an inbox, not a control channel
+
+Settled 2026-09-12 against 2.1.267, by reading the CLI binary and by connecting to **one
+session — the one doing the reading**, with its own token.
+
+Every live registry advertises `"messagingSocketPath": "/tmp/cc-socks/<pid>.sock"`,
+`"peerProtocol": 1` and `"peerFeatures": ["notify_idle", "reply_across_default_dirs",
+"artifact_yield"]`, and the sockets are real: `srw-------`, one per pid, in a 0700
+directory. The `<pid>.<hash>.key` file beside each registry — which `SessionRegistry`
+calls unparseable and ignores — is its auth: `{peerToken, procStart|procStartFt,
+pidDomain}` at mode 0600, tagged `[uds-auth]`.
+
+**A session does not need that file for itself.** Its own `CLAUDE_CODE_MESSAGING_SOCKET`
+and `CLAUDE_CODE_MESSAGING_TOKEN` are already in its environment, which is how this was
+tested without reading any other session's key.
+
+**The protocol is newline-delimited JSON**, from the handler's own log strings: `Failed to
+parse JSON line`, `Closing a connection that sent no complete line within ${n} ms`, a
+maximum line length, and `Dropped ${type} from a connection that did not authenticate;
+closing it`. Frames carry a `session_id` and are dropped on mismatch.
+
+**Everything it handles is messaging**, and that is the finding that matters:
+
+| Verb | What it does |
+| --- | --- |
+| injected `user` message | delivers text into the session's turn |
+| `notify_when_idle` | subscribe to a peer's idle transition |
+| `peer_idle_notice` | the notification back, correlated by `orig_msg_id` |
+| `peer_message_status` | delivery receipt for an outstanding send |
+| `artifact_replies_yielded` | the `artifact_yield` feature |
+| hold-receipt | acknowledgement before delivery |
+
+**There is no query verb at all** — nothing that returns state. So the socket cannot
+report a session's context, its usage, or anything else about it; `ListAgents`' busy/idle
+comes from the idle *subscription*, not from asking. The advertised `peerFeatures` say the
+same thing.
+
+That closes it for the context panel. The protocol that can answer —
+`get_context_usage` — runs over the process's stdio, which belongs to whoever launched it,
+so a watched session's figures still come from its transcript.
+
+> **This is a write channel to running agents.** `notify_when_idle` and the user-message
+> injection are how one session steers another, and `docs/reaching-agents.md` records that
+> Claude *acts* on text delivered this way. Probing it against sessions doing real work is
+> not a read-only experiment. Use a session's own socket and own token, or reverse it
+> statically.
+
 ## Open questions, in priority order
 
 1. Does the unanswered-`tool_use` rule fix false idle? Verify with a session running a
    long command.
-2. **Does `/tmp/cc-socks/<pid>.sock` carry `control_request`?** If it does,
-   `get_context_usage` becomes reachable locally and the whole disk-reading approach above
-   is superseded by an exact one. It needs the session's messaging token and the protocol
-   is unreversed, so this is the same last resort as question 3 below — but the prize is
-   now much larger than busy/idle.
+2. ~~**Does `/tmp/cc-socks/<pid>.sock` carry `control_request`?**~~ **Answered
+   2026-09-12: no** — see "The peer socket is an inbox" below. The disk-reading approach
+   stands.
 3. Where does VS Code keep a resumed session's title? That decides whether resumed
    sessions can ever show one.
 4. Is the messaging socket protocol simple enough to read busy/idle directly, and is that

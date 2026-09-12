@@ -136,6 +136,58 @@ From a zero-dependency stdio board server ([spike/delivery/](spike/delivery/READ
   `~/.claude/settings.json`. Teams share a task list under `~/.claude/tasks/<team>/` and
   mailboxes under `~/.claude/teams/<team>/inboxes/`.
 
+## The transport underneath `SendMessage`
+
+Read out of the 2.1.267 binary on 2026-09-12, and checked against this Mac's 17 live
+sockets. The protocol itself is written up in
+[claude-code-sessions.md](claude-code-sessions.md#the-peer-socket-is-an-inbox-not-a-control-channel);
+what matters here is what it means for reaching agents.
+
+**It is a per-session Unix socket, and `SendMessage` rides it.** Every registry advertises
+`messagingSocketPath`, `peerProtocol: 1` and `peerFeatures`. The handler's verbs are an
+injected `user` message, `notify_when_idle`, `peer_idle_notice`, `peer_message_status` and
+`artifact_replies_yielded` — which line up one-for-one with what `SendMessage` does,
+including its documented `notify_when_idle` option and the `artifact_yield` feature flag.
+
+**The socket namespace is per-machine, not per account.** The path is
+`$XDG_RUNTIME_DIR`-or-tmpdir + `cc-socks/<pid>.sock`, falling back to
+`/tmp/cc-socks-<uid>/<pid>.sock` when the first exceeds the 103-byte `sun_path` limit.
+Nothing in it is derived from `CLAUDE_CONFIG_DIR`. Verified: this Mac's `/tmp/cc-socks`
+held 17 sockets belonging to **both** config folders, interleaved.
+
+That splits the cross-account question in two, and the halves have different answers:
+
+| | Cross-account? |
+| --- | --- |
+| **Transport** | **Yes.** One socket directory per uid; both accounts' sessions are already in it. |
+| **Discovery** | **No.** The session registry lives *inside* each config folder, and `claude agents --json` reports only the folder its own environment points at. |
+
+**So cross-account messaging is blocked by discovery, not by transport** — which is worth
+weighing against the plan in [design.md](design.md#1-architecture-decided) to build a
+second socket and a `hubctl` around it. Armada already enumerates every config folder
+(`ClaudeConfigFolder.discoverAll()`), so it already holds the half that is missing.
+Whether to drive the existing transport or run its own is a live design decision, not a
+foregone one; the arguments for its own socket — a router that decides delivery, an audit
+log, cross-*vendor* reach to Codex, which this protocol has no notion of — are unaffected
+by this and are still the reason the plan exists.
+
+`reply_across_default_dirs` is narrower than it sounds: it permits replying to a socket in
+a *different recognised socket directory* (the XDG path versus the `/tmp` fallback), gated
+on the peer's credentials being verified (`verifiedPeerPid`, `ownerUids`). It is not about
+config folders.
+
+**Caution, and it is not theoretical.** This is a write channel into running agents: the
+delivery verb injects a user message, and this document already records that Claude *acts*
+on text delivered that way. A stray frame to a live session is an unintended instruction,
+not a failed query. Probe a session's own socket with its own
+`CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`, both of which are in its
+own environment, or read the binary instead.
+
+**One thing to re-check:** `claude-code-sessions.md` lists this socket as "authoritative
+busy/idle (used by `ListAgents`)". The handler has **no query verb** — there is nothing
+that answers "are you busy". Either `ListAgents` uses the idle *subscription*, or it gets
+that state somewhere else. Not established; flagged rather than corrected.
+
 ## Sender identity
 
 ### Claude Code (verified)
