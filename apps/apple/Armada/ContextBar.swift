@@ -23,6 +23,24 @@ nonisolated struct ContextCategory: Sendable, Hashable, Identifiable {
   static let prefixColor = Color(red: 0.36, green: 0.55, blue: 0.94)
   /// The red `/context` gives "Messages".
   static let conversationColor = Color(red: 0.77, green: 0.27, blue: 0.24)
+
+  /// `/context`'s own swatch for a probed category, by the name it returns.
+  ///
+  /// The palette is Claude Code's: white for the system prompt, blue for system
+  /// tools, green for MCP, tan for memory files, purple for skills. An unknown name
+  /// falls back to the prefix blue rather than to nothing, so a category added in a
+  /// future release still gets a swatch and still lines up with its row.
+  static func color(forProbed name: String) -> Color {
+    switch name {
+    case "System prompt": .init(white: 0.92)
+    case "System tools": prefixColor
+    case "MCP tools": .init(red: 0.55, green: 0.80, blue: 0.55)
+    case "Memory files": .init(red: 0.90, green: 0.70, blue: 0.44)
+    case "Skills": .init(red: 0.78, green: 0.56, blue: 0.90)
+    case "Custom agents": .init(red: 0.45, green: 0.75, blue: 0.85)
+    default: prefixColor
+    }
+  }
 }
 
 /// The context window as one bar, banded like `/context`'s.

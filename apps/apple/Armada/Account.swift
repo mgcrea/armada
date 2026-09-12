@@ -25,6 +25,10 @@ final class Account: Identifiable {
 
   let sessions: SessionWatcher
 
+  /// What a session in each of this account's projects loads before its first prompt.
+  /// Filled lazily, only for the project whose session is being looked at.
+  let compositions: ContextCompositions
+
   /// The folder path, without a trailing slash.
   ///
   /// This is persisted as the sidebar's remembered selection, so it has to be
@@ -41,6 +45,7 @@ final class Account: Identifiable {
   init(folder: ClaudeConfigFolder) {
     self.folder = folder
     sessions = SessionWatcher(folder: folder)
+    compositions = ContextCompositions(folder: folder)
   }
 
   /// The organization's name, falling back to the folder's own.

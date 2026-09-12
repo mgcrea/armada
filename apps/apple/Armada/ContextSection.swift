@@ -10,6 +10,9 @@ import SwiftUI
 struct ContextSection: View {
   let session: Session
   let accountModelID: String?
+  /// What a session started in this project loads today, or nil until the probe
+  /// answers. Claude-only: see `ContextProbe`.
+  let composition: ContextComposition?
   let now: Date
 
   var body: some View {
@@ -22,43 +25,18 @@ struct ContextSection: View {
       let categories = categories(context: context)
       let used = categories.reduce(0) { $0 + $1.tokens }
 
-      Section("Context") {
-        VStack(alignment: .leading, spacing: 6) {
-          // The resolved id, not `message.model`: the variant suffix is the whole
-          // difference between a 200k window and a 1M one, and a transcript never
-          // carries it. `/context` shows the same string.
-          Text(window.displayModelID ?? context.modelID ?? "Unknown model")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-          Text(TokenCount.headline(total: used, limit: window.limit))
-            .font(.callout.monospacedDigit())
-            .contentTransition(.numericText())
-          ContextBar(categories: categories, limit: window.limit)
-            .padding(.top, 2)
-        }
-        .padding(.vertical, 2)
-        .help(window.source.explanation)
-
-        CategoryHeader()
-        ForEach(categories) { category in
-          CategoryRow(
-            name: category.name, tokens: category.tokens, limit: window.limit,
-            color: category.color
-          )
-          .help(category.help)
-        }
-        // No swatch: free space is the track, not a band on it.
-        CategoryRow(
-          name: "Free space", tokens: max(window.limit - used, 0), limit: window.limit,
-          color: nil)
-
-        if let growth = session.growth {
-          GrowthLine(growth: growth, total: used, limit: window.limit, now: now)
-        }
-        if let compaction = session.compaction {
-          CompactionLine(compaction: compaction, now: now)
-        }
-      }
+      ContextPanel(
+        // The resolved id, not `message.model`: the variant suffix is the whole
+        // difference between a 200k window and a 1M one, and a transcript never
+        // carries it. `/context` shows the same string.
+        modelLabel: window.displayModelID ?? context.modelID ?? "Unknown model",
+        categories: categories,
+        limit: window.limit,
+        limitHelp: window.source.explanation,
+        growth: session.growth,
+        compaction: session.compaction,
+        composition: composition,
+        now: now)
     }
   }
 
@@ -98,6 +76,73 @@ struct ContextSection: View {
     // request is still its first has a "Conversation" of exactly 0, and a row reading
     // `0  0.0%` is noise that looks like a defect.
     .filter { $0.tokens > 0 }
+  }
+}
+
+/// The context panel itself: headline, bar, table, and whatever the vendor can add
+/// underneath.
+///
+/// **Takes figures, not a session, and that is what keeps the two vendors in step.**
+/// Claude and Codex arrive at these numbers by completely different routes — one sums
+/// three fields of an assistant turn's `usage` and infers the window size from a model
+/// id, the other reads `last_token_usage` and a stated `model_context_window` out of a
+/// `token_count` event — but what a reader wants to see is identical, so the rendering
+/// is written once and each vendor supplies the data. `ContextSection` and
+/// `CodexContextSection` are the two adapters, and each is short enough to read in one
+/// go.
+///
+/// `compaction` is nil for Codex: nothing in a rollout records one, and no session on
+/// this Mac has ever contained the word outside its system prompt.
+struct ContextPanel: View {
+  let modelLabel: String
+  let categories: [ContextCategory]
+  let limit: Int
+  /// Where `limit` came from, as a tooltip. The two vendors differ most here: Codex
+  /// states the number, Claude's has to be resolved from whatever is available.
+  let limitHelp: String
+  var growth: ContextGrowth?
+  var compaction: Compaction?
+  /// The probed breakdown of what a fresh session here would load. Nil for Codex,
+  /// which has no equivalent, and nil until the probe answers.
+  var composition: ContextComposition?
+  let now: Date
+
+  var body: some View {
+    let used = categories.reduce(0) { $0 + $1.tokens }
+    Section("Context") {
+      VStack(alignment: .leading, spacing: 6) {
+        Text(modelLabel)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+        Text(TokenCount.headline(total: used, limit: limit))
+          .font(.callout.monospacedDigit())
+          .contentTransition(.numericText())
+        ContextBar(categories: categories, limit: limit)
+          .padding(.top, 2)
+      }
+      .padding(.vertical, 2)
+      .help(limitHelp)
+
+      CategoryHeader()
+      ForEach(categories) { category in
+        CategoryRow(
+          name: category.name, tokens: category.tokens, limit: limit, color: category.color
+        )
+        .help(category.help)
+      }
+      // No swatch: free space is the track, not a band on it.
+      CategoryRow(name: "Free space", tokens: max(limit - used, 0), limit: limit, color: nil)
+
+      if let growth {
+        GrowthLine(growth: growth, total: used, limit: limit, now: now)
+      }
+      if let compaction {
+        CompactionLine(compaction: compaction, now: now)
+      }
+      if let composition {
+        CompositionGroup(composition: composition, limit: limit)
+      }
+    }
   }
 }
 
@@ -212,5 +257,59 @@ private struct CompactionLine: View {
       compaction.wasManual
         ? "This session was compacted with /compact."
         : "Claude Code compacted this session automatically when it filled its window.")
+  }
+}
+
+/// The breakdown `/context` shows, for a session started in this project now.
+///
+/// **Its own group with its own total, never merged into the table above.** The rows
+/// above are this session's, read from its transcript; these come from a probe of a
+/// *fresh* session in the same directory, and the two totals will not match — they
+/// differ by the first prompt, by anything loaded part-way through, and by whatever
+/// has changed in the config since. Presenting them as one table would invite
+/// subtracting one from the other, which is the one thing these numbers cannot do.
+private struct CompositionGroup: View {
+  let composition: ContextComposition
+  let limit: Int
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text("A session started here loads")
+        .font(.caption2.weight(.semibold))
+        .textCase(.uppercase)
+        .foregroundStyle(.tertiary)
+      Text(
+        "Measured by asking Claude Code, not this session — it cannot report another "
+          + "process's context. The total below is its own."
+      )
+      .font(.caption2)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, 2)
+    .help("Measured \(composition.measuredAt.formatted(date: .omitted, time: .shortened)).")
+
+    ForEach(composition.categories) { category in
+      CategoryRow(
+        name: category.name, tokens: category.tokens, limit: limit,
+        color: ContextCategory.color(forProbed: category.name))
+    }
+    CategoryRow(name: "Total", tokens: composition.total, limit: limit, color: nil)
+
+    // The files by name, which is the part `/context` shows only as one number and
+    // the part someone can act on: a 20k CLAUDE.md is a thing to go and edit.
+    ForEach(composition.memoryFiles) { file in
+      HStack(spacing: 8) {
+        Text(file.displayPath)
+          .truncationMode(.head)
+        Spacer(minLength: 8)
+        Text(TokenCount.short(file.tokens))
+          .monospacedDigit()
+      }
+      .font(.caption2)
+      .foregroundStyle(.tertiary)
+      .lineLimit(1)
+      .help(file.path)
+    }
   }
 }
