@@ -67,7 +67,7 @@ private struct MenuBarLabel: View {
   private var isHaloLit: Bool {
     halo.isLit(
       claudeWorking: accounts.writingSessionCount,
-      claudeAwaitingTool: accounts.awaitingToolSessionCount,
+      claudeBlocked: accounts.blockedSessionCount,
       codexWorking: codex.workingCount,
       codexAwaitingInput: codex.awaitingInputCount)
   }

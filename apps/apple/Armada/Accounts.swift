@@ -75,10 +75,18 @@ final class Accounts {
     all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state == .working } }
   }
 
-  /// Silent, with an unanswered `tool_use` as the newest entry — running a tool,
-  /// or waiting for you to approve one, which the transcript cannot tell apart.
-  var awaitingToolSessionCount: Int {
-    all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state == .runningTool } }
+  /// Sessions that look like they want you: `.waiting`, plus `.runningTool`.
+  ///
+  /// **The two rest on completely different evidence and are counted together on
+  /// purpose.** `.waiting` is reported — Claude Code says the session is stopped and
+  /// names what it wants in `waitingFor`. `.runningTool` is the old inference, an
+  /// unanswered `tool_use` that is a long-running tool as often as a prompt nobody has
+  /// answered. The halo asks one question, "is anything asking for me", and a rung
+  /// that lit for the guess but not for the certainty would be indefensible.
+  var blockedSessionCount: Int {
+    all.reduce(0) {
+      $0 + $1.sessions.sessions.count { $0.state == .waiting || $0.state == .runningTool }
+    }
   }
 
   var totalSessionCount: Int {

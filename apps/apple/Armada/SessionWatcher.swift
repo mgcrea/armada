@@ -113,6 +113,20 @@ final class SessionWatcher {
 
     for registry in live {
       if let existing = byId[registry.sessionId] {
+        // **Take the new copy.** The session keeps its identity — and so its title,
+        // transcript and context readings — but the registry itself is a live
+        // document: `status`, `waitingFor` and `updatedAt` all move inside it, and
+        // keeping the copy read at adoption would freeze the reported state and the
+        // last-activity time at the moment the row first appeared.
+        // Guarded on inequality. `Session` is `@Observable`, so an unconditional
+        // assignment invalidates every view reading any registry field on every
+        // rescan — and a rescan runs whenever *any* session in the folder rewrites its
+        // file, which with a dozen sessions is most seconds. `SessionRegistry` is a
+        // `Hashable` value type, so this compares by content.
+        if existing.registry != registry {
+          existing.registry = registry
+          refreshState(existing, wrote: false)
+        }
         next[registry.sessionId] = existing
         continue
       }
@@ -172,6 +186,12 @@ final class SessionWatcher {
     let now = Date()
     for session in sessions {
       guard session.state != .idle else { continue }
+      // **Skip anything the registry reported.** The idle threshold exists to age out
+      // a `.working` that was set by a transcript write and never contradicted; a
+      // reported state needs no ageing, and a session parked on a permission prompt is
+      // silent for minutes on purpose. Blanking that to idle after 20s is exactly the
+      // lie this threshold used to tell.
+      guard SessionState(registryStatus: session.registry.status) == nil else { continue }
       let silence = now.timeIntervalSince(session.lastWrite ?? .distantPast)
       if silence > Self.idleAfter {
         refreshState(session, wrote: false)
@@ -360,10 +380,30 @@ final class SessionWatcher {
   /// registry event that follows removes the row within ~2s, which is faster than
   /// anyone reads a state dot.
   private func refreshState(_ session: Session, wrote: Bool) {
+    // A write this instant outranks everything: it is the freshest evidence there is,
+    // and it lands in milliseconds where a registry rewrite has to go through
+    // FSEvents and a rescan.
     if wrote {
       session.state = .working
       return
     }
+
+    // The registry's own answer, where it has one.
+    if let reported = SessionState(registryStatus: session.registry.status) {
+      // The one refinement it cannot make. `busy` is true of a model producing text
+      // and of one sitting on an unanswered `tool_use`, and the transcript is the
+      // only thing that separates them. Nothing is refined about `waiting` or `idle`
+      // — those are complete answers.
+      guard reported == .working, let transcript = session.transcript else {
+        session.state = reported
+        return
+      }
+      session.state = TranscriptTitle.isAwaitingToolResult(at: transcript) ? .runningTool : .working
+      return
+    }
+
+    // No reported status: a folder on a build older than the one that started writing
+    // it. Everything below is the original inference, unchanged.
     guard let transcript = session.transcript else {
       session.state = .idle
       return

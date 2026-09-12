@@ -8,10 +8,11 @@ import Foundation
 /// which is the one you want answered from across the room, and which only the
 /// person using Armada can decide the shape of.
 ///
-/// **The ladder is ordered by how much guessing each rung does**, because none of
-/// the vendors publish the state this really wants. Claude Code and Codex both
-/// leave "waiting for you" to be inferred, and they leave it to be inferred from
-/// opposite halves of the record — see `SessionState` and `CodexSessionState`.
+/// **The ladder is ordered by how much guessing each rung does.** Claude Code now
+/// publishes the state this really wants — the registry carries `status: "waiting"`
+/// and names the reason in `waitingFor`, so the middle rung below is no longer a
+/// guess on the Claude side. Codex still leaves it to be inferred, and from the
+/// opposite half of the record — see `SessionState` and `CodexSessionState`.
 /// Widening the halo buys earlier warning and pays for it in false positives, so
 /// the rungs are named for what they actually watch rather than for how eager
 /// they are.
@@ -24,13 +25,14 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
   /// both edges of a turn, so its `working` is a fact, and Claude's is a write to
   /// the transcript inside the idle threshold.
   case working
-  /// The above, plus a Claude session whose newest entry is an unanswered
-  /// `tool_use`.
+  /// The above, plus a Claude session that is stopped and wants something.
   ///
-  /// Catches most of the moments Claude is actually blocked on a permission
-  /// prompt — and also every long-running tool that nobody needs to answer,
-  /// because the transcript has no field that tells those apart. See
-  /// `TranscriptTitle.isAwaitingToolResult`.
+  /// **Mostly reported now, and much sharper than it used to be.** Claude Code
+  /// writes `status: "waiting"` with a reason — a permission prompt, an open
+  /// dialog, a sandbox request — and that is a fact, not a reading. The old
+  /// inference is still folded in for a folder on an older build, and it is the
+  /// part that over-fires: an unanswered `tool_use` is a long-running tool as
+  /// often as a prompt. See `SessionState` and `Accounts.blockedSessionCount`.
   case blocked
   /// The above, plus a Codex session holding its lock with the turn finished.
   ///
@@ -49,8 +51,8 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
     switch self {
     case .never: "Never"
     case .working: "While a session is working"
-    case .blocked: "…or a tool is waiting for approval"
-    case .waiting: "…or any session is waiting on me"
+    case .blocked: "…or a session is waiting on me"
+    case .waiting: "…or a Codex session is sitting at a finished turn"
     }
   }
 
@@ -60,14 +62,14 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
   /// four numbers — it is the one piece of this feature worth being able to reason
   /// about without a running app.
   func isLit(
-    claudeWorking: Int, claudeAwaitingTool: Int, codexWorking: Int, codexAwaitingInput: Int
+    claudeWorking: Int, claudeBlocked: Int, codexWorking: Int, codexAwaitingInput: Int
   ) -> Bool {
     switch self {
     case .never: false
     case .working: claudeWorking > 0 || codexWorking > 0
-    case .blocked: claudeWorking > 0 || codexWorking > 0 || claudeAwaitingTool > 0
+    case .blocked: claudeWorking > 0 || codexWorking > 0 || claudeBlocked > 0
     case .waiting:
-      claudeWorking > 0 || codexWorking > 0 || claudeAwaitingTool > 0 || codexAwaitingInput > 0
+      claudeWorking > 0 || codexWorking > 0 || claudeBlocked > 0 || codexAwaitingInput > 0
     }
   }
 }

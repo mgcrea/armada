@@ -1,24 +1,41 @@
 import Foundation
 import SwiftUI
 
-/// What a session appears to be doing.
+/// What a session is doing.
 ///
-/// Inferred, never read: no state field exists in the registry, in
-/// `claude agents --json`, or in the transcript format. See
-/// `docs/claude-code-sessions.md`.
+/// **Reported where Claude Code reports it, inferred only where it does not.** The
+/// registry carries a `status` of `busy` / `waiting` / `idle` — see
+/// `SessionRegistry.status` — and that is the authority for the coarse state. Earlier
+/// versions of this app had no such field to read and inferred all three from
+/// transcript writes; that inference survives as the fallback for a folder running an
+/// older build, and as the one refinement the registry cannot make.
+///
+/// See `docs/claude-code-sessions.md`.
 enum SessionState: String, Sendable {
-  /// Wrote to its transcript within the idle threshold.
+  /// `status: "busy"` — or, with no reported status, wrote to its transcript within
+  /// the idle threshold.
   case working
-  /// Silent, and its newest entry is an unanswered `tool_use` — running a tool,
-  /// or waiting for approval to. Best-effort; see `TranscriptTitle`.
+  /// Busy, and its newest transcript entry is an unanswered `tool_use`.
+  ///
+  /// **The one state that is still a guess, and the only one that has to be.** The
+  /// registry says `busy`; the transcript says what kind of busy. See
+  /// `TranscriptTitle.isAwaitingToolResult`.
   case runningTool
-  /// Silent, and finished its turn.
+  /// `status: "waiting"` — stopped, and wanting something from you. What it wants is
+  /// in `Session.waitingFor`.
+  ///
+  /// Claude Code's own word for this status, kept rather than renamed: the app's rule
+  /// is to use each vendor's vocabulary rather than invent a third. Note that
+  /// `MenuBarHalo.blocked` is a *setting*, not this.
+  case waiting
+  /// `status: "idle"` — or, with no reported status, silent and finished its turn.
   case idle
 
   var label: String {
     switch self {
     case .working: "Working"
     case .runningTool: "Running a tool"
+    case .waiting: "Waiting for you"
     case .idle: "Idle"
     }
   }
@@ -27,19 +44,46 @@ enum SessionState: String, Sendable {
     switch self {
     case .working: .green
     case .runningTool: .orange
+    // Blue, as `CodexSessionState.awaitingInput` is. The two vendors mean subtly
+    // different things by it, but "this one is stopped and wants you" is the same
+    // sentence in both panes and should not be two colours.
+    case .waiting: .blue
     case .idle: .secondary
     }
   }
 
-  /// Whether the UI should mark this as a guess. `.runningTool` rests on a rule
-  /// `docs/claude-code-sessions.md` files as unverified.
+  /// Whether the UI should mark this as a guess.
+  ///
+  /// Only `.runningTool`, and now for a narrower reason than it used to be: the other
+  /// three come straight from the registry. It stays best-effort because distinguishing
+  /// a running tool from one awaiting approval is the transcript's job, and the
+  /// transcript cannot do it — though a session genuinely blocked on a prompt now
+  /// usually reports `.waiting` before this ever fires.
   var isBestEffort: Bool { self == .runningTool }
+
+  /// The registry's vocabulary, or nil for an absent or unrecognised status.
+  ///
+  /// Nil rather than a default: an unknown string is a Claude Code that has grown a
+  /// state this app has never seen, and falling back to the transcript inference is a
+  /// better answer than picking one of these four at random.
+  init?(registryStatus: String?) {
+    switch registryStatus {
+    case "busy": self = .working
+    case "waiting": self = .waiting
+    case "idle": self = .idle
+    default: return nil
+    }
+  }
 }
 
 /// One session as Armada shows it: the registry row, plus everything inferred.
 @Observable
 final class Session: Identifiable {
-  let registry: SessionRegistry
+  /// **Replaced on every rescan, not frozen at adoption.** The registry is a live
+  /// document: Claude Code rewrites it whenever the session's status changes, so
+  /// `status`, `waitingFor` and `updatedAt` all move within it. Holding the copy read
+  /// when the row first appeared would pin every one of them to that instant.
+  var registry: SessionRegistry
 
   /// Nil until a transcript is found — and permanently nil for a session that has
   /// never been prompted, which has no transcript file at all.
@@ -52,6 +96,10 @@ final class Session: Identifiable {
 
   var state: SessionState = .idle
   var lastWrite: Date?
+
+  /// What this session is waiting for, when `state` is `.waiting`. Display text
+  /// straight from the registry — see `SessionRegistry.waitingFor`.
+  var waitingFor: String? { state == .waiting ? registry.waitingFor : nil }
 
   /// The newest rate-limit refusal seen in this session's transcript, if any.
   ///
