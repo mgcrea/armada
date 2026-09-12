@@ -80,7 +80,24 @@ final class CodexSession: Identifiable {
 
   var state: CodexSessionState = .ended
   var lastEventAt: Date?
+
+  /// Cumulative tokens across the session — every request added up, which on a long
+  /// session is several times the context window. Shown as a session total and never
+  /// as occupancy; `context` is the occupancy.
   var totalTokens: Int?
+
+  /// The newest request's prompt, and the window Codex stated for it. Held rather
+  /// than cleared when a scan reads nothing, for the reason the Claude side holds its
+  /// context figures: a tail that happens to contain no `token_count` is not evidence
+  /// that the session has emptied.
+  var context: ContextReading?
+  var contextLimit: Int?
+  var growth: ContextGrowth?
+
+  /// What the session was carrying on its first request. Filled in once, off the main
+  /// actor — the first `token_count` sits hundreds of KB into the file.
+  var baseline: ContextBaseline?
+  var didScanBaseline = false
 
   /// File size at the last tail read, so a rollout that has not grown is not
   /// re-parsed on every filesystem event.

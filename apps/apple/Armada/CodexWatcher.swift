@@ -250,6 +250,11 @@ final class CodexWatcher {
       if let tail = entry.tail {
         session.lastEventAt = tail.lastEventAt ?? session.lastEventAt
         session.totalTokens = tail.totalTokens ?? session.totalTokens
+        // Held, never cleared. A tail with no `token_count` in it means this pass
+        // learned nothing about the context, not that the context went away.
+        session.context = tail.context ?? session.context
+        session.contextLimit = tail.contextLimit ?? session.contextLimit
+        session.growth = tail.growth ?? session.growth
         session.state = Self.state(locked: entry.locked, tail: tail)
       } else {
         // Nothing was read this pass; only liveness can have changed.
@@ -258,6 +263,12 @@ final class CodexWatcher {
       session.tailScannedSize = entry.size
       if session.title == nil, let title = scan.titles[entry.sessionId] {
         session.title = title
+      }
+      // Once per session, and only for one that has actually reported a context:
+      // without a `context` there is nothing for a baseline to split.
+      if !session.didScanBaseline, session.context != nil {
+        session.didScanBaseline = true
+        scanBaselineInBackground(sessionId: session.id, rollout: session.rollout)
       }
       next[entry.sessionId] = session
     }
@@ -281,6 +292,26 @@ final class CodexWatcher {
     if wantsAnotherScan {
       wantsAnotherScan = false
       scheduleScan()
+    }
+  }
+
+  /// The opening reading, off the main actor.
+  ///
+  /// Modelled on `SessionWatcher.scanTitleInBackground`, including why it is keyed by
+  /// id rather than capturing the session: the answer is applied to whichever session
+  /// still holds that id when it lands, and dropped if the session went away while the
+  /// read was running.
+  ///
+  /// It reads up to 1MB where the tail reads 64KB, because Codex's first
+  /// `token_count` is a long way in — 332KB into the one 13.7MB rollout measured. Once
+  /// per session, and nothing can change the answer afterwards.
+  private func scanBaselineInBackground(sessionId: String, rollout: URL) {
+    Task.detached(priority: .utility) { [weak self] in
+      guard let baseline = CodexContext.baseline(at: rollout) else { return }
+      await MainActor.run {
+        guard let self, let session = self.byId[sessionId], session.baseline == nil else { return }
+        session.baseline = baseline
+      }
     }
   }
 

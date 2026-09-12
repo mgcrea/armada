@@ -26,6 +26,41 @@ struct CodexPaneView: View {
   private var grouping: SessionGrouping { SessionGrouping(stored: storedGrouping) }
 
   var body: some View {
+    // `HSplitView`, matching `AccountPaneView`, and for the reason written up there:
+    // the context panel is a bar, a headline, two captions and a table, which wrapped
+    // into an unreadable stack inside a 280pt system inspector. This pane kept the
+    // inspector until it gained the same panel, at which point it inherited the same
+    // problem — the two panes are twinned, so the fix is too.
+    HSplitView {
+      sessions
+        .frame(minWidth: 320, idealWidth: 420)
+      CodexSessionDetail(session: selected, account: account, now: now)
+        .frame(minWidth: 300, idealWidth: 340)
+    }
+    .navigationTitle(account.displayName)
+    .navigationSubtitle(subtitle)
+    .onReceive(clock) { now = $0 }
+    .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
+      if let selection, !ids.contains(selection) { self.selection = nil }
+    }
+    .onAppear { applyRoute() }
+    .onChange(of: route.token) { applyRoute() }
+  }
+
+  /// Take the session the menu bar panel asked for, if it asked for one here.
+  private func applyRoute() {
+    guard let id = route.takeSession(in: .codex(account.id)) else { return }
+    selection = id
+    scrollTarget = id
+  }
+
+  /// The left half: the usage strip and the session list.
+  ///
+  /// Extracted for the same reason `AccountPaneView` extracts its own — one `body`
+  /// holding the strip, a branch, a `ScrollViewReader`, a grouped `List` and the
+  /// detail exceeded the type checker's budget outright once the context panel was
+  /// added ("unable to type-check this expression in reasonable time").
+  private var sessions: some View {
     VStack(spacing: 0) {
       CodexUsageHeader(account: account, now: now)
       if account.sessions.sessions.isEmpty {
@@ -70,25 +105,6 @@ struct CodexPaneView: View {
         }
       }
     }
-    .inspector(isPresented: .constant(true)) {
-      CodexSessionDetail(session: selected, account: account)
-        .inspectorColumnWidth(min: 240, ideal: 280)
-    }
-    .navigationTitle(account.displayName)
-    .navigationSubtitle(subtitle)
-    .onReceive(clock) { now = $0 }
-    .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
-      if let selection, !ids.contains(selection) { self.selection = nil }
-    }
-    .onAppear { applyRoute() }
-    .onChange(of: route.token) { applyRoute() }
-  }
-
-  /// Take the session the menu bar panel asked for, if it asked for one here.
-  private func applyRoute() {
-    guard let id = route.takeSession(in: .codex(account.id)) else { return }
-    selection = id
-    scrollTarget = id
   }
 
   /// One row, built the same way in both branches above. `.tag` is the `List`'s
@@ -331,11 +347,25 @@ struct CodexSessionRow: View {
         .lineLimit(1)
       }
       Spacer(minLength: 8)
-      if let last = session.lastEventAt ?? session.meta.startedAt {
-        Text(SessionRow.elapsed(from: last, to: now))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
-          .help(session.state.isLive ? "Age of the last event" : "Ended this long ago")
+      // Laid out as `SessionRow`'s, and showing the same quantity — context in use,
+      // never `session.totalTokens`. Codex is the only one of the two vendors that
+      // reports lifetime spend, and a column that meant one thing here and another in
+      // the Claude pane would be worse than a column that is missing from one of them.
+      VStack(alignment: .trailing, spacing: 2) {
+        if let last = session.lastEventAt ?? session.meta.startedAt {
+          Text(SessionRow.elapsed(from: last, to: now))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .help(session.state.isLive ? "Age of the last event" : "Ended this long ago")
+        }
+        if let tokens = session.context?.total {
+          Text(TokenCount.short(tokens))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .help(
+              "\(TokenCount.short(tokens)) tokens of context in use. See the inspector for what this session has cost in total."
+            )
+        }
       }
     }
     .padding(.vertical, 2)
@@ -363,9 +393,73 @@ struct CodexStateDot: View {
   }
 }
 
+/// What a Codex session is carrying — the Claude pane's context panel, from Codex's
+/// own numbers.
+///
+/// The adapter half of `ContextPanel`; `ContextSection` is the other. Everything
+/// visible is shared, so the two panes cannot drift, and what differs is only what the
+/// vendors actually record:
+///
+/// - **The window size is stated, not resolved.** `model_context_window` comes in the
+///   same event as the usage, so there is no `ContextWindow` here and no provenance to
+///   explain — the tooltip says Codex recorded it and that is the end of it.
+/// - **No compaction line.** Nothing in a rollout records one.
+/// - The bands are the same two, for the same reason, and split at the same place.
+struct CodexContextSection: View {
+  let session: CodexSession
+  let now: Date
+
+  var body: some View {
+    if let context = session.context, let limit = session.contextLimit {
+      ContextPanel(
+        modelLabel: session.meta.model ?? "Unknown model",
+        categories: categories(context: context),
+        limit: limit,
+        limitHelp: "Codex records the window size in its session log, so this is measured "
+          + "rather than inferred from the model.",
+        // Only while the session is alive. `projectedFull` extrapolates the measured
+        // rate forward from `now`, and this list holds sessions that ended hours ago —
+        // one of them was adding 1.3k per request across 13 seconds yesterday, which
+        // projects to "~full in 18 minutes" for a session that has no future at all.
+        // The Claude pane needs no such guard because its list is live by
+        // construction: a row there means a pid the kernel still answers for.
+        growth: session.state.isLive ? session.growth : nil,
+        now: now)
+    }
+  }
+
+  /// The same split as `ContextSection.categories`, and the same fallback when the
+  /// opening figure has not been read yet — here because the first `token_count` is
+  /// hundreds of KB into the file and the scan for it runs in the background.
+  private func categories(context: ContextReading) -> [ContextCategory] {
+    guard let baseline = session.baseline?.loadedAtStart, baseline <= context.total else {
+      return [
+        ContextCategory(
+          name: "Context used", tokens: context.total,
+          color: ContextCategory.conversationColor,
+          help: "The whole prompt on the newest request. The opening figure has not been "
+            + "read yet, so it is not split here.")
+      ]
+    }
+    return [
+      ContextCategory(
+        name: "Loaded at start", tokens: baseline, color: ContextCategory.prefixColor,
+        help: "This session's first request: the system prompt, its tools and the opening "
+          + "message, as one measured figure."),
+      ContextCategory(
+        name: "Conversation", tokens: context.total - baseline,
+        color: ContextCategory.conversationColor,
+        help: "Everything in the context beyond that first request — the turns themselves, "
+          + "plus anything read in along the way."),
+    ]
+    .filter { $0.tokens > 0 }
+  }
+}
+
 struct CodexSessionDetail: View {
   let session: CodexSession?
   let account: CodexAccount
+  let now: Date
 
   var body: some View {
     Form {
@@ -381,6 +475,9 @@ struct CodexSessionDetail: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+        // Above "Session", matching `SessionDetail`: the context is the live fact
+        // worth checking, and the folder and version are reference you read once.
+        CodexContextSection(session: session, now: now)
         Section("Session") {
           LabeledContent("Project", value: session.meta.projectName)
           LabeledContent("Folder", value: session.meta.cwd)
@@ -396,7 +493,12 @@ struct CodexSessionDetail: View {
             LabeledContent("Codex", value: version)
           }
           if let tokens = session.totalTokens {
-            LabeledContent("Tokens", value: tokens.formatted(.number))
+            // Named for what it is, now that the Context section above shows
+            // occupancy. These two numbers look alike and mean opposite things: this
+            // one only ever grows, and on a long session it runs to several times the
+            // window.
+            LabeledContent("Tokens used", value: tokens.formatted(.number))
+              .help("Every request in this session added up, not how full the window is.")
           }
         }
         if let parent = session.meta.parentThreadId {

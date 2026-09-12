@@ -138,6 +138,16 @@ nonisolated struct CodexRolloutTail: Sendable {
   let rateLimits: CodexRateLimits?
   let totalTokens: Int?
 
+  /// The newest request's prompt, and the window Codex says it was measured against.
+  /// Both out of the same `token_count` event the rate limits came from — see
+  /// `CodexContext`.
+  let context: ContextReading?
+  let contextLimit: Int?
+
+  /// How fast the window is filling, from the readings in this same tail. Nil when
+  /// the tail holds fewer than two, which is the ordinary case for a young session.
+  let growth: ContextGrowth?
+
   /// Whether a turn appears to be in flight.
   ///
   /// Everything except `task_complete` counts, including a rollout that so far has
@@ -266,6 +276,9 @@ nonisolated enum CodexRollout {
       if rateLimits == nil, payload?["type"] as? String == "token_count" {
         rateLimits = limits(payload?["rate_limits"], observedAt: at ?? lastEventAt ?? .now)
         let info = payload?["info"] as? [String: Any]
+        // Cumulative across the whole session, not the current context — the two live
+        // side by side in `info` and only one of them is the window's occupancy. See
+        // `CodexContext`.
         let usage = info?["total_token_usage"] as? [String: Any]
         totalTokens = usage?["total_tokens"] as? Int
       }
@@ -273,10 +286,17 @@ nonisolated enum CodexRollout {
       if lastEventType != nil, rateLimits != nil { break }
     }
 
+    // From the same buffer, never a second read. `CodexContext` walks it again rather
+    // than folding into the loop above: that loop stops at the newest `token_count`,
+    // and the growth series needs every one of them.
+    let newest = CodexContext.newestReading(inChunk: chunk, droppingFirstLine: start > 0)
+    let series = CodexContext.series(inChunk: chunk, droppingFirstLine: start > 0)
+
     guard lastEventType != nil || rateLimits != nil else { return nil }
     return CodexRolloutTail(
       lastEventType: lastEventType, lastEventAt: lastEventAt, rateLimits: rateLimits,
-      totalTokens: totalTokens)
+      totalTokens: totalTokens, context: newest?.reading, contextLimit: newest?.limit,
+      growth: ContextGrowth(series: series))
   }
 
   /// Decoded as narrowly as the Claude side decodes its cache, and for the same
