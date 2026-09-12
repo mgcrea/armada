@@ -10,16 +10,22 @@ import SwiftUI
 /// the qualification out.
 ///
 /// No entitlement pane: Armada sells nothing, so there is nothing to unlock.
+///
+/// Help is a pane rather than rows on About, and last rather than beside it: it
+/// keeps the About → What's New → Updates reading order the fleet settled on
+/// free for the two panes Armada does not have yet.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case usage
   case about
+  case help
 
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
     case .usage: "Usage"
     case .about: "About"
+    case .help: "Help"
     }
   }
 
@@ -28,6 +34,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "gearshape"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
+    case .help: "questionmark.circle"
     }
   }
 
@@ -52,7 +59,15 @@ struct SettingsWindowView: View {
       case .general: GeneralPane()
       case .usage: UsageSettingsPane()
       case .about:
-        AboutSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
+        // `includesSupport: false` — the support rows have their own pane now,
+        // and the package would otherwise draw them in both.
+        AboutSettingsPane(
+          app: Support.app,
+          showsIdentifier: true,
+          includesSupport: false,
+          preferIssueTracker: Support.preferIssueTracker)
+      case .help:
+        HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
       }
     }
     // Sized for the content, never the window: a sidebar spends up to 240pt before
