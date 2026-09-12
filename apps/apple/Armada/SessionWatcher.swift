@@ -129,6 +129,14 @@ final class SessionWatcher {
     byId = next
     // Newest first: the session someone just started is the one they are looking
     // for, and a stable sort keyed on start time keeps rows from jumping.
+    //
+    // **This is the baseline order, not the presented one.** `next` is a dictionary
+    // and has no order of its own, so something deterministic has to be imposed here
+    // or rows shuffle on every FSEvents tick. The window layers `SessionOrder` on top
+    // of this array, and the menu bar panel reads it directly through
+    // `Accounts.allSessions` — the panel shows three of nineteen, so its three have to
+    // stay the newest three whatever the window is set to. Do not make this
+    // preference-driven.
     sessions = next.values.sorted {
       ($0.registry.startedAt ?? 0, $0.id) > ($1.registry.startedAt ?? 0, $1.id)
     }
@@ -200,9 +208,32 @@ final class SessionWatcher {
   private func refreshTitle(_ session: Session) {
     if session.transcript == nil { locateTranscript(session) }
     guard let transcript = session.transcript else { return }
-    let size =
-      (try? FileManager.default.attributesOfItem(atPath: transcript.path(percentEncoded: false))[
-        .size]) as? UInt64 ?? 0
+    // One `attributesOfItem`, two answers. The size gates the read below; the
+    // modification date seeds `lastWrite`, and asking for both costs one `stat`.
+    let attributes =
+      (try? FileManager.default.attributesOfItem(atPath: transcript.path(percentEncoded: false)))
+      ?? [:]
+    let size = attributes[.size] as? UInt64 ?? 0
+
+    // **Above the size gate, on purpose.** `lastWrite` is otherwise set only from
+    // FSEvents observed while Armada is running, so every session adopted at launch
+    // has none until it next writes — and a list ordered by last activity over a
+    // column that is nil for most rows is not an ordering, it is the id tiebreak
+    // wearing a date's name. The file itself knows, and the gate below returns early
+    // on an unchanged file, which is exactly the cold-start case this is for.
+    //
+    // Never moves the value backwards: a write this process actually saw stamps
+    // `Date()`, which is at or after the mtime that caused it, so the live value
+    // always wins. And it cannot invent a state — `refreshState` sets `.working`
+    // only on `wrote: true`, which nothing here passes. Its one second-order effect
+    // is that `tick()`'s idle sweep skips a freshly adopted session for up to 20s,
+    // which is harmless: `rescan()` already ran the tool-use check on adoption.
+    if let modified = attributes[.modificationDate] as? Date,
+      modified > (session.lastWrite ?? .distantPast)
+    {
+      session.lastWrite = modified
+    }
+
     guard size != session.titleScannedSize || session.title == nil else { return }
     session.titleScannedSize = size
 
