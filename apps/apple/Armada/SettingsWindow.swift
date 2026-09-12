@@ -81,6 +81,7 @@ struct GeneralPane: View {
   @State private var accounts = Accounts.shared
   @State private var launchAtLogin = LoginItem.isEnabled
   @State private var loginError: String?
+  @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
 
   var body: some View {
     Form {
@@ -100,6 +101,24 @@ struct GeneralPane: View {
       } footer: {
         Text(
           "Armada watches sessions from the moment it starts. It never writes to your Claude configuration."
+        )
+      }
+
+      Section {
+        Picker("Ring the menu bar icon", selection: $halo) {
+          ForEach(MenuBarHalo.allCases, id: \.self) { option in
+            Text(option.label).tag(option)
+          }
+        }
+      } header: {
+        Text("Menu bar")
+      } footer: {
+        // Says what each rung costs rather than what it catches, because the
+        // failure people will actually hit is a halo that is always on — and the
+        // reason is not in the icon, it is in what the vendors do and do not
+        // record. The sails fill on their own and are not part of this choice.
+        Text(
+          "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex session that is merely open counts as waiting on you."
         )
       }
 

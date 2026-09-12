@@ -67,6 +67,20 @@ final class Accounts {
     all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state != .idle } }
   }
 
+  /// Strictly `.working`, where `workingSessionCount` above is "not idle" and so
+  /// also counts `.runningTool`. The menu bar halo needs the two apart: its first
+  /// rung is the one that rests on nothing inferred, and a session sitting on an
+  /// unanswered `tool_use` is inferred. See `MenuBarHalo`.
+  var writingSessionCount: Int {
+    all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state == .working } }
+  }
+
+  /// Silent, with an unanswered `tool_use` as the newest entry — running a tool,
+  /// or waiting for you to approve one, which the transcript cannot tell apart.
+  var awaitingToolSessionCount: Int {
+    all.reduce(0) { $0 + $1.sessions.sessions.count { $0.state == .runningTool } }
+  }
+
   var totalSessionCount: Int {
     all.reduce(0) { $0 + $1.sessions.sessions.count }
   }

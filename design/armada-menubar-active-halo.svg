@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
+  <title>Armada — menu bar template, a session is working and the halo is lit</title>
+  <!-- The filled glyph plus one shape: the halo. The rig and the water line are
+       byte-identical to `armada-menubar-active.svg`, and the rig is identical to
+       the idle file's too — the four glyphs are swapped in place in the menu bar,
+       so any drift would read as the icon twitching rather than as a state
+       changing. Only the halo is ever added.
+
+       THE HALO IS CUPERTINO'S CONSTRUCTION, not bastion's. Bastion offsets the
+       fort's own silhouette; that was drawn here first and rejected on a render.
+       A true outward offset of this rig is not a halo — offsetting two tall
+       triangular sails gives a pointed arch, and where the two sails' offsets
+       meet it creases at 71.8deg, which at 18pt reads as a lump on the upper left
+       rather than as a second shape. Measured, fitted to cubics at 0.0129pt max
+       deviation, rendered, and thrown away. Do not re-derive it.
+
+       So it is cupertino's: one conic around the mark, clipped where the mark
+       stops. RX IS 13.4, which is cupertino's ring radius exactly — the two apps
+       sit inches apart in the same menu bar, so the halo that goes round the sun
+       and the halo that goes round the ship are the same size across.
+
+       IT IS AN ELLIPSE AND NOT A CIRCLE, and that is forced rather than chosen.
+       A circle large enough to clear the masthead at y6.4 needs r=18.8 about a
+       centre low enough to stay off the water, which puts its sides at x-0.1 and
+       x36.1 — off the tile on both edges. The rig is tall and narrow; the halo
+       has to be, or the rig has to shrink, and the rig is not shrinking.
+
+       CLEARANCE IS 2.38 UNITS, measured as the true distance from the ellipse's
+       inner edge to the nearest ink on the rig — not the algebraic form, which
+       is wrong by a factor that grows with the aspect ratio. That is cupertino's
+       2.4 gap to within a rounding, and it is well clear of where this pair
+       actually fuses: sweeping ry and counting connected components on real
+       renders, the halo welds to the sails at 0.78 units of clearance and
+       separates at 0.98. This sits at 2.4x that boundary rather than balanced on
+       it. RY FOLLOWS FROM THE CLEARANCE: 15.8 is solved for it, not picked. Re-
+       solve it the same way if the rig ever moves.
+
+       THE FEET STOP ON THE SAILS' OWN BASE LINE, y27, by the clip — so every
+       shape in the glyph terminates on one line, which is what bastion's wall
+       does against its sky. The clip is a plain rectangle and not a normal offset
+       of the water the way cupertino's is, because this rig's base is already a
+       flat line at y27 rather than a curve; offsetting the water instead would
+       cut the sails, whose feet sit below it at the centre.
+
+       The halo adds 4.05 units above the rig and nothing below, since its lower
+       half is clipped away. So the active state rides higher than the idle one —
+       ink mass cy 19.30 against 21.54 — which is the same direction cupertino's
+       ring and bastion's wall move their glyphs, and the same reason the states
+       are seated by ink mass rather than by bounding box.
+
+       The stroke is 1.6 units (0.8pt): cupertino's halo weight and bastion's
+       wall weight exactly. One light shape around one solid one reads as a form
+       inside another; matched weights read as tramlines.
+
+       At 1x the gap does not resolve and a component count says the glyph is one
+       shape. Both siblings do the same thing at that size. Acceptable
+       degradation, not a bug to chase — retina is the design target, and 1x
+       still changes visibly, which is what the state needs to do.
+
+       Re-measure with a connected-component count on a real render after any
+       edit, never by eye: two components at 16, 18 and 20pt at 2x. -->
+  <defs>
+    <clipPath id="waterline">
+      <rect x="-4" y="-4" width="44" height="31"/>
+    </clipPath>
+  </defs>
+  <g fill="#000">
+    <path d="M18.6 6.4 C22.6 12.6 24.7 20 25.3 27 L18.6 27 Z"/>
+    <path d="M16.2 10.6 C13.1 15.6 10.9 21.4 10.2 27 L16.2 27 Z"/>
+  </g>
+  <ellipse cx="18" cy="19" rx="13.4" ry="15.8" fill="none" stroke="#000" stroke-width="1.6"
+    clip-path="url(#waterline)"/>
+  <path d="M3.5 30.5 Q18 26.1 32.5 30.5" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

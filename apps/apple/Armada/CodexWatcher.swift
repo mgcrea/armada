@@ -90,6 +90,7 @@ final class CodexWatcher {
 
   var liveSessions: [CodexSession] { sessions.filter { $0.state.isLive } }
   var workingCount: Int { sessions.count { $0.state == .working } }
+  var awaitingInputCount: Int { sessions.count { $0.state == .awaitingInput } }
 
   func start() {
     guard stream == nil else { return }

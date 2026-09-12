@@ -72,5 +72,8 @@ final class CodexAccounts {
   }
 
   var workingCount: Int { all.reduce(0) { $0 + $1.sessions.workingCount } }
+  /// Alive, with the turn finished. See `MenuBarHalo.waiting` for why this is the
+  /// least selective thing the halo can watch.
+  var awaitingInputCount: Int { all.reduce(0) { $0 + $1.sessions.awaitingInputCount } }
   var liveCount: Int { all.reduce(0) { $0 + $1.sessions.liveSessions.count } }
 }

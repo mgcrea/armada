@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
+  <title>Armada — menu bar template, idle with the halo</title>
+  <!-- The outlined glyph plus the halo. This is the one combination that only
+       appears once the halo has been widened in Settings past "working": nothing
+       is running, but something wants you — a Codex session sitting at a finished
+       turn. On the default setting it is never drawn.
+
+       The rig and the water are byte-identical to `armada-menubar.svg`, and the
+       halo is byte-identical to `armada-menubar-active-halo.svg`. Read that file
+       for the halo's geometry and for why it is an ellipse rather than a circle;
+       nothing about it is re-derived here.
+
+       An outlined rig inside the halo does NOT read as tramlines, which is the
+       failure that killed bastion's first curtain wall and is the obvious risk
+       here. It was measured rather than assumed: the halo stands 2.38 units off
+       the rig and is nowhere parallel to it, because the sails' leeches are
+       curves running the other way. Two components at 16, 18 and 20pt at 2x. -->
+  <defs>
+    <clipPath id="waterline">
+      <rect x="-4" y="-4" width="44" height="31"/>
+    </clipPath>
+  </defs>
+  <g fill="none" stroke="#000" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M18.6 6.4 C22.6 12.6 24.7 20 25.3 27 L18.6 27 Z"/>
+    <path d="M16.2 10.6 C13.1 15.6 10.9 21.4 10.2 27 L16.2 27 Z"/>
+  </g>
+  <ellipse cx="18" cy="19" rx="13.4" ry="15.8" fill="none" stroke="#000" stroke-width="1.6"
+    clip-path="url(#waterline)"/>
+  <path d="M3.5 30.5 Q18 26.1 32.5 30.5" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

@@ -28,25 +28,69 @@ struct ArmadaApp: App {
 }
 
 /// The menu bar glyph: outlined when everything is idle, filled when something is
-/// working.
+/// working, and ringed by a halo while the condition in Settings holds.
 ///
-/// Both are template assets, so AppKit tints them for light, dark and the
-/// highlighted menu bar — which is why neither carries a colour of its own and why
+/// All four are template assets, so AppKit tints them for light, dark and the
+/// highlighted menu bar — which is why none carries a colour of its own and why
 /// nothing here sets one.
+///
+/// **Four whole assets rather than a halo overlaid in SwiftUI**, and that is not
+/// tidiness. SwiftUI renders a `MenuBarExtra` label as a single template image;
+/// cupertino measured an overlay on one — a 5pt dot — never being drawn at all,
+/// and its `MenuBarLabel` carries the measurement. A different *file* survives
+/// template rendering where a composed overlay does not, so the halo ships as
+/// geometry in the asset, and the four files share the rig to the decimal so
+/// nothing shifts when a state flips.
+///
+/// The fill and the halo are independent on purpose. The fill has meant "something
+/// is working" since before the halo existed and still does; the halo means
+/// whatever `MenuBarHalo` has been set to, which is a wider question and, on the
+/// two outer rungs, a guessed one. All four combinations are reachable — including
+/// filled-without-halo, because the fill counts `.runningTool` and the default
+/// halo does not.
 private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
 
   var body: some View {
-    Image(isWorking ? "MenuBarIconActive" : "MenuBarIcon")
-      .accessibilityLabel(
-        isWorking ? "Armada — a session is working" : "Armada — all sessions idle")
+    Image(assetName)
+      .accessibilityLabel(accessibilityLabel)
   }
 
   /// Across every account and every vendor: the menu bar answers "is anything of
   /// mine moving", which is neither a per-organization nor a per-vendor question.
   private var isWorking: Bool {
     accounts.workingSessionCount > 0 || codex.workingCount > 0
+  }
+
+  private var isHaloLit: Bool {
+    halo.isLit(
+      claudeWorking: accounts.writingSessionCount,
+      claudeAwaitingTool: accounts.awaitingToolSessionCount,
+      codexWorking: codex.workingCount,
+      codexAwaitingInput: codex.awaitingInputCount)
+  }
+
+  private var assetName: String {
+    switch (isWorking, isHaloLit) {
+    case (true, true): "MenuBarIconActiveHalo"
+    case (true, false): "MenuBarIconActive"
+    case (false, true): "MenuBarIconHalo"
+    case (false, false): "MenuBarIcon"
+    }
+  }
+
+  /// The halo is the louder fact, so it leads when it is lit — someone reaching
+  /// for VoiceOver here wants to know whether anything is asking for them before
+  /// they are told how many sessions are mid-turn.
+  private var accessibilityLabel: String {
+    switch (isWorking, isHaloLit) {
+    case (true, true): "Armada — a session is working and wants you"
+    case (true, false): "Armada — a session is working"
+    case (false, true): "Armada — a session is waiting on you"
+    case (false, false): "Armada — all sessions idle"
+    }
   }
 }
 
