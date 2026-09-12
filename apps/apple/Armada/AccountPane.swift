@@ -34,6 +34,23 @@ struct AccountPaneView: View {
           SessionRow(session: session, now: now)
             .tag(session.id)
         }
+        // On the `List`, not on `SessionRow`. A row-level `.contextMenu` does not
+        // move the List's selection, so right-clicking an unselected row opens a
+        // menu that acts on whatever was selected before — which here would focus
+        // the wrong session. This form hands over the right-clicked item instead.
+        //
+        // The type has to match the row's `tag` exactly. Rows tag `session.id`, a
+        // `String`; a mismatch compiles and the menu silently never appears.
+        //
+        // No `primaryAction:`: double-clicking a row stays plain selection.
+        .contextMenu(forSelectionType: String.self) { ids in
+          // Built on demand, so this is one cached lookup per right-click.
+          if let session = session(for: ids),
+            let host = SessionHostLookup.host(for: session.registry)
+          {
+            Button("Focus in \(host.name)") { FocusSession.focus(host) }
+          }
+        }
       }
     }
     .inspector(isPresented: .constant(true)) {
@@ -51,6 +68,13 @@ struct AccountPaneView: View {
 
   private var selected: Session? {
     account.sessions.sessions.first { $0.id == selection } ?? account.sessions.sessions.first
+  }
+
+  /// The one session a context menu is about. Selection here is single, so a set of
+  /// anything but one row is a click on empty space and has no session behind it.
+  private func session(for ids: Set<String>) -> Session? {
+    guard let id = ids.first, ids.count == 1 else { return nil }
+    return account.sessions.sessions.first { $0.id == id }
   }
 
   private var subtitle: String {

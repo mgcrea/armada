@@ -66,6 +66,11 @@ struct SessionDetail: View {
   let session: Session?
   let account: Account
 
+  /// Resolved on a selection change rather than on every redraw — the lookup behind
+  /// it reaches LaunchServices. See `SessionHostLookup`.
+  @State private var host: SessionHost?
+  @State private var didLookUpHost = false
+
   var body: some View {
     Form {
       if let session {
@@ -83,6 +88,7 @@ struct SessionDetail: View {
             .font(.caption)
             .foregroundStyle(.secondary)
           }
+          FocusButton(host: host, didLookUp: didLookUpHost)
         }
         Section("Session") {
           LabeledContent("Project", value: session.registry.projectName)
@@ -126,5 +132,39 @@ struct SessionDetail: View {
       }
     }
     .formStyle(.grouped)
+    .task(id: session?.id) {
+      didLookUpHost = false
+      host = nil
+      guard let session else { return }
+      host = SessionHostLookup.host(for: session.registry)
+      didLookUpHost = true
+    }
+  }
+}
+
+/// "Focus in Visual Studio Code", or an explanation of why there is nothing to focus.
+///
+/// **The label names the application, never the window.** "Go to session" or "Open
+/// session" would promise the tab, and the process tree cannot deliver one: it says
+/// which app owns the session and stops there. Naming the app is also the more
+/// useful label, because it tells you where you are about to be sent.
+struct FocusButton: View {
+  let host: SessionHost?
+  let didLookUp: Bool
+
+  var body: some View {
+    if let host {
+      Button {
+        FocusSession.focus(host)
+      } label: {
+        Label("Focus in \(host.name)", systemImage: "arrow.up.forward.app")
+      }
+    } else if didLookUp {
+      Text(
+        "No window to go back to. Armada follows this session's parent processes up to the app that owns them, and a session started by a daemon, inside tmux, or over ssh has no owning app to find."
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
   }
 }

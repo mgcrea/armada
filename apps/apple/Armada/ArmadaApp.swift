@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Accounts.shared.start()
     CodexAccounts.shared.start()
     DockPresence.observe()
+    SessionHostLookup.observeHostTermination()
   }
 
   /// A click on the Dock icon, which exists only while a window is open.
@@ -243,6 +244,14 @@ struct AccountSummary: View {
   /// the list in the window is one click away.
   private static let visibleSessions = 3
 
+  /// Hosts for the visible rows only, resolved once when the panel opens.
+  ///
+  /// The inner optional is load-bearing: a present key with a nil value is a session
+  /// that was looked up and has no host, which is what lets a row render as plain
+  /// text rather than as a button that would do nothing. A missing key is a lookup
+  /// that has not happened yet.
+  @State private var hosts: [pid_t: SessionHost?] = [:]
+
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       if showsName {
@@ -303,6 +312,16 @@ struct AccountSummary: View {
         }
       }
     }
+    // Bounded to the rows that are drawn, and keyed on them so a session ending
+    // while the panel is open re-resolves rather than leaving a stale row. The
+    // lookup caches, so reopening the panel costs one syscall per row.
+    .task(id: sessions.prefix(Self.visibleSessions).map(\.id)) {
+      var resolved: [pid_t: SessionHost?] = [:]
+      for session in sessions.prefix(Self.visibleSessions) {
+        resolved[session.registry.pid] = SessionHostLookup.host(for: session.registry)
+      }
+      hosts = resolved
+    }
   }
 
   private var sessions: [Session] { account.sessions.sessions }
@@ -325,6 +344,96 @@ struct AccountSummary: View {
     if total == 0 { return "No sessions running" }
     let label = total == 1 ? "1 session" : "\(total) sessions"
     return working == 0 ? "\(label), all idle" : "\(label), \(working) active"
+  }
+}
+
+/// Close the menu bar panel.
+///
+/// **SwiftUI offers no way to ask for this.** `MenuBarExtra` takes `isInserted` —
+/// whether the item is in the menu bar at all — and nothing for whether its panel is
+/// open. Checked against the macOS 26.5 SwiftUI interface: there is no `isPresented`
+/// initializer, on any of the overloads. So the panel has to be closed as the window
+/// it is.
+///
+/// The predicate is the one `DockPresence` already leans on, inverted. A real window
+/// can become main and this panel cannot, which is what identifies it without naming
+/// a private class — and the `canBecomeMain` guard is what makes it safe, because the
+/// one thing that must never happen here is closing the main window.
+///
+/// Why this exists at all: the panel is dismissed by the app resigning active, and
+/// when the session's app is *already* frontmost, focusing it changes nothing and
+/// nothing resigns. Without this the click is invisible — which is exactly how it
+/// was reported.
+@MainActor
+enum MenuBarPanel {
+  static func dismiss() {
+    let panel =
+      NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible && !$0.canBecomeMain }
+    guard let panel, !panel.canBecomeMain else { return }
+    panel.close()
+  }
+}
+
+/// One session in the popover, clickable when there is somewhere to go.
+///
+/// This is the surface where Focus earns its keep: the panel is already open because
+/// something went idle, and the alternative is opening the window to click a row
+/// there. A session with no host stays plain text — a button that does nothing is
+/// worse than no button.
+///
+/// Two things that need no code and are worth writing down, because both look like
+/// omissions. The `MenuBarExtra(.window)` panel dismisses itself when Armada resigns
+/// active, which activating another app causes, so there is no explicit dismiss here
+/// — and if the activation is declined the panel stays open, which is honest. And
+/// `DockPresence` is untouched by any of this: it counts windows that `canBecomeMain`
+/// and the panel is not one, so focusing from here never flips the activation policy.
+struct SummaryRow: View {
+  let session: Session
+  let host: SessionHost?
+
+  @State private var hovering = false
+
+  var body: some View {
+    if let host {
+      Button {
+        FocusSession.focus(host)
+        // Always, even when the activation changed nothing. Clicking a row for an
+        // app that is already frontmost is a legitimate no-op, and the panel
+        // staying open is what makes it read as a broken button.
+        MenuBarPanel.dismiss()
+      } label: {
+        label
+      }
+      .buttonStyle(.plain)
+      .pointerStyle(.link)
+      .help("Focus in \(host.name)")
+      // **The pointer is not enough on its own here**, which is how this shipped
+      // looking dead: over a row in the panel the cursor stays an arrow, so the only
+      // hint that a row does anything was the press flash after you had already
+      // clicked it. A hover fill is the affordance a menu row is expected to have
+      // anyway, and unlike a pointer style it is visible before committing.
+      .onHover { hovering = $0 }
+      .background(
+        hovering ? AnyShapeStyle(.selection.opacity(0.25)) : AnyShapeStyle(.clear),
+        in: .rect(cornerRadius: 4)
+      )
+    } else {
+      label
+    }
+  }
+
+  private var label: some View {
+    HStack(spacing: 6) {
+      StateDot(state: session.state)
+      Text(session.displayName)
+        .font(.caption)
+        .lineLimit(1)
+      Spacer(minLength: 0)
+    }
+    // The whole row, not just the text, so the click target matches what looks
+    // clickable. Without this the `Spacer` does not hit-test and most of the row is
+    // dead to both the click and the hover.
+    .contentShape(.rect)
   }
 }
 

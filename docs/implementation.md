@@ -43,6 +43,9 @@ transcripts, separate rate limits.
 | `TranscriptLocator` | session → transcript path, with the encoding fallbacks |
 | `TranscriptTitle` | tail read for the title, and the unanswered-`tool_use` state check |
 | `UsageSnapshot` / `AccountIdentity` | the two halves of `.claude.json` |
+| `ProcessAncestry` | what the kernel says about a pid: parents, start time, tty, exe path |
+| `SessionHost` / `SessionHostLookup` | which app a session's process belongs to, cached |
+| `FocusSession` | brings that app forward — see [focusing-sessions.md](focusing-sessions.md) |
 
 The Codex half mirrors it, name for name, and shares only the icon lookup (`VendorIcon`)
 and the usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`):

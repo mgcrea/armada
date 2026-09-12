@@ -15,6 +15,7 @@ Messaging is designed and not started. See [implementation.md](implementation.md
 | [design.md](design.md) | Decisions, architecture, message flow, open questions. **Read first if you are extending the plan.** |
 | [reaching-agents.md](reaching-agents.md) | Measured: every way to get a message to a waiting agent, and how to tell who sent one |
 | [claude-code-sessions.md](claude-code-sessions.md) | Measured: reading Claude Code sessions, titles and state from disk |
+| [focusing-sessions.md](focusing-sessions.md) | Measured: how a session's pid resolves to the app hosting it, and what that cannot reach |
 | [codex-sessions.md](codex-sessions.md) | Measured: Codex's equivalents — session logs, liveness, titles, limits, hooks |
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
 | [landscape.md](landscape.md) | Competitors and standards (A2A) |
