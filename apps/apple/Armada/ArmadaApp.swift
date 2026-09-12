@@ -30,24 +30,28 @@ struct ArmadaApp: App {
 /// The menu bar glyph: outlined when everything is idle, filled when something is
 /// working, and ringed by a halo while the condition in Settings holds.
 ///
-/// All four are template assets, so AppKit tints them for light, dark and the
+/// All three are template assets, so AppKit tints them for light, dark and the
 /// highlighted menu bar — which is why none carries a colour of its own and why
 /// nothing here sets one.
 ///
-/// **Four whole assets rather than a halo overlaid in SwiftUI**, and that is not
+/// **Whole assets rather than a halo overlaid in SwiftUI**, and that is not
 /// tidiness. SwiftUI renders a `MenuBarExtra` label as a single template image;
 /// cupertino measured an overlay on one — a 5pt dot — never being drawn at all,
 /// and its `MenuBarLabel` carries the measurement. A different *file* survives
 /// template rendering where a composed overlay does not, so the halo ships as
-/// geometry in the asset, and the four files share the rig to the decimal so
+/// geometry in the asset, and the three files share the rig to the decimal so
 /// nothing shifts when a state flips.
 ///
-/// The fill and the halo are independent on purpose. The fill has meant "something
-/// is working" since before the halo existed and still does; the halo means
-/// whatever `MenuBarHalo` has been set to, which is a wider question and, on the
-/// two outer rungs, a guessed one. All four combinations are reachable — including
-/// filled-without-halo, because the fill counts `.runningTool` and the default
-/// halo does not.
+/// **THE HALO ONLY EVER SITS ON THE FILLED RIG**, which is why there are three
+/// assets and not four. A halo around the OUTLINED rig was drawn and measured, and
+/// it is bastion's tramline failure exactly: the halo is the rig's own silhouette
+/// offset, so around an outline it runs parallel to it at every point and the
+/// glyph comes out as three nested strokes. It also fuses — a component count puts
+/// it at one shape at 16pt and 18pt, because stroking the rig spends 0.9 units of
+/// the halo's 2.8-unit gap. So the ladder is monotone in ink instead: outline,
+/// filled, filled with the halo. Each step adds, none of them is parallel to
+/// anything, and the middle step is what a Claude session running a tool looks
+/// like under the default setting.
 private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
@@ -72,13 +76,15 @@ private struct MenuBarLabel: View {
       codexAwaitingInput: codex.awaitingInputCount)
   }
 
+  /// The halo wins over the fill: a lit halo always draws the filled rig, whether
+  /// or not anything is strictly working. That is not a shortcut around a missing
+  /// asset — see the note above for why a halo around the outlined rig cannot
+  /// exist — and it costs nothing, because the only rung that lights the halo
+  /// without anything working is the widest one, where a Codex session is sitting
+  /// at a finished turn and "something of mine is up" is true anyway.
   private var assetName: String {
-    switch (isWorking, isHaloLit) {
-    case (true, true): "MenuBarIconActiveHalo"
-    case (true, false): "MenuBarIconActive"
-    case (false, true): "MenuBarIconHalo"
-    case (false, false): "MenuBarIcon"
-    }
+    if isHaloLit { return "MenuBarIconActiveHalo" }
+    return isWorking ? "MenuBarIconActive" : "MenuBarIcon"
   }
 
   /// The halo is the louder fact, so it leads when it is lit — someone reaching

@@ -1,64 +1,84 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
   <title>Armada — menu bar template, a session is working and the halo is lit</title>
-  <!-- The filled glyph plus one shape: the halo. The rig and the water line are
-       byte-identical to `armada-menubar-active.svg`, and the rig is identical to
-       the idle file's too — the four glyphs are swapped in place in the menu bar,
-       so any drift would read as the icon twitching rather than as a state
-       changing. Only the halo is ever added.
+  <!-- The filled glyph plus the halo: TWO short arcs, one standing off the lower
+       leech of each sail. The rig and the water line are byte-identical to
+       `armada-menubar-active.svg`, and the rig is identical to the idle file's
+       too — the glyphs are swapped in place in the menu bar, so any drift would
+       read as the icon twitching rather than as a state changing. Only the halo
+       is ever added.
 
-       THE HALO IS CUPERTINO'S CONSTRUCTION, not bastion's. Bastion offsets the
-       fort's own silhouette; that was drawn here first and rejected on a render.
-       A true outward offset of this rig is not a halo — offsetting two tall
-       triangular sails gives a pointed arch, and where the two sails' offsets
-       meet it creases at 71.8deg, which at 18pt reads as a lump on the upper left
-       rather than as a second shape. Measured, fitted to cubics at 0.0129pt max
-       deviation, rendered, and thrown away. Do not re-derive it.
+       BASTION'S IDEA, which is a light shape standing off the mark at a constant
+       distance rather than a ring drawn around it. Nothing here is drawn by hand:
+       each arc is a sail's leech offset 3.6 units along its own normal.
 
-       So it is cupertino's: one conic around the mark, clipped where the mark
-       stops. RX IS 13.4, which is cupertino's ring radius exactly — the two apps
-       sit inches apart in the same menu bar, so the halo that goes round the sun
-       and the halo that goes round the ship are the same size across.
+       IT IS TWO ARCS AND NOT ONE. A single arc over the whole rig was built first,
+       as the offset of the rig's convex hull: smooth, fitting to 0.0086pt, and
+       wrong. The hull bridges the notch between the two mastheads, and once that
+       notch is filled the glyph stops reading as two sails and reads as a tent —
+       a mountain with a pole in it. Offsetting the two sails as a UNION keeps the
+       notch but creases 56.2deg at (14.98, 7.21) where the two offsets run into
+       each other, which at 18pt is a lump stuck to the side of the arc. Both were
+       measured, fitted, rendered and rejected. Do not re-derive either.
 
-       IT IS AN ELLIPSE AND NOT A CIRCLE, and that is forced rather than chosen.
-       A circle large enough to clear the masthead at y6.4 needs r=18.8 about a
-       centre low enough to stay off the water, which puts its sides at x-0.1 and
-       x36.1 — off the tile on both edges. The rig is tall and narrow; the halo
-       has to be, or the rig has to shrink, and the rig is not shrinking.
+       THE ARCS ARE CUT FROM THE TOP, to 60% of the full offset's length: 15.87
+       units of 26.45 on the main, 13.18 of 21.97 on the fore. What the cut removes
+       is a 45deg cap that once swept over each masthead plus the upper leech
+       behind it; what it leaves starts at (25.21, 11.32) on the main and
+       (10.32, 13.96) on the fore.
 
-       CLEARANCE IS 2.38 UNITS, measured as the true distance from the ellipse's
-       inner edge to the nearest ink on the rig — not the algebraic form, which
-       is wrong by a factor that grows with the aspect ratio. That is cupertino's
-       2.4 gap to within a rounding, and it is well clear of where this pair
-       actually fuses: sweeping ry and counting connected components on real
-       renders, the halo welds to the sails at 0.78 units of clearance and
-       separates at 0.98. This sits at 2.4x that boundary rather than balanced on
-       it. RY FOLLOWS FROM THE CLEARANCE: 15.8 is solved for it, not picked. Re-
-       solve it the same way if the rig ever moves.
+       Cutting from the FOOT end instead was drawn and rejected: it lifts the arcs
+       off the water, and then nothing in the glyph terminates on the water line —
+       which is the one part Armada shares with both siblings. Cutting from the top
+       keeps that, and it is also what lets the trim go this deep without the halo
+       looking severed, because the end it loses is the end that was in free air.
 
-       THE FEET STOP ON THE SAILS' OWN BASE LINE, y27, by the clip — so every
-       shape in the glyph terminates on one line, which is what bastion's wall
-       does against its sky. The clip is a plain rectangle and not a normal offset
-       of the water the way cupertino's is, because this rig's base is already a
-       flat line at y27 rather than a curve; offsetting the water instead would
-       cut the sails, whose feet sit below it at the centre.
+       THE HALO NO LONGER REACHES ABOVE THE RIG AT ALL. The glyph's top is y6.40,
+       which is the main sail's own apex — so this state is the boat gaining a
+       light stroke along its flanks, not the boat growing. That is the whole
+       reason for cutting this end rather than the other, and it is why the two
+       mastheads still carry the silhouette.
 
-       The halo adds 4.05 units above the rig and nothing below, since its lower
-       half is clipped away. So the active state rides higher than the idle one —
-       ink mass cy 19.30 against 21.54 — which is the same direction cupertino's
-       ring and bastion's wall move their glyphs, and the same reason the states
-       are seated by ink mass rather than by bounding box.
+       THE GAP IS 2.8 UNITS — bastion's gap exactly, and one step clear of the
+       boundary rather than balanced on it. Sweeping the offset and counting
+       connected components on real renders: at 2.0 the halo still welds to the
+       rig at 16pt, and 2.4 is the first that separates at all three sizes.
 
-       The stroke is 1.6 units (0.8pt): cupertino's halo weight and bastion's
-       wall weight exactly. One light shape around one solid one reads as a form
-       inside another; matched weights read as tramlines.
+       The stroke is 1.6 units (0.8pt): cupertino's halo weight and bastion's wall
+       weight exactly. One light shape around one solid one reads as a form inside
+       another; matched weights read as tramlines. That is also why this halo can
+       never be drawn around the OUTLINED rig — an offset runs parallel to what it
+       offsets at every point, so on an outline it comes out as nested strokes,
+       and it fuses besides, the 1.8 stroke spending 0.9 of the 2.8 gap. See
+       `MenuBarLabel`: a lit halo always draws the filled rig.
+
+       Each arc is one offset curve with no change of kind along it, so four
+       segments fit it to 0.0002pt — against cupertino's 0.013 and bastion's 0.010.
+
+       THE FEET STOP ON THE SAILS' OWN BASE LINE, y27, by the clip — each path is
+       drawn down to y34 and trimmed, which is how bastion's wall terminates on its
+       sky line, so every shape in the glyph stops on one line. Those y34
+       coordinates are outside the clip and carry no meaning; do not tune them. The
+       clip is a plain rectangle rather than a normal offset of the water the way
+       cupertino's is, because this rig's base is already a flat line at y27;
+       offsetting the water instead would cut the sails, whose feet sit below it at
+       the centre.
+
+       SEAT. Ink mass cy 21.86 against the bare filled rig's 22.48 — it still rides
+       higher, which is the direction both siblings move, but only just, because
+       the arcs add ink low on the glyph rather than above it. Bastion lifts to
+       19.72 and cupertino to 19.84; both put a shape ABOVE their marks and this one
+       deliberately does not. Ink is 19.53% against their 27.46 and 28.61. This is
+       the quietest active state in the family on purpose — a sail is a thin shape
+       and a boat that grows a shell stops being a boat.
 
        At 1x the gap does not resolve and a component count says the glyph is one
        shape. Both siblings do the same thing at that size. Acceptable
-       degradation, not a bug to chase — retina is the design target, and 1x
-       still changes visibly, which is what the state needs to do.
+       degradation, not a bug to chase — retina is the design target, and 1x still
+       changes visibly, which is what the state needs to do.
 
        Re-measure with a connected-component count on a real render after any
-       edit, never by eye: two components at 16, 18 and 20pt at 2x. -->
+       edit, never by eye: THREE components at 16, 18 and 20pt at 2x — the rig
+       with its water, and the two arcs — which is what both siblings count too. -->
   <defs>
     <clipPath id="waterline">
       <rect x="-4" y="-4" width="44" height="31"/>
@@ -68,7 +88,10 @@
     <path d="M18.6 6.4 C22.6 12.6 24.7 20 25.3 27 L18.6 27 Z"/>
     <path d="M16.2 10.6 C13.1 15.6 10.9 21.4 10.2 27 L16.2 27 Z"/>
   </g>
-  <ellipse cx="18" cy="19" rx="13.4" ry="15.8" fill="none" stroke="#000" stroke-width="1.6"
-    clip-path="url(#waterline)"/>
+  <g fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+    clip-path="url(#waterline)">
+    <path d="M25.21 11.32 C25.72 12.56 26.19 13.83 26.60 15.12 C27.00 16.39 27.36 17.68 27.66 18.98 C27.96 20.26 28.21 21.55 28.42 22.85 C28.62 24.12 28.78 25.41 28.89 26.69 L28.89 34"/>
+    <path d="M10.32 13.96 C9.86 14.96 9.43 15.98 9.04 17.02 C8.65 18.05 8.30 19.10 7.98 20.16 C7.67 21.21 7.40 22.27 7.17 23.34 C6.95 24.40 6.76 25.47 6.63 26.55 L6.63 34"/>
+  </g>
   <path d="M3.5 30.5 Q18 26.1 32.5 30.5" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
 </svg>
