@@ -20,14 +20,18 @@ import Foundation
 /// - the name is the *session* id, matching the uuid in the rollout filename, so a
 ///   lock maps to a session with no file read at all.
 ///
-/// **What the probe could not separate:** whether the lock spans the whole session
-/// or only a turn. A third probe held stdin open so the process outlived the
-/// prompt — the process ran from t=3s, the lock appeared at t=45s exactly with
-/// `task_started`, and both process and lock ended together at t=48s. So a turn
-/// always holds the lock; whether an *idle interactive* session keeps holding it
-/// is untested, and testing it needs a real interactive Codex session rather than
-/// `codex exec`. `CodexSessionState` is written to be correct either way — see
-/// there.
+/// **The lock spans the session, not the turn.** `codex exec` could not show this —
+/// it exits with its turn, so a probe always sees both end together — but simply
+/// looking at the directory while the ChatGPT VS Code panel had a thread open did:
+/// one `codex` process held two locks, and the rollout for one of them had ended its
+/// turn with `task_complete` 7h20m earlier. So a locked session whose turn is
+/// finished is genuinely open and idle, which is what `CodexSessionState`
+/// `.awaitingInput` says.
+///
+/// **A lock can exist with no rollout file**, for a session opened and never
+/// prompted — the second of those two locks was exactly that. It follows that
+/// walking `sessions/` does not enumerate open sessions, and `CodexWatcher` misses
+/// that case today (`docs/implementation.md`, "Where the Codex spike is thin").
 ///
 /// A crashed process leaves its lock behind, and nothing here can tell that from a
 /// live one. With no pid in the file there is no `kill(pid, 0)` equivalent; the

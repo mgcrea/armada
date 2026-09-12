@@ -201,9 +201,11 @@ someone may want to make differently.
 - **The 12-hour recency window is a guess**, and it decides what the pane is. A Codex
   session that ended is still listed; one that ended 13 hours ago is not. There is nothing
   behind the number but "a working morning".
-- ~~**"Waiting for input" may be unreachable.**~~ Settled the same day: the lock is held for
-  the whole session, so the state is real. The code comments in `CodexLocks` and
-  `CodexSessionState` still hedge on this and should be tightened.
+- ~~**"Waiting for input" may be unreachable.**~~ Settled, and then seen: the lock is held
+  for the whole session, and the state showed up in the app on 2026-09-12 for an idle VS
+  Code thread 24 hours old. `CodexSessionState.isBestEffort` is now `false` throughout —
+  every Codex state is read rather than inferred, which is the substantive difference from
+  the Claude side's `SessionState`.
 - **Codex homes are not discovered by convention.** `~/.codex` plus `CODEX_HOME`, and
   nothing else: unlike Claude Code, Codex documents no `~/.codex-<name>` pattern, so
   scanning for one would be inventing a convention rather than following one. Someone with

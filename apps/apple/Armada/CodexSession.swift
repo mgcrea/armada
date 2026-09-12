@@ -44,9 +44,17 @@ enum CodexSessionState: String, Sendable {
 
   /// Whether the UI should mark this as a guess.
   ///
-  /// `working` is not a guess: Codex writes both edges of a turn. `awaitingInput`
-  /// is, because it rests on the untested half of the lock's lifetime.
-  var isBestEffort: Bool { self == .awaitingInput }
+  /// **Nothing here is, which is the whole difference from `SessionState`.** Codex
+  /// writes both edges of a turn explicitly and holds a lock for the life of a
+  /// session, so all three states are read rather than inferred.
+  ///
+  /// `awaitingInput` was marked best-effort until 2026-09-12, when the lock was
+  /// confirmed to span a session rather than a turn — an idle VS Code thread was
+  /// found still holding its lock 7h20m after `task_complete`, and the state has
+  /// since been seen in the app. The property stays so that the shared dot keeps one
+  /// shape for both vendors, and so there is somewhere obvious to set it if a future
+  /// state does need hedging.
+  var isBestEffort: Bool { false }
 
   /// Whether this session is one a person might still be sitting in front of.
   var isLive: Bool { self != .ended }

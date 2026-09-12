@@ -343,7 +343,7 @@ struct CodexSessionDetail: View {
     case .working:
       "A Codex process holds this session's writer lock and the log's last event is not task_complete."
     case .awaitingInput:
-      "A Codex process still holds this session's writer lock, but its turn is finished. Whether an idle session keeps holding the lock is untested — see CodexLocks."
+      "A Codex process still holds this session's writer lock and its turn is finished, so the session is open and idle."
     case .ended:
       "No process holds this session's writer lock. Codex writes no session-ended record, so a crashed session that left its lock behind would still look live."
     }
