@@ -120,12 +120,17 @@ nonisolated enum ClaudeControl {
   /// Removed rather than left alone because Armada inherits whatever environment it
   /// was launched with, and a developer starting it from a terminal that exports
   /// `CLAUDE_CONFIG_DIR` would otherwise have every folder probed as that one.
+  ///
+  /// **`folder.path`, never `folder.base.path`.** The second ends in a slash, and a
+  /// slash here is the difference between a probe that answers and one that reports no
+  /// limits at all — see `ClaudeConfigFolder.path` for the measurement. This line is
+  /// where that cost every non-default account its live figures.
   private static func environment(for folder: ClaudeConfigFolder) -> [String: String] {
     var environment = ProcessInfo.processInfo.environment
     if folder.isDefault {
       environment.removeValue(forKey: "CLAUDE_CONFIG_DIR")
     } else {
-      environment["CLAUDE_CONFIG_DIR"] = folder.base.path(percentEncoded: false)
+      environment["CLAUDE_CONFIG_DIR"] = folder.path
     }
     return environment
   }

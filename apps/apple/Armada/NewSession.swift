@@ -148,14 +148,18 @@ nonisolated enum NewSession {
   /// Codex has no such asymmetry — everything lives inside the home, default or not —
   /// so `CODEX_HOME` is always exported, which also overrides anything a shell profile
   /// set.
+  ///
+  /// **`path`, not `base.path`, and this line shipped wrong.** A trailing slash makes
+  /// Claude Code come up as if signed out, so a session started on a non-default
+  /// account would have opened on no account at all. See `ClaudeConfigFolder.path`.
   private static func accountLines(for agent: Agent) -> [String] {
     switch agent {
     case .claude(let folder) where folder.isDefault:
       ["unset CLAUDE_CONFIG_DIR"]
     case .claude(let folder):
-      ["export CLAUDE_CONFIG_DIR=\(quoted(folder.base.path(percentEncoded: false)))"]
+      ["export CLAUDE_CONFIG_DIR=\(quoted(folder.path))"]
     case .codex(let home):
-      ["export CODEX_HOME=\(quoted(home.base.path(percentEncoded: false)))"]
+      ["export CODEX_HOME=\(quoted(home.path))"]
     }
   }
 

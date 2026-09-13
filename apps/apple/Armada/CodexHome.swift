@@ -101,12 +101,20 @@ nonisolated struct CodexHome: Sendable, Hashable {
     return found
   }
 
-  /// The path without a trailing slash, for the persisted sidebar selection.
-  /// Same rule and the same reason as `Account.id`.
-  var id: String {
-    let path = base.standardizedFileURL.path(percentEncoded: false)
-    return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+  /// The path without a trailing slash — the persisted sidebar selection, and what
+  /// `CODEX_HOME` is set to for anything Armada starts.
+  ///
+  /// Codex has not been measured to care about the slash the way Claude Code does
+  /// (`ClaudeConfigFolder.path` records that measurement: a trailing slash there makes
+  /// the account report no limits at all). It is spelled the same way here anyway —
+  /// the cost is nothing, and a vendor that tolerates it today is not a vendor that
+  /// promised to.
+  var path: String {
+    let raw = base.standardizedFileURL.path(percentEncoded: false)
+    return raw.count > 1 && raw.hasSuffix("/") ? String(raw.dropLast()) : raw
   }
+
+  var id: String { path }
 
   /// `~/.codex` reads as "Codex"; anything else keeps its folder name.
   var displayName: String {

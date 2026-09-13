@@ -138,6 +138,34 @@ nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
       != base.standardizedFileURL.path(percentEncoded: false)
   }
 
+  /// The folder's path, **without a trailing slash**.
+  ///
+  /// **A trailing slash in `CLAUDE_CONFIG_DIR` makes the account look signed out.**
+  /// Measured 2026-09-13 against `claude` 2.1.269, with a `get_usage` control request
+  /// under each spelling:
+  ///
+  /// - `CLAUDE_CONFIG_DIR=/Users/olivier/.claude-skitrust` → `rate_limits_available:
+  ///   true`, `subscription_type: "team"`, real figures
+  /// - `CLAUDE_CONFIG_DIR=/Users/olivier/.claude-skitrust/` → `rate_limits_available:
+  ///   false`, `subscription_type: null`
+  ///
+  /// The same signature `isDefault` documents for a *different* cause, which is how it
+  /// went unnoticed: `base` is built with `directoryHint: .isDirectory`, so `.path`
+  /// ends in `/`, and every probe of every non-default folder came back as "this
+  /// account has no limits" — silently, because `UsageProbe` returns nil on exactly
+  /// that answer. The account then showed whatever Claude Code had last left in its
+  /// cache, which on this Mac was 35 hours old while sessions ran in the folder all
+  /// day.
+  ///
+  /// So: anything that hands this folder to another process uses **this**, never
+  /// `base.path`. It is also what `Account.id` is, for the same reason it always was —
+  /// a value that leaks into stored keys should not carry an artefact of how the URL
+  /// was built.
+  var path: String {
+    let raw = base.standardizedFileURL.path(percentEncoded: false)
+    return raw.count > 1 && raw.hasSuffix("/") ? String(raw.dropLast()) : raw
+  }
+
   /// One JSON file per live session, named by pid. Prunes itself.
   var sessionsDir: URL { base.appending(path: "sessions", directoryHint: .isDirectory) }
 

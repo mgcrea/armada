@@ -118,6 +118,13 @@ Each of these cost time here, and none is visible from the code that depends on 
   panel reads through `Accounts.allSessions` — the panel shows three of nineteen, so its
   three have to stay the newest three whatever the window is sorted by. The window layers
   `SessionOrder` on top rather than changing it.
+- **`CLAUDE_CONFIG_DIR` must have no trailing slash, and failing that is silent.** A
+  slash makes Claude Code report `rate_limits_available: false, subscription_type: null`
+  — the same answer as a wrongly-set default folder, and `UsageProbe` returns nil for it
+  like any other failure, so the account quietly shows its on-disk cache forever. It is
+  the difference between an account with 981 recorded usage samples and one with 11. Use
+  `ClaudeConfigFolder.path` (and `CodexHome.path`), never `base.path` — `base` is built
+  with `directoryHint: .isDirectory` and therefore ends in a slash.
 - **A launched terminal window inherits nothing from Armada.** Measured 2026-09-13, with
   `CLAUDE_CONFIG_DIR` exported in the process that ran `open` and empty in the shell that
   came up: LaunchServices hands the request to Terminal, whose windows carry *its*

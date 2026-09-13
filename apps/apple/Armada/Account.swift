@@ -38,16 +38,11 @@ final class Account: Identifiable {
 
   /// The folder path, without a trailing slash.
   ///
-  /// This is persisted as the sidebar's remembered selection, so it has to be
-  /// stable and predictable rather than merely unique. `URL.path` on a URL built
-  /// with `directoryHint: .isDirectory` ends in `/`, which is an artefact of how
-  /// the URL was constructed rather than anything about the folder — it would
-  /// leak into the defaults key and silently reset the selection the day that
-  /// construction changed.
-  var id: String {
-    let path = folder.base.standardizedFileURL.path(percentEncoded: false)
-    return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
-  }
+  /// This is persisted as the sidebar's remembered selection and keys the usage
+  /// history file, so it has to be stable and predictable rather than merely unique.
+  /// `ClaudeConfigFolder.path` is the one place that trim lives now — it turned out to
+  /// matter far beyond stored keys.
+  var id: String { folder.path }
 
   init(folder: ClaudeConfigFolder) {
     self.folder = folder

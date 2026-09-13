@@ -201,6 +201,15 @@ Four sources, in the order Armada now prefers them.
      `subscription_type: null, rate_limits_available: false` as if signed out. The same
      asymmetry as the usage file itself. It fails safely — Armada falls back to the cache —
      but it fails silently, so `ClaudeConfigFolder.isDefault` exists to get it right.
+   - **And a trailing slash does the same thing.** Measured 2026-09-13 against 2.1.269:
+     `CLAUDE_CONFIG_DIR=/Users/olivier/.claude-skitrust` answers `rate_limits_available:
+     true, subscription_type: "team"`, and `…/.claude-skitrust/` answers `false, null` —
+     the identical signature, a second cause. Armada shipped the slash for three days
+     (`base.path` on a URL built with `directoryHint: .isDirectory`), so **every
+     non-default account had no live figures at all**: 11 usage samples recorded against
+     the default folder's 981, and a pane showing a cache Claude Code had last written 35
+     hours earlier while sessions ran in that folder all day. `ClaudeConfigFolder.path` is
+     now the only spelling anything hands to another process.
    - It also returns a `behaviors` block — request and session counts, and which skills,
      agents and MCP servers the person uses. Armada reads none of it.
 
