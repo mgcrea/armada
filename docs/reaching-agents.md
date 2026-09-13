@@ -176,6 +176,24 @@ a *different recognised socket directory* (the XDG path versus the `/tmp` fallba
 on the peer's credentials being verified (`verifiedPeerPid`, `ownerUids`). It is not about
 config folders.
 
+**A non-session process cannot send on it. Tested 2026-09-13.** The inbox authenticates
+the *connecting process*, not the bearer of a token: the server reads the peer pid off the
+socket and looks it up against that pid's own session key, and drops a connection from a
+pid with no registered session. Measured against a session started for the test — a
+`SendMessage` from a sibling session landed twice in its output, while a direct connection
+from a plain Python process, carrying that session's correct `peerToken` and the right
+frames (`{"type":"auth","token":…}` then `{"type":"user","message":{"content":…}}`),
+landed nothing. Same socket, same session, same minute.
+
+That closes the route for anything that is not itself a Claude Code session — Armada
+included — and is why [design.md](design.md#delivering-to-claude-code) keeps its own hook
+path rather than riding this one. The key file is necessary but not sufficient; the pid is
+the credential.
+
+**Discovery is the boundary, not reach.** Also measured that day: `ListAgents` from a
+session in `~/.claude-skitrust` listed 15 peers and none of the eight live sessions in
+`~/.claude`, while `/tmp/cc-socks` held both folders' sockets side by side.
+
 **Caution, and it is not theoretical.** This is a write channel into running agents: the
 delivery verb injects a user message, and this document already records that Claude *acts*
 on text delivered that way. A stray frame to a live session is an unintended instruction,
