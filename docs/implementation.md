@@ -136,6 +136,16 @@ Each of these cost time here, and none is visible from the code that depends on 
 - **The three token figures must be summed.** `input_tokens` was **2** on a 389k prompt,
   because everything else was a cache read. Any one of them read as "the context" reports an
   empty session.
+- **State is read, not inferred — since 2026-09-12.** The registry's `status`
+  (`busy` / `waiting` / `idle`) is the authority, with `waitingFor` naming what a waiting
+  session wants; write-recency and the unanswered-`tool_use` rule survive only as the
+  fallback for a folder on a build older than 2.1.269. The field is right where the
+  inference was most wrong, because it is written on the *transition*: a session ninety
+  seconds into a tool call still reads `busy` instead of flipping to idle.
+- **The messaging socket was never a state source**, whatever this repo said before
+  2026-09-12: it has no query verb, and `ListAgents` reads `status` from the registry like
+  everything else. Nothing in the app depended on the wrong belief, but it shaped the
+  design discussion for two days.
 - **A 64KB tail can hold no `assistant` entry at all.** A session writing file-history
   entries during a long edit burst pushed its last turn 140KB out of range. Context figures
   are held, never cleared, for the same reason `quotaHit` is.
@@ -237,10 +247,6 @@ shows an empty usage strip, and neither crashes.
   and it is the reason the per-session figures still come from transcripts.
   [claude-code-sessions.md](claude-code-sessions.md#correction-2026-09-12-a-spawned-probe-answers-it-about-itself)
   has the measurement.
-- **State is inference, not truth.** Write-recency plus the unanswered-`tool_use` rule, which
-  `claude-code-sessions.md` still files as unverified and which cannot tell a running tool
-  from one waiting for approval. The UI marks it best-effort. Hooks would settle it, and
-  hooks are out of scope.
 
 ### Where the Codex spike is thin
 

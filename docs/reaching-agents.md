@@ -183,10 +183,12 @@ not a failed query. Probe a session's own socket with its own
 `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`, both of which are in its
 own environment, or read the binary instead.
 
-**One thing to re-check:** `claude-code-sessions.md` lists this socket as "authoritative
-busy/idle (used by `ListAgents`)". The handler has **no query verb** — there is nothing
-that answers "are you busy". Either `ListAgents` uses the idle *subscription*, or it gets
-that state somewhere else. Not established; flagged rather than corrected.
+**It is not where `ListAgents` gets busy/idle**, which this repo believed until
+2026-09-12. The handler has no query verb, and the tool does not need one: it reads the
+registry's `status` field, reports `statusUpdatedAt` as each agent's `lastActive`, and
+takes `sock` from the same row only as an address to send to. `notify_when_idle` is a
+subscription for the next transition, not a question about now.
+[claude-code-sessions.md](claude-code-sessions.md#state) is corrected accordingly.
 
 ## Sender identity
 

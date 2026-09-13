@@ -35,7 +35,7 @@ surface, not a new capability, so try agent view before building.
 | `~/.claude/sessions/<pid>.json` | The live session list, with state since 2.1.269 | Undocumented |
 | `claude agents --json` | The same list minus `version`, `entrypoint`, socket path | Supported CLI |
 | `~/.claude/projects/<enc-cwd>/<sessionId>.jsonl` | Title, plus write activity to infer state from | Undocumented |
-| `/tmp/cc-socks/<pid>.sock` | Authoritative busy/idle (used by `ListAgents`) | Undocumented protocol, not reverse-engineered |
+| `/tmp/cc-socks/<pid>.sock` | Message delivery and idle *subscription*. **Not** a source of state — it has no query verb | Undocumented; protocol read in [the section below](#the-peer-socket-is-an-inbox-not-a-control-channel) |
 
 `claude agents` with no flag refuses to run without a TTY; `--json` is the machine-readable
 form. `--all` adds completed background sessions.
@@ -177,11 +177,18 @@ The options:
 2. **Untested mitigation:** if the newest transcript entry is an `assistant` message
    containing a `tool_use` block with no following `tool_result`, report **"running a
    tool"** instead of idle. This is the obvious next thing to verify.
-3. **The messaging socket** `/tmp/cc-socks/<pid>.sock` is the authoritative busy/idle
-   source (`ListAgents` reports "busy or idle right now" through it). The protocol wasn't
-   investigated, and it needs the session's messaging token, so treat it as a last resort.
-   The registry's `peerFeatures` includes `notify_idle`, and `SendMessage` has a
-   `notify_when_idle` option, which hints at what the protocol carries.
+3. ~~**The messaging socket** is the authoritative busy/idle source.~~ **Wrong, and
+   corrected 2026-09-12 by reading the protocol.** `/tmp/cc-socks/<pid>.sock` has **no
+   query verb at all** — nothing in its vocabulary answers "are you busy". `ListAgents`
+   gets that state from the registry file, the same place as everything else: it reports
+   `statusUpdatedAt` as each agent's `lastActive`, and carries `sock` only as an *address*
+   to send to. The socket's `notify_when_idle` is a subscription for a future transition,
+   not a question about now. See
+   [The peer socket is an inbox](#the-peer-socket-is-an-inbox-not-a-control-channel).
+
+   This entry was a guess from the tool's phrasing, written when the protocol had not
+   been read and the registry had no `status` field to attribute it to instead. Both of
+   those are now false.
 
 ### Correction, 2026-09-12: the registry reports state
 
@@ -457,9 +464,10 @@ closing it`. Frames carry a `session_id` and are dropped on mismatch.
 | hold-receipt | acknowledgement before delivery |
 
 **There is no query verb at all** — nothing that returns state. So the socket cannot
-report a session's context, its usage, or anything else about it; `ListAgents`' busy/idle
-comes from the idle *subscription*, not from asking. The advertised `peerFeatures` say the
-same thing.
+report a session's context, its usage, or anything else about it. **`ListAgents`' busy/idle
+does not come from here either** — it reads the registry's `status`, and uses
+`statusUpdatedAt` as `lastActive`, taking `sock` from the same row purely as an address.
+The advertised `peerFeatures` say the same thing.
 
 That closes it for the context panel. The protocol that can answer —
 `get_context_usage` — runs over the process's stdio, which belongs to whoever launched it,
