@@ -126,6 +126,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     CodexAccounts.shared.start()
     DockPresence.observe()
     SessionHostLookup.observeHostTermination()
+    MouseTap.shared.sync()
+    // The Accessibility grant can arrive long after launch — somebody allows it in
+    // System Settings and comes back — and the tap cannot be created without it. This
+    // is the same notification `AccessibilityTrust` refreshes on; the tap asks
+    // `HostWindow.isTrusted` itself, so the two do not have to be ordered.
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in
+      MainActor.assumeIsolated { MouseTap.shared.sync() }
+    }
   }
 
   /// A click on the Dock icon, which exists only while a window is open.

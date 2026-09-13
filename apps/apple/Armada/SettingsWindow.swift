@@ -165,9 +165,11 @@ struct GeneralPane: View {
         // Armada does with it — a permission request with no stated ceiling is the
         // kind people deny. The ceiling is real: the window, never the panel in it.
         Text(
-          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles and raises windows, nothing else."
+          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles, raises windows, and — once mouse buttons are switched on below — sees presses of your mouse's extra buttons. Nothing else."
         )
       }
+
+      MouseBindingsSection()
 
       Section {
         ForEach(accounts.all) { account in

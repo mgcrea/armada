@@ -1,0 +1,150 @@
+import SwiftUI
+
+/// The mouse bindings section of the General pane.
+///
+/// Its own file rather than a fifth block inside `GeneralPane`, because it is the
+/// only section there with an editable list and it brings state — a capture in
+/// progress — that nothing else in the pane has.
+struct MouseBindingsSection: View {
+  @State private var mouse = MouseBindingsStore.shared
+  @State private var trust = AccessibilityTrust.shared
+
+  /// The binding currently waiting to be told which button it is, if any.
+  @State private var capturing: UUID?
+
+  var body: some View {
+    @Bindable var mouse = mouse
+
+    Section {
+      Toggle("Drive Armada with your mouse buttons", isOn: $mouse.isEnabled)
+
+      if mouse.isEnabled {
+        // Said here rather than only in the Accessibility section above, because this
+        // is the switch that will look broken without the grant — it stays on, and
+        // nothing happens.
+        if !trust.isTrusted {
+          Text(
+            "Bindings need the Accessibility permission above. Until it is allowed, nothing here will fire."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+
+        ForEach($mouse.bindings) { $binding in
+          MouseBindingRow(
+            binding: $binding,
+            isCapturing: capturing == binding.id,
+            onDetect: { startCapture(for: $binding) },
+            onCancelDetect: cancelCapture,
+            onRemove: { mouse.remove(binding) })
+        }
+
+        Button("Add a binding") { mouse.add() }
+      }
+    } header: {
+      Text("Mouse buttons")
+    } footer: {
+      // Three facts, in the order somebody deciding whether to switch this on needs
+      // them: what Armada can see, what it deliberately leaves alone, and the one
+      // case where a binding will silently do nothing. The last is not a bug that can
+      // be fixed — see `MouseTap`.
+      Text(
+        """
+        Armada sees your mouse's middle and extra buttons and the modifiers held with them — never your clicks, your pointer, or your typing. A button pressed on its own is left alone, so Back and Forward keep working. Bindings do nothing while a password field has focus, because macOS hides those presses from every application.
+
+        Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings — VS Code, Xcode, anything — and Armada will fire it from a button. macOS itself uses none of them.
+        """
+      )
+    }
+  }
+
+  private func startCapture(for binding: Binding<MouseBinding>) {
+    capturing = binding.wrappedValue.id
+    MouseTap.shared.beginCapture { button in
+      binding.wrappedValue.button = button
+      capturing = nil
+    }
+  }
+
+  private func cancelCapture() {
+    MouseTap.shared.cancelCapture()
+    capturing = nil
+  }
+}
+
+/// One binding: the trigger, what it does, and a way to delete it.
+///
+/// **The trigger is one menu, not two pickers side by side.** A pane is about 420pt
+/// wide once the settings sidebar has taken its 240, which is not enough for a
+/// modifier picker, a button picker, an action picker and a delete button on one
+/// line. Folding the two trigger controls into a single menu that displays the chord
+/// — "⌥ Button 4 (back)" — spends one control where two would not fit, and reads as
+/// the thing it sets rather than as two halves of it.
+private struct MouseBindingRow: View {
+  @Binding var binding: MouseBinding
+  let isCapturing: Bool
+  let onDetect: () -> Void
+  let onCancelDetect: () -> Void
+  let onRemove: () -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      if isCapturing {
+        Text("Press a button…")
+          .foregroundStyle(.secondary)
+          .frame(minWidth: 150, alignment: .leading)
+        Button("Cancel", action: onCancelDetect)
+          .buttonStyle(.borderless)
+        Spacer(minLength: 0)
+      } else {
+        Menu {
+          // Inline pickers render as checkmarked sections of the menu rather than as
+          // submenus, so the whole trigger is set in one press without a hover-walk.
+          Picker("Modifier", selection: $binding.modifiers) {
+            ForEach(MouseModifiers.allCases) { Text($0.label).tag($0) }
+          }
+          .pickerStyle(.inline)
+
+          Picker("Button", selection: $binding.button) {
+            ForEach(MouseBinding.offeredButtons, id: \.self) {
+              Text(MouseBinding.buttonLabel($0)).tag($0)
+            }
+            // The button this binding already uses, when it is one the list does not
+            // offer — arrived at through Detect, and it has to stay selectable or
+            // opening the menu would silently move it to Button 4.
+            if !MouseBinding.offeredButtons.contains(binding.button) {
+              Text(MouseBinding.buttonLabel(binding.button)).tag(binding.button)
+            }
+          }
+          .pickerStyle(.inline)
+
+          Divider()
+          Button("Detect…", action: onDetect)
+        } label: {
+          Text(binding.label)
+        }
+        .frame(minWidth: 150)
+
+        Image(systemName: "arrow.right")
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+
+        Picker("", selection: $binding.action) {
+          Section("Armada") {
+            ForEach(MouseAction.commands) { Text($0.label).tag($0) }
+          }
+          Section("Send a key") {
+            ForEach(MouseAction.keys) { Text($0.label).tag($0) }
+          }
+        }
+        .labelsHidden()
+
+        Button(action: onRemove) {
+          Image(systemName: "minus.circle")
+        }
+        .buttonStyle(.borderless)
+        .help("Remove this binding")
+      }
+    }
+  }
+}
