@@ -157,7 +157,9 @@ private struct MouseBindingRow: View {
             ForEach(MouseAction.commands) { Text($0.label).tag($0) }
           }
           Section("Send a key") {
-            ForEach(MouseAction.keys) { Text($0.label).tag($0) }
+            ForEach(MouseAction.keys) {
+              Text($0.label(firedWith: binding.modifiers)).tag($0)
+            }
           }
         }
         .labelsHidden()

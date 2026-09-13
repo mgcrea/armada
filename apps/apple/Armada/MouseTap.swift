@@ -163,7 +163,7 @@ final class MouseTap {
 
     swallowed.insert(button)
     if let key = binding.action.keyCode {
-      post(key: key, proxy: proxy)
+      post(key: key, modifiers: binding.modifiers.flags, proxy: proxy)
     } else {
       let action = binding.action
       DispatchQueue.main.async { MouseCommand.run(action) }
@@ -174,17 +174,26 @@ final class MouseTap {
   /// **Posted through the proxy, not `CGEvent.post`.** The proxy injects downstream of
   /// this tap, so the key cannot arrive back at this callback.
   ///
-  /// **Flags cleared.** The modifier that triggered the binding is still physically
-  /// down, and leaving it on the synthesised event would deliver ⌥F13 to an
-  /// application told to expect F13. What the application reads is the event's own
-  /// flags, so clearing them is what makes the binding in the far side's settings the
-  /// obvious one.
-  private func post(key: CGKeyCode, proxy: CGEventTapProxy) {
+  /// **The trigger's modifiers are carried onto the key**, so ⌘ and a side button
+  /// arrive as ⌘F15 rather than as a bare F15. Clearing them was the first shape of
+  /// this and it was the wrong one, for a reason that is not about headroom:
+  /// **a modifier-less chord cannot drive a hold-and-repeat picker.** VS Code's quick
+  /// navigate — what Ctrl+Tab does, and what `quickSwitchWindow` is for — commits when
+  /// the modifier of the invoking chord is *released*, testing `metaKey`/`altKey` on
+  /// the chord and the modifier's own keycode on the key-up. A chord with no modifier
+  /// can never satisfy it, so the picker opens in a mode whose exit condition is
+  /// unreachable and the reader has to reach for Return. Carrying the modifier makes
+  /// that whole class of binding work, and costs only a longer chord to type on the
+  /// far side.
+  ///
+  /// Armada swallows the button and never the modifier, so the application still sees
+  /// the real ⌘ key-down and key-up on either side of this.
+  private func post(key: CGKeyCode, modifiers: CGEventFlags, proxy: CGEventTapProxy) {
     let source = CGEventSource(stateID: .hidSystemState)
     for isDown in [true, false] {
       guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: isDown)
       else { continue }
-      event.flags = []
+      event.flags = modifiers
       event.tapPostEvent(proxy)
     }
   }

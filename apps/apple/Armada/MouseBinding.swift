@@ -61,6 +61,21 @@ enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
     default: "Send \(rawValue.uppercased())"
     }
   }
+
+  /// "F15" for the keystroke half, nil for Armada's own commands.
+  var keyName: String? { keyCode == nil ? nil : rawValue.uppercased() }
+
+  /// The row's label, which for a keystroke has to name the chord that will actually
+  /// arrive rather than the key alone.
+  ///
+  /// `MouseTap` carries the trigger's modifiers onto the key it sends, so a row
+  /// reading "Send F15" next to a ⌘ trigger would send the reader off to bind `f15`
+  /// in another application and watch nothing happen. Armada's own commands do not
+  /// vary with the trigger and ignore it.
+  func label(firedWith modifiers: MouseModifiers) -> String {
+    guard let keyName else { return label }
+    return "Send \(modifiers.label)\(keyName)"
+  }
 }
 
 /// The modifiers a binding fires on, as a closed list of combinations.
