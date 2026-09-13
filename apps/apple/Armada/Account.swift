@@ -25,6 +25,13 @@ final class Account: Identifiable {
 
   let sessions: SessionWatcher
 
+  /// The folders this account has run in lately, for the New Session menu.
+  ///
+  /// Read from the same parse of `.claude.json` as the identity and the usage cache —
+  /// the `projects` map is a third thing that document holds — so the menu costs no
+  /// file read of its own. See `RecentProject.decode(root:)`.
+  private(set) var recentProjects: [RecentProject] = []
+
   /// What a session in each of this account's projects loads before its first prompt.
   /// Filled lazily, only for the project whose session is being looked at.
   let compositions: ContextCompositions
@@ -110,6 +117,7 @@ final class Account: Identifiable {
     modelID = ClaudeConfigDocument.read(folder.settingsJSON)?["model"] as? String
     guard let root = ClaudeConfigDocument.read(folder.usageJSON) else { return }
     if let identity = AccountIdentity(root: root) { self.identity = identity }
+    recentProjects = RecentProject.decode(root: root)
     // A nil decode leaves the last good snapshot in place rather than blanking
     // the pane: the common cause is catching the file mid-rewrite.
     if let usage = UsageSnapshot.decode(root: root) { adopt(usage) }

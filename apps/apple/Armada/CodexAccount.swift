@@ -31,6 +31,15 @@ final class CodexAccount: Identifiable {
 
   /// "Plus", "Pro" — nil until the first `token_count` is read.
   var planLabel: String? { usage?.planLabel }
+
+  /// The folders this home has run in lately, for the New Session menu.
+  ///
+  /// Computed rather than stored, unlike `Account.recentProjects`: there is no
+  /// document to read here, only the sessions the watcher already holds, so this is a
+  /// walk over a handful of structs each time the menu is drawn. It is therefore also
+  /// as short as the watcher's own window — the last 12 hours — which is the honest
+  /// list, not a truncated one. See `RecentProject.recent(in:)`.
+  var recentProjects: [RecentProject] { RecentProject.recent(in: sessions.sessions) }
 }
 
 /// Every Codex home on this Mac.

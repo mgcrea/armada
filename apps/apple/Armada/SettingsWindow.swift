@@ -83,6 +83,17 @@ struct GeneralPane: View {
   @State private var loginError: String?
   @State private var trust = AccessibilityTrust.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
+  @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
+
+  /// Reading resolves the unset case to whichever terminal a launch would actually
+  /// use; writing stores the choice. Without the mapping the picker shows blank until
+  /// somebody touches it, because "" is nobody's bundle id — the same shape as
+  /// `MainWindowView.selection`.
+  private var terminalSelection: Binding<String> {
+    Binding(
+      get: { TerminalApp.preferred(stored: terminal).bundleID },
+      set: { terminal = $0 })
+  }
 
   var body: some View {
     Form {
@@ -120,6 +131,22 @@ struct GeneralPane: View {
         // record. The sails fill on their own and are not part of this choice.
         Text(
           "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex session that is merely open counts as waiting on you."
+        )
+      }
+
+      Section {
+        Picker("Open new sessions in", selection: terminalSelection) {
+          ForEach(TerminalApp.installed) { terminal in
+            Text(terminal.name).tag(terminal.bundleID)
+          }
+        }
+      } header: {
+        Text("New sessions")
+      } footer: {
+        // Says what the list leaves out, because a one-row picker otherwise reads as a
+        // bug on a Mac with three terminals installed. See `TerminalApp` for the rule.
+        Text(
+          "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. It asks for no Automation permission, and the session appears in the list here like any other."
         )
       }
 

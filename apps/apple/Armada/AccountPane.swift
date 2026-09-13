@@ -52,6 +52,7 @@ struct AccountPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .newSessionFailureAlert()
     .onReceive(clock) { now = $0 }
     // A session ending should not leave the detail on a row that is gone.
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
@@ -122,11 +123,19 @@ struct AccountPaneView: View {
           // No `primaryAction:`: double-clicking a row stays plain selection.
           .contextMenu(forSelectionType: String.self) { ids in
             // Built on demand, so this is one cached lookup per right-click.
-            if let session = session(for: ids),
-              let host = SessionHostLookup.host(for: session.registry)
-            {
-              Button("Focus in \(host.name)") {
-                FocusSession.focus(host, cwd: session.registry.cwd)
+            if let session = session(for: ids) {
+              if let host = SessionHostLookup.host(for: session.registry) {
+                Button("Focus in \(host.name)") {
+                  FocusSession.focus(host, cwd: session.registry.cwd)
+                }
+              }
+              // The fastest route to the thing people actually want a second window
+              // for: another session on the same account, in the same project. No
+              // folder to pick, because the row already names it.
+              Button("New Session in \(session.registry.projectName)") {
+                NewSessionLauncher.shared.start(
+                  .claude(account.folder),
+                  in: URL(filePath: session.registry.cwd, directoryHint: .isDirectory))
               }
             }
           }
@@ -209,6 +218,9 @@ struct UsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
+        // Left of the sort control, and the only button in either header that does
+        // something rather than changing how something is shown.
+        NewSessionMenu(agent: .claude(account.folder), projects: account.recentProjects)
         // The list's control, in the pane's only existing chrome. Not a toolbar —
         // both windows are hosted `NSWindow`s with no `NSToolbar`, see `HostedWindow`
         // — and not a row of its own, because a new row adds height to a pane whose

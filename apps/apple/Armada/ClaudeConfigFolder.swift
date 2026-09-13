@@ -6,7 +6,12 @@ import Foundation
 /// multi-account case becomes a one-call-site change instead of a rewrite.
 /// Nothing here writes: this prototype only reads the user's Claude config, and
 /// `docs/design.md` puts credential and settings handling firmly out of scope.
-struct ClaudeConfigFolder: Sendable, Hashable {
+/// `nonisolated` for the same reason `CodexHome` is: under
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` every member here would otherwise be
+/// main-actor isolated, conformances included — and `NewSession.Agent`, which carries
+/// one of these and is `Hashable`, is built off the main actor. Nothing in this type
+/// touches shared state, so the isolation bought nothing and cost a Swift 6 error.
+nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
   /// The config folder itself — `~/.claude` by default, or `CLAUDE_CONFIG_DIR`.
   let base: URL
 

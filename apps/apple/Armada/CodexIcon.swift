@@ -13,7 +13,11 @@ import SwiftUI
 enum CodexIcon {
   /// Verified on this Mac with `mdls`: ChatGPT.app is `com.openai.codex`, not the
   /// `com.openai.chat` the name suggests.
-  static let bundleID = "com.openai.codex"
+  ///
+  /// `nonisolated` so that `CodexCLI` — which runs off the main actor and looks inside
+  /// this bundle for the `codex` binary — can name the same id rather than keeping a
+  /// second copy of it. A `let` of a `String` is safe to read from anywhere.
+  nonisolated static let bundleID = "com.openai.codex"
 
   static var image: NSImage? { VendorIcon.image(bundleID: bundleID) }
 }

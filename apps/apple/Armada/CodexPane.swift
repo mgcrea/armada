@@ -39,6 +39,7 @@ struct CodexPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .newSessionFailureAlert()
     .onReceive(clock) { now = $0 }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
@@ -95,6 +96,19 @@ struct CodexPaneView: View {
               }
             }
           }
+          // As in `AccountPaneView`, on the `List` rather than the row, so that
+          // right-clicking an unselected row acts on that row. There is no "Focus in"
+          // twin here: a Codex rollout records no pid, so there is no process to walk
+          // up to an application — see `docs/codex-sessions.md`.
+          .contextMenu(forSelectionType: String.self) { ids in
+            if let session = session(for: ids), !session.meta.cwd.isEmpty {
+              Button("New Session in \(session.meta.projectName)") {
+                NewSessionLauncher.shared.start(
+                  .codex(account.home),
+                  in: URL(filePath: session.meta.cwd, directoryHint: .isDirectory))
+              }
+            }
+          }
           .onChange(of: scrollTarget) { _, target in
             guard let target else { return }
             scrollTarget = nil
@@ -114,6 +128,13 @@ struct CodexPaneView: View {
     CodexSessionRow(session: session, now: now)
       .tag(session.id)
       .id(session.id)
+  }
+
+  /// The one session a context menu is about. Single selection, so anything but one
+  /// row is a click on empty space. Same rule as `AccountPaneView.session(for:)`.
+  private func session(for ids: Set<String>) -> CodexSession? {
+    guard let id = ids.first, ids.count == 1 else { return nil }
+    return account.sessions.sessions.first { $0.id == id }
   }
 
   private var selected: CodexSession? {
@@ -172,6 +193,9 @@ struct CodexUsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
+        // Twinned with `UsageHeader`, including the order: what starts something,
+        // then what reorders the list.
+        NewSessionMenu(agent: .codex(account.home), projects: account.recentProjects)
         // Where `UsageHeader` puts it, for the reasons given there.
         SessionSortMenu()
       }
