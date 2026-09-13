@@ -57,23 +57,7 @@ run: build quit ## Build and launch the app
 clean: ## Remove build products
 	rm -rf $(DERIVED_DATA)
 
-# ── Icon ──────────────────────────────────────────────────────────────────────
-#
-# Owned by the appshot-app-icon skill; these only name the entry points. The source
-# of truth is design/armada-mark.svg at the repo root, from which the Icon Composer
-# bundle is regenerated.
-ICON_SRC = ../../design/armada-mark.svg
-ICON_OUT = Armada/Armada.icon
-
-icon: ## Rebuild Armada.icon from design/armada-mark.svg
-	@echo "Run the appshot-app-icon skill: $(ICON_SRC) -> $(ICON_OUT)"
-	@exit 1
-
-icon-check: ## Fail if the icon is stale against its source SVG
-	@echo "Run the appshot-app-icon skill to verify $(ICON_OUT)"
-	@exit 1
-
-.PHONY: help build build-release run quit clean icon icon-check \
+.PHONY: help build build-release run quit clean \
 	format-swift format-swift-check swift-format-version blame-setup
 
 # ── Formatting ────────────────────────────────────────────────────────────────

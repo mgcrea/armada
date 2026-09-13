@@ -1,0 +1,20 @@
+{
+  "name": "Armada",
+  "colors": {
+    "plateTop": "#FFD9A2",
+    "plateBottom": "#F6A177",
+    "sail": "#FFF6E8",
+    "waterMid": "#B0532F",
+    "waterFore": "#7A2F1C"
+  },
+  "gradients": {
+    "plate": {
+      "type": "linear",
+      "angle": 180,
+      "stops": [
+        { "offset": 0, "color": "#FFD9A2" },
+        { "offset": 1, "color": "#F6A177" }
+      ]
+    }
+  }
+}
