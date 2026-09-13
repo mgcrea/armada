@@ -1,0 +1,95 @@
+Armada Source-Available License
+Version 1.0, 2026
+
+Copyright (c) 2026 Olivier Louvignes <olivier@mgcrea.io>
+
+This license covers the contents of `apps/apple/` — the Armada menu bar app. It
+does NOT cover `docs/`, `design/` or `scripts/`, which are MIT licensed; see the
+LICENSE file at the root of this repository.
+
+WHY THIS IS NOT AN OPEN SOURCE LICENSE
+
+Armada reads your transcripts. Every session it lists is a conversation you have
+had with an agent — the code in it, the paths, the things you told it about your
+work — across every account on the machine. It also spawns your own `claude` to
+ask it questions, and opens terminals running agents on your behalf. Nobody
+should grant that to software they cannot read, so the source stays readable,
+auditable and buildable by anyone. What is sold, if and when a signed build is
+distributed, is the notarized binary and the maintenance behind it — never
+secrecy. This license is the narrowest set of terms that keeps both true.
+
+1. GRANT
+
+Subject to the conditions below, you are granted a worldwide, royalty-free,
+non-exclusive license to:
+
+  (a) use, view, study and analyze the Software, for any purpose, including
+      commercially;
+  (b) modify the Software and create derivative works of it;
+  (c) compile the Software and run the resulting binaries on any computer you
+      own or control, for any purpose, including commercially;
+  (d) redistribute the Software in SOURCE form, modified or unmodified,
+      including as a public fork or a contribution back to this project,
+      provided a copy of this license is included and the notices in Section 4
+      are preserved;
+  (e) publish the results of any analysis of the Software — reviews, benchmarks,
+      security findings, disassembly, teardowns — and quote from it as needed to
+      support them, without restriction and without notice to the copyright
+      holder.
+
+2. CONDITIONS
+
+You may not:
+
+  (a) distribute the Software, or any derivative work of it, in BINARY or other
+      non-source form, to anyone, whether or not for a fee;
+  (b) remove, disable, or circumvent any license validation in the Software, or
+      distribute anything designed to do so;
+  (c) use the name "Armada", the bundle identifier `io.mgcrea.armada`, or the
+      project's marks to identify a build you produced, in a way likely to
+      suggest it is the official one.
+
+Section 2(a) is the whole of the commercial reservation. A binary you compiled
+for yourself under 1(c) is yours to run, on as many machines as you control, for
+as long as you like. It is only handing that binary to someone else that is
+reserved.
+
+Section 2(c) matters more here than the wording suggests. Armada is a program
+people point at every agent transcript on their machine. A build that claims to
+be the official one is not a naming dispute; it is a program asking to be trusted
+with somebody's entire working history under a name somebody else earned.
+
+3. THE OFFICIAL BUILD IS SEPARATE
+
+Any signed and notarized builds distributed by the copyright holder are not
+licensed by this document. They are governed by the end user license agreement
+accompanying them, and may require a paid license key. That agreement grants you
+no rights to this source, and this license grants you no rights to those builds.
+
+No such build is distributed today; this section reserves the position rather
+than describing a product that exists.
+
+4. NOTICES
+
+Retain this license, the copyright notice above, and any notice in the Software
+identifying its origin.
+
+5. TERMINATION
+
+This license terminates automatically if you breach Section 2 and do not cure the
+breach within 30 days of becoming aware of it. Rights properly granted to
+recipients of source you distributed under 1(d) survive your termination.
+
+6. NO TRADEMARK LICENSE
+
+Nothing here grants rights in any trademark, service mark or logo of the
+copyright holder, except the nominative use permitted by Section 1(e).
+
+7. DISCLAIMER AND LIMITATION OF LIABILITY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
