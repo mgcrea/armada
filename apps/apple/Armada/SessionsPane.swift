@@ -113,6 +113,7 @@ struct SessionDetail: View {
           .foregroundStyle(.secondary)
         }
         FocusButton(host: host, cwd: session.registry.cwd, didLookUp: didLookUpHost)
+        ForkButton(availability: .claude(session, in: account))
       }
       // Above "Session": the context is the live fact worth checking, while the
       // pid and the folder are reference you look up once.

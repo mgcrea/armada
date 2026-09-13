@@ -32,7 +32,9 @@ chosen and what Anthropic's terms actually say.
 It will also *start* a session for you, which is the one line of the original scope that has
 been deliberately reopened — "v1 watches; it doesn't launch agents". It still owns no agent
 process: it writes a startup script, hands it to Terminal, and the new session arrives through
-the same watchers as every other.
+the same watchers as every other. Forking a session you are looking at is the same mechanism
+with one flag added — `--fork-session` for Claude Code, `codex fork` for Codex — so the vendor's
+own CLI does the copying and the original is never touched.
 
 ## What it shows
 
@@ -183,6 +185,7 @@ Built and running:
 | **Focus**             | a session row back to the application hosting it, and its own window where Accessibility allows   |
 | **Menu bar**          | accessory app, per-account popover, and a glyph that rings when a session wants attention         |
 | **New sessions**      | start `claude` or `codex` in a chosen folder on a chosen account, via a terminal                  |
+| **Fork**              | open a copy of a session from where it stands, through each vendor's own fork flag                |
 | **Mouse bindings**    | middle and extra buttons cycle the session list or send a keystroke, via an event tap             |
 | **Codex**             | sessions, plan limits and context per Codex home, as a spike                                      |
 | **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                              |

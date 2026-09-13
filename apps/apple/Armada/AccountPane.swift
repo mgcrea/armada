@@ -137,6 +137,15 @@ struct AccountPaneView: View {
                   .claude(account.folder),
                   in: URL(filePath: session.registry.cwd, directoryHint: .isDirectory))
               }
+              // Below "New Session" because it is the rarer of the two and the one
+              // that needs the row: a fresh session only wants the folder, while this
+              // wants this session in particular.
+              if let target = ForkAvailability.claude(session, in: account).target {
+                Button("Fork Session") {
+                  NewSessionLauncher.shared.start(
+                    target.agent, in: target.project, start: target.start)
+                }
+              }
             }
           }
           .onChange(of: scrollTarget) { _, target in

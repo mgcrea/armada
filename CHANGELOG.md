@@ -42,6 +42,13 @@ below are grouped by what they do rather than replayed commit by commit.
   Starting one opens a terminal running `claude` or `codex` in that folder on that account:
   Armada writes a startup script and hands it to Terminal, never owns the process, and the new
   session arrives through the watchers like any other.
+- **Fork a session.** A copy of the session you are looking at, opened from where it stands, on
+  the same account and in the same folder — from the detail pane, a row's right-click, or the
+  menu bar popover. It is each vendor's own flag doing the work (`--resume … --fork-session` for
+  Claude Code, `codex fork` for Codex), which is what makes it safe to offer for a session that
+  is still running: forking mints a new id and leaves the original alone, where resuming would
+  put two writers on one transcript. Claude Code records nothing linking the copy to its
+  original and the pane says so; Codex writes `forked_from_id` into the new session's log.
 - **Mouse bindings.** Middle and extra mouse buttons can cycle the session list or send a
   keystroke, through a `CGEventTap` whose mask is two event types wide.
 - **Menu bar.** An accessory app with a per-account popover, and a template glyph that fills

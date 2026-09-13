@@ -10,7 +10,13 @@ import Foundation
 /// comes back through `SessionWatcher` / `CodexWatcher` like any other, within a poll.
 /// `docs/design.md`'s "v1 watches; it doesn't launch agents" said the app observes
 /// sessions started elsewhere; this makes Armada one of the elsewheres, and stops
-/// there. Nothing here prompts, resumes or reads a transcript.
+/// there. Nothing here prompts or reads a transcript.
+///
+/// **Forking is a flag, not a feature Armada implements.** `Start.fork` hands the
+/// vendor's own CLI the session id it already publishes — `--fork-session` for Claude
+/// Code, `codex fork` for Codex — and both of them do the copying. Armada reads no
+/// transcript to do it and writes nothing into either vendor's folder, so the one line
+/// this adds to the script is the whole of the feature.
 ///
 /// **Everything the session needs goes in the script, because nothing else survives
 /// the trip.** The new window's environment comes from the terminal, not from Armada
@@ -42,6 +48,21 @@ nonisolated enum NewSession {
     }
   }
 
+  /// A fresh session, or a copy of one that already exists.
+  ///
+  /// **Fork rather than resume, and that is a safety argument rather than a
+  /// preference.** `claude --resume` and `codex resume` continue the original thread,
+  /// which on a session still open in an editor means two writers on one transcript.
+  /// Forking mints a new id and leaves the original untouched, so the one operation
+  /// Armada offers is the one that cannot damage what it is watching.
+  ///
+  /// The id is the vendor's own: `SessionRegistry.sessionId` for Claude Code, and the
+  /// uuid from a rollout's filename for Codex. Armada never mints one.
+  enum Start: Hashable, Sendable {
+    case fresh
+    case fork(sessionID: String)
+  }
+
   /// Open a terminal window running `agent` in `project`.
   ///
   /// Returns nil on success, or a sentence to put in front of the person. Every
@@ -54,7 +75,7 @@ nonisolated enum NewSession {
   /// nothing: the window is the feedback.
   @MainActor
   static func start(
-    _ agent: Agent, in project: URL, terminal: TerminalApp,
+    _ agent: Agent, in project: URL, terminal: TerminalApp, start: Start = .fresh,
     completion: @escaping @MainActor (String) -> Void = { _ in }
   ) -> String? {
     let fileManager = FileManager.default
@@ -77,7 +98,8 @@ nonisolated enum NewSession {
 
     let script: URL
     do {
-      script = try write(script: body(agent: agent, project: project, binary: binary), for: project)
+      script = try write(
+        script: body(agent: agent, project: project, binary: binary, start: start), for: project)
     } catch {
       return "Armada could not write the startup script: \(error.localizedDescription)"
     }
@@ -113,7 +135,7 @@ nonisolated enum NewSession {
   /// for a `claude` that died on its first line — that is the case where the whole
   /// feature reads as "the button does nothing", and the two lines below are what turn
   /// it into a message.
-  private static func body(agent: Agent, project: URL, binary: URL) -> String {
+  private static func body(agent: Agent, project: URL, binary: URL, start: Start) -> String {
     let path = project.standardizedFileURL.path(percentEncoded: false)
     var lines = [
       "#!/bin/zsh",
@@ -122,7 +144,8 @@ nonisolated enum NewSession {
     ]
     lines += accountLines(for: agent)
     lines += [
-      quoted(binary.path(percentEncoded: false)),
+      ([quoted(binary.path(percentEncoded: false))] + arguments(for: agent, start: start))
+        .joined(separator: " "),
       "status=$?",
       // `read -r` with no variable is zsh reading into REPLY, which is all this needs:
       // the keystroke is the point, not what was typed.
@@ -134,6 +157,30 @@ nonisolated enum NewSession {
       "fi",
     ]
     return lines.joined(separator: "\n") + "\n"
+  }
+
+  /// What comes after the binary on the invocation line.
+  ///
+  /// Empty for a fresh session, which is what every launch was until forking landed —
+  /// and the reason this returns an array rather than a string is that the two vendors
+  /// disagree about shape: Claude Code takes two flags and Codex a subcommand.
+  ///
+  /// The id is quoted like every other value that reaches the script. Both vendors mint
+  /// uuids and neither needs it, but the invocation line should not be the one place in
+  /// this file that assumes what a session id looks like.
+  private static func arguments(for agent: Agent, start: Start) -> [String] {
+    switch (agent, start) {
+    case (_, .fresh):
+      []
+    case (.claude, .fork(let sessionID)):
+      // `--fork-session` is only meaningful alongside `--resume` or `--continue`;
+      // measured against Claude Code 2.1.269 on 2026-09-13.
+      ["--resume", quoted(sessionID), "--fork-session"]
+    case (.codex, .fork(let sessionID)):
+      // A top-level subcommand rather than a flag, and it takes the id positionally;
+      // measured against codex-cli 0.153.4 on 2026-09-13.
+      ["fork", quoted(sessionID)]
+    }
   }
 
   /// The two lines that decide which account the session belongs to.

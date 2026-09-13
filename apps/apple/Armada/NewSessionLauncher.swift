@@ -25,13 +25,32 @@ final class NewSessionLauncher {
       stored: UserDefaults.standard.string(forKey: TerminalApp.defaultsKey) ?? "")
   }
 
-  func start(_ agent: NewSession.Agent, in project: URL) {
+  func start(
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
+  ) {
     if let message = NewSession.start(
-      agent, in: project, terminal: terminal,
+      agent, in: project, terminal: terminal, start: start,
       completion: { [weak self] message in self?.failure = message })
     {
       failure = message
     }
+  }
+
+  /// The same launch, from the menu bar panel, which has no alert of its own.
+  ///
+  /// `newSessionFailureAlert()` is attached by panes, and the popover is not a pane —
+  /// so a launch that fails from there would set `failure` with nothing on screen to
+  /// show it, which is precisely the button-that-does-nothing `NewSession` exists to
+  /// prevent. Opening the main window gives the alert somewhere to land.
+  ///
+  /// Only the synchronous half is caught here. A LaunchServices failure arrives after
+  /// this returns and shows the next time a pane is on screen, which is the same
+  /// deferral every other caller already lives with.
+  func startFromMenuBar(
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
+  ) {
+    self.start(agent, in: project, start: start)
+    if failure != nil { AppDelegate.shared?.showMain() }
   }
 
   /// Pick a folder, then start there.

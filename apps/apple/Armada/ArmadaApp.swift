@@ -363,7 +363,7 @@ struct AccountSummary: View {
 
       ForEach(sessions.prefix(Self.visibleSessions)) { session in
         SummaryRow(
-          session: session, accountID: account.id, host: hosts[session.registry.pid] ?? nil)
+          session: session, account: account, host: hosts[session.registry.pid] ?? nil)
       }
       if sessions.count > Self.visibleSessions {
         Text("and \(sessions.count - Self.visibleSessions) more")
@@ -516,13 +516,13 @@ struct PanelRow<Label: View>: View {
 /// refuses to close anything.
 struct SummaryRow: View {
   let session: Session
-  let accountID: String
+  let account: Account
   let host: SessionHost?
 
   var body: some View {
     PanelRow(help: "Show \(session.displayName) in Armada") {
       MenuBarPanel.dismiss()
-      MainWindowRoute.shared.open(.account(accountID), session: session.id)
+      MainWindowRoute.shared.open(.account(account.id), session: session.id)
     } label: {
       HStack(spacing: 6) {
         StateDot(state: session.state)
@@ -532,26 +532,49 @@ struct SummaryRow: View {
         Spacer(minLength: 0)
       }
     }
-    // Only when there is somewhere to go: an unconditional `contextMenu` with no
-    // buttons in it opens an empty menu on right-click, which is worse than none.
-    .modifier(FocusHostMenu(host: host, cwd: session.registry.cwd))
+    .modifier(
+      SessionRowMenu(
+        host: host, cwd: session.registry.cwd,
+        fork: ForkAvailability.claude(session, in: account).target))
   }
 }
 
-/// "Focus in Ghostty", on the right-click, when the session has a host to focus.
-struct FocusHostMenu: ViewModifier {
+/// The popover row's right-click: "Focus in Ghostty", "Fork Session", or neither.
+///
+/// **Still conditional, and that is the whole reason this is a modifier.** An
+/// unconditional `contextMenu` with no buttons in it opens an empty menu on
+/// right-click, which is worse than none — so the menu is attached only when at least
+/// one of the two items has something to offer. It used to be one item and the guard
+/// was `if let host`; with two it has to be the union, or a session with no host but a
+/// transcript loses its fork.
+///
+/// Codex rows pass no host: a rollout records no pid, so there is no process to walk up
+/// to an application. They still fork.
+struct SessionRowMenu: ViewModifier {
   let host: SessionHost?
   let cwd: String
+  let fork: ForkTarget?
 
   func body(content: Content) -> some View {
-    if let host {
+    if host != nil || fork != nil {
       content.contextMenu {
-        Button("Focus in \(host.name)") {
-          FocusSession.focus(host, cwd: cwd)
-          // For the same reason the row itself dismisses: the panel is closed by
-          // Armada resigning active, and when the host is *already* frontmost
-          // nothing resigns and the click reads as dead.
-          MenuBarPanel.dismiss()
+        if let host {
+          Button("Focus in \(host.name)") {
+            FocusSession.focus(host, cwd: cwd)
+            // For the same reason the row itself dismisses: the panel is closed by
+            // Armada resigning active, and when the host is *already* frontmost
+            // nothing resigns and the click reads as dead.
+            MenuBarPanel.dismiss()
+          }
+        }
+        if let fork {
+          Button("Fork Session") {
+            // `startFromMenuBar`, not `start`: the popover attaches no failure alert,
+            // so a launch that fails here needs a window opened to say so.
+            NewSessionLauncher.shared.startFromMenuBar(
+              fork.agent, in: fork.project, start: fork.start)
+            MenuBarPanel.dismiss()
+          }
         }
       }
     } else {

@@ -107,6 +107,14 @@ struct CodexPaneView: View {
                   .codex(account.home),
                   in: URL(filePath: session.meta.cwd, directoryHint: .isDirectory))
               }
+              // Ordered as in `AccountPaneView`, so the one menu a person learns is
+              // the same menu in both panes.
+              if let target = ForkAvailability.codex(session, in: account).target {
+                Button("Fork Session") {
+                  NewSessionLauncher.shared.start(
+                    target.agent, in: target.project, start: target.start)
+                }
+              }
             }
           }
           .onChange(of: scrollTarget) { _, target in
@@ -320,6 +328,12 @@ struct CodexSummary: View {
             Spacer(minLength: 0)
           }
         }
+        // No host to focus, so this row's menu is a fork or nothing — which is exactly
+        // the case `SessionRowMenu` guards against opening an empty menu for.
+        .modifier(
+          SessionRowMenu(
+            host: nil, cwd: session.meta.cwd,
+            fork: ForkAvailability.codex(session, in: account).target))
       }
       if live.count > Self.visibleSessions {
         Text("and \(live.count - Self.visibleSessions) more")
@@ -507,6 +521,9 @@ struct CodexSessionDetail: View {
         Text(explanation(session.state))
           .font(.caption)
           .foregroundStyle(.secondary)
+        // Where `SessionDetail` has it, under the state and above the context: a fork
+        // is decided by what this session is doing, so it belongs beside that.
+        ForkButton(availability: .codex(session, in: account))
       }
       // Above "Session", matching `SessionDetail`: the context is the live fact
       // worth checking, and the folder and version are reference you read once.

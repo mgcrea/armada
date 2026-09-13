@@ -98,6 +98,30 @@ Entry `type` values seen: `user`, `assistant`, `attachment`, `ai-title`, `last-p
 
 **A session that has never been prompted has no transcript file at all.**
 
+### Forking a session (2.1.269, measured 2026-09-13)
+
+`claude --resume <sessionId> --fork-session`, run from the session's own `cwd`.
+`--fork-session` is documented as "When resuming, create a new session ID instead of reusing
+the original (use with `--resume` or `--continue`)", and the pairing is what makes this safe to
+offer for a session that is still open: plain `--resume` continues the original thread, which
+on a live session means two writers on one transcript.
+
+Checked without starting anything, from an empty directory:
+
+```
+$ claude --resume 00000000-0000-4000-8000-000000000000 --fork-session -p 'x'
+No conversation found with session ID: 00000000-0000-4000-8000-000000000000
+```
+
+The flags parse and the id is resolved against the transcripts of the **current** directory's
+project folder, so a fork has to be started from the original session's `cwd` — which is what
+Armada's startup script `cd`s to anyway.
+
+**Nothing records the relationship.** The fork gets a fresh `sessionId`, a fresh transcript and
+a registry row of its own, with no field naming the session it came from — the same gap that
+makes a resumed session untitled, and the reason Armada's fork button says so out loud instead
+of promising a link. Codex is the opposite here; see `codex-sessions.md`.
+
 ## Titles
 
 The title VS Code displays is an `ai-title` entry:

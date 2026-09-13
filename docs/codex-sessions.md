@@ -24,6 +24,30 @@ in the app — the detail is in the sections below:
 - Other useful flags: `--skip-git-repo-check`, `--sandbox read-only|workspace-write`.
 - **Don't edit `~/.codex/config.toml` for tests.** The ChatGPT app rewrites it on launch.
 
+### Forking a session (`codex-cli` 0.153.4, measured 2026-09-13)
+
+`fork` is a **top-level subcommand**, not a flag: `codex fork [SESSION_ID] [PROMPT]`, described
+as "Fork a previous interactive session (picker by default; use `--last` to fork the most
+recent)". `codex resume` is its sibling and continues the original thread instead. There is
+also a `/fork` command inside the TUI.
+
+It needs a terminal, as the TUI always does:
+
+```
+$ codex fork 00000000-0000-4000-8000-000000000000 < /dev/null
+Error: stdin is not a terminal
+```
+
+**Unlike Claude Code, Codex records where a fork came from.** The new rollout's `session_meta`
+payload carries `forked_from_id` and `forked_from_ordinal_exclusive` — both confirmed in the
+binary's serialized field names alongside `session_id`, `parent_thread_id` and `thread_source`.
+So a fork's provenance is readable from disk here, and an app showing "forked from X" would be
+reading a fact rather than guessing. Armada does not read it yet.
+
+`--fork-turns` also exists ("Defaults to `all`. Use `none`, `all`, or a positive integer string
+such as `3` to fork only the most recent turns"), which would allow forking a long session at a
+point rather than at its end. Untested.
+
 ## Files
 
 - `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl`: one log per session.
