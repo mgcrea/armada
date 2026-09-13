@@ -11,11 +11,18 @@ import SwiftUI
 ///
 /// No entitlement pane: Armada sells nothing, so there is nothing to unlock.
 ///
+/// Mouse is its own pane rather than a sixth section of General, and the reason is
+/// shape rather than size: every other thing in General is a toggle or a picker that
+/// answers on the spot, and this is a list you build. It is also the one place in
+/// Settings that takes a live event while you are looking at it — see
+/// `MouseBindingRow`'s Detect.
+///
 /// Help is a pane rather than rows on About, and last rather than beside it: it
 /// keeps the About → What's New → Updates reading order the fleet settled on
 /// free for the two panes Armada does not have yet.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
+  case mouse
   case usage
   case about
   case help
@@ -23,6 +30,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
+    case .mouse: "Mouse"
     case .usage: "Usage"
     case .about: "About"
     case .help: "Help"
@@ -32,6 +40,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var systemImage: String {
     switch self {
     case .general: "gearshape"
+    case .mouse: "computermouse"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
     case .help: "questionmark.circle"
@@ -57,6 +66,7 @@ struct SettingsWindowView: View {
     SettingsScaffold(selection: Support.settings) { pane in
       switch pane {
       case .general: GeneralPane()
+      case .mouse: MousePane()
       case .usage: UsageSettingsPane()
       case .about:
         // `includesSupport: false` — the support rows have their own pane now,
@@ -165,11 +175,9 @@ struct GeneralPane: View {
         // Armada does with it — a permission request with no stated ceiling is the
         // kind people deny. The ceiling is real: the window, never the panel in it.
         Text(
-          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles, raises windows, and — once mouse buttons are switched on below — sees presses of your mouse's extra buttons. Nothing else."
+          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles, raises windows, and — once mouse buttons are switched on in Mouse — sees presses of your mouse's extra buttons. Nothing else."
         )
       }
-
-      MouseBindingsSection()
 
       Section {
         ForEach(accounts.all) { account in

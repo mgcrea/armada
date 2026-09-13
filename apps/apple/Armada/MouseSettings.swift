@@ -1,11 +1,19 @@
 import SwiftUI
 
-/// The mouse bindings section of the General pane.
+/// The Mouse pane: what the side buttons do.
 ///
-/// Its own file rather than a fifth block inside `GeneralPane`, because it is the
-/// only section there with an editable list and it brings state — a capture in
-/// progress — that nothing else in the pane has.
-struct MouseBindingsSection: View {
+/// **A pane rather than a section of General, and not because of its length.**
+/// Everything else in Settings is a control that answers on the spot — a toggle, a
+/// picker, a slider. This is a list you build, it is the only surface here that
+/// takes a live event while you are looking at it (Detect), and it is the only one
+/// whose setting can be on and correct and still do nothing, because the grant it
+/// needs lives behind another switch. Each of those wants room to say so.
+///
+/// **The Accessibility row is repeated here, not moved.** It is also in General,
+/// where it belongs to Focus. Two features need one grant, and a pane that sent
+/// people to another pane to find out why nothing fires would be the worse of the
+/// two duplications.
+struct MousePane: View {
   @State private var mouse = MouseBindingsStore.shared
   @State private var trust = AccessibilityTrust.shared
 
@@ -15,47 +23,62 @@ struct MouseBindingsSection: View {
   var body: some View {
     @Bindable var mouse = mouse
 
-    Section {
-      Toggle("Drive Armada with your mouse buttons", isOn: $mouse.isEnabled)
+    Form {
+      Section {
+        Toggle("Drive Armada with your mouse buttons", isOn: $mouse.isEnabled)
+
+        if mouse.isEnabled {
+          LabeledContent("Accessibility") {
+            HStack(spacing: 8) {
+              Text(trust.isTrusted ? "Allowed" : "Not allowed")
+              Button("Open System Settings…") { HostWindow.openAccessibilitySettings() }
+                .buttonStyle(.borderless)
+            }
+          }
+          if !trust.isTrusted {
+            // The failure this pane exists to make visible: the switch is on, the
+            // bindings are right, and macOS is dropping the events before Armada
+            // sees them. Nothing in the list below would hint at it.
+            Text("Until this is allowed, nothing below will fire.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+      } footer: {
+        // What Armada can see, and what it deliberately leaves alone. A permission
+        // with no stated ceiling is the kind people deny — the same reasoning as the
+        // Focus grant in General, and the ceiling here is genuinely narrow.
+        Text(
+          "Armada sees your mouse's middle and extra buttons and the modifiers held with them — never your clicks, your pointer, or your typing. A button pressed on its own is left alone, so Back and Forward keep working. Bindings do nothing while a password field has focus, because macOS hides those presses from every application."
+        )
+      }
 
       if mouse.isEnabled {
-        // Said here rather than only in the Accessibility section above, because this
-        // is the switch that will look broken without the grant — it stays on, and
-        // nothing happens.
-        if !trust.isTrusted {
+        Section {
+          ForEach($mouse.bindings) { $binding in
+            MouseBindingRow(
+              binding: $binding,
+              isCapturing: capturing == binding.id,
+              onDetect: { startCapture(for: $binding) },
+              onCancelDetect: cancelCapture,
+              onRemove: { mouse.remove(binding) })
+          }
+
+          Button("Add a binding") { mouse.add() }
+        } header: {
+          Text("Bindings")
+        } footer: {
           Text(
-            "Bindings need the Accessibility permission above. Until it is allowed, nothing here will fire."
+            "Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings — VS Code, Xcode, anything — and Armada will fire it from a button. macOS itself uses none of them, and the key arrives without the modifier you held, so bind F13 rather than a chord."
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
         }
-
-        ForEach($mouse.bindings) { $binding in
-          MouseBindingRow(
-            binding: $binding,
-            isCapturing: capturing == binding.id,
-            onDetect: { startCapture(for: $binding) },
-            onCancelDetect: cancelCapture,
-            onRemove: { mouse.remove(binding) })
-        }
-
-        Button("Add a binding") { mouse.add() }
       }
-    } header: {
-      Text("Mouse buttons")
-    } footer: {
-      // Three facts, in the order somebody deciding whether to switch this on needs
-      // them: what Armada can see, what it deliberately leaves alone, and the one
-      // case where a binding will silently do nothing. The last is not a bug that can
-      // be fixed — see `MouseTap`.
-      Text(
-        """
-        Armada sees your mouse's middle and extra buttons and the modifiers held with them — never your clicks, your pointer, or your typing. A button pressed on its own is left alone, so Back and Forward keep working. Bindings do nothing while a password field has focus, because macOS hides those presses from every application.
-
-        Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings — VS Code, Xcode, anything — and Armada will fire it from a button. macOS itself uses none of them.
-        """
-      )
     }
+    .formStyle(.grouped)
+    .navigationTitle("Mouse")
+    // A capture left armed would keep the tap running for a button press nobody is
+    // waiting for any more.
+    .onDisappear(perform: cancelCapture)
   }
 
   private func startCapture(for binding: Binding<MouseBinding>) {
