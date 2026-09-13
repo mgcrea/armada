@@ -17,6 +17,11 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
   a badge saying which answered and how old it is.
 - **Menu bar**: an accessory app (`LSUIElement`) with a popover summarising every account,
   and a template glyph that fills when anything is working.
+- **New sessions**, per account: a New Session menu in each pane's header, listing the ten
+  folders that account ran in last, and "New Session in <project>" on a session's
+  right-click. It opens a terminal window with `claude` or `codex` running in that folder
+  on that account. Armada writes a startup script and hands it to Terminal; it never owns
+  the process, and the new session arrives through the watchers like any other.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -57,6 +62,10 @@ transcripts, separate rate limits.
 | `HostWindow` | picks the app's window by title, when Accessibility is allowed |
 | `SessionOrder` | how the session list is sorted and grouped — shared by both panes |
 | `SessionSortMenu` | that choice as one menu, and the grouped list's section header |
+| `NewSession` | writes a session's startup script and hands it to a terminal |
+| `TerminalApp` | which terminals can be handed one, and which of them is chosen |
+| `NewSessionLauncher` / `NewSessionMenu` | the click, its failure alert, and the menu |
+| `RecentProject` | the folders an account has run in, for that menu |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
 usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
@@ -73,6 +82,7 @@ over one renderer and cannot drift:
 | `CodexLocks` / `CodexTitleIndex` | who is live; what things are called |
 | `CodexSession` / `CodexSessionState` | one session, and the three states it can be in |
 | `CodexContext` | `token_count` → `ContextReading`, the growth series, the opening figure |
+| `CodexCLI` | where `codex` is — including inside the Codex app and the VS Code extension |
 
 Session watching is per account and config watching is shared, which is not an
 inconsistency: each folder has its own directory trees worth a dedicated stream, while the
@@ -104,6 +114,31 @@ Each of these cost time here, and none is visible from the code that depends on 
   panel reads through `Accounts.allSessions` — the panel shows three of nineteen, so its
   three have to stay the newest three whatever the window is sorted by. The window layers
   `SessionOrder` on top rather than changing it.
+- **A launched terminal window inherits nothing from Armada.** Measured 2026-09-13, with
+  `CLAUDE_CONFIG_DIR` exported in the process that ran `open` and empty in the shell that
+  came up: LaunchServices hands the request to Terminal, whose windows carry *its*
+  environment. So every account decision has to be written into the script, and the user's
+  own `.zshrc` runs before it. That is why `NewSession` emits `unset CLAUDE_CONFIG_DIR`
+  for the default folder rather than leaving the variable alone — a profile that exports
+  it for a second account would otherwise start every "Default" session on that account.
+  The same asymmetry `ClaudeConfigFolder.usageJSON` records: exporting the default
+  folder's own path is not a no-op, it makes the session look signed out.
+- **A terminal only qualifies if opening a `.command` file *runs* it.** Terminal.app does,
+  measured; the file must also be `chmod 700` or it opens in an editor instead. That is
+  the whole of `TerminalApp.known`, and why Ghostty, WezTerm, kitty and Alacritty are not
+  in it — they take a command as an argument (`-e`) rather than as a document, which is a
+  second launch mechanism nobody here can test against. Adding one is a row plus a branch.
+- **`codex` is not on `PATH` on a Mac that runs Codex.** It ships inside the Codex app
+  (`ChatGPT.app/Contents/Resources/codex`, `codex-cli 0.153.4` here) and inside the VS
+  Code extension (`~/.vscode/extensions/openai.chatgpt-<version>/bin/<arch>/codex`).
+  `CodexCLI` looks in both, which is what keeps the New Session button real on a Mac with
+  only one of them — `CodexIcon` already documents that either can be the only one.
+- **The newest entries in Claude Code's `projects` map are scratchpads.** Four of the five
+  newest here on 2026-09-13 were `/private/tmp/claude-501/…/scratchpad` directories: the
+  per-session working space agents are handed. They exist, they sort first, and they are
+  the last folder anyone wants a session in. `RecentProject` drops anything under the
+  temporary directories — on location, not on the word "scratchpad", which is a
+  convention and not Armada's to rely on.
 - **`INFOPLIST_KEY_LSUIElement = YES`** is what makes this a menu bar app. Without it there
   is a permanent Dock icon and `DockPresence` is meaningless.
 - **Three package products**, each needing *both* a product dependency and a Frameworks

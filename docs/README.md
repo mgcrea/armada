@@ -3,9 +3,10 @@
 A native macOS app for running many coding agents at once: see every Claude Code and
 Codex session across your accounts, track plan limits, and let agents message each other.
 
-**Status on 2026-09-11: the app is built and runs**, covering two of v1's three features —
-the session dashboard and plan limits, per Claude account and, as a spike, per Codex home.
-Messaging is designed and not started. See [implementation.md](implementation.md).
+**Status on 2026-09-13: the app is built and runs**, covering two of v1's three features —
+the session dashboard and plan limits, per Claude account and, as a spike, per Codex home —
+plus starting a session in a project on a chosen account, which the original scope had left
+out. Messaging is designed and not started. See [implementation.md](implementation.md).
 
 ## Start here
 

@@ -234,6 +234,12 @@ resolving which window that is.
 
 ## On "v1 watches; it doesn't launch agents"
 
-`design.md` still holds. Focus activates an application that is already running, and
-nothing here starts a session. The one edge: when the host has quit, the fallback goes
-through LaunchServices, which will relaunch it. The terminal is not the agent.
+Focus activates an application that is already running, and nothing here starts a session.
+The one edge: when the host has quit, the fallback goes through LaunchServices, which will
+relaunch it. The terminal is not the agent.
+
+**Updated 2026-09-13:** the scope line itself has moved — `NewSession` starts sessions now,
+in a terminal, on a chosen account (see [design.md](design.md#scope-decided)). This file is
+still about the other direction: getting back to a session that already exists. The two
+meet at `SessionHost`, which resolves a session started this way exactly as it resolves any
+other terminal session, because it is one.

@@ -37,8 +37,13 @@ is in the decision log.
 
 ## Scope (Decided)
 
-- **v1 watches; it doesn't launch agents.** It observes sessions started in VS Code, a
-  terminal, or the Codex app. Whether later versions run agents is undecided.
+- **v1 watches; it doesn't host agents.** It observes sessions started in VS Code, a
+  terminal, or the Codex app. **Amended 2026-09-13:** it now also *starts* them — New
+  Session opens a terminal window with `claude` or `codex` running in a chosen project on
+  a chosen account, which is the same thing the person would have typed. Armada does not
+  own the process, hold its pipes or talk to it, and the session comes back through the
+  watchers like any other. Whether Armada ever *hosts* an agent — owning the process and
+  driving the conversation — is still undecided and still out of v1.
 - **Armada never holds vendor credentials.** No "sign in with Claude", and nothing reads or
   stores OAuth tokens. See [limits-accounts-and-terms.md](limits-accounts-and-terms.md).
 - **Local only.** One Mac, several accounts per vendor, across vendors. No sync between
@@ -208,12 +213,33 @@ Script: [spike/runtime-cost/measure.sh](spike/runtime-cost/measure.sh).
 
 ### Delivering to Claude Code
 
+**Armada cannot use Claude Code's own peer socket for this. Tested 2026-09-13.** The
+alternative was attractive on paper — `/tmp/cc-socks/<pid>.sock` already implements
+delivery, idle subscription and receipts, and using it would drop a per-session process
+and keep the Claude half of the app read-only. It does not work, for a structural reason:
+
+> The inbox authenticates the **connecting process**, not the bearer of a token. The
+> server reads the peer's pid off the socket and looks up that pid's own session key; a
+> connection from a pid with no registered session is dropped as unauthenticated. The
+> control was run against one session started for the purpose: a `SendMessage` from a
+> sibling session landed twice in its output, while a direct connection carrying the
+> correct `peerToken` from a plain process landed nothing. Same socket, same session,
+> same minute. See
+> [reaching-agents.md](reaching-agents.md#the-transport-underneath-sendmessage).
+
+Armada is a GUI app, not a session, so it can never be that pid. **The hook path below is
+therefore the design, not a fallback**, and `hubctl wait` is not redundant.
+
 - **Idle:** its `Stop` hook's `hubctl wait` is already connected. Armada sends the message,
   `wait` acknowledges it and exits with code 2, and Claude wakes within about a second
   (verified in the terminal and in VS Code's stream-json mode).
 - **Busy:** the message waits. When the turn ends, the new `wait` gets it immediately.
+  **The registry now says which state a session is in** — `status` is `busy` / `waiting` /
+  `idle` since 2.1.269, with `waitingFor` naming what a waiting one wants — so the router
+  can know whether to expect a prompt delivery or a queued one without inferring it and
+  without a hook firing first.
 - **Idle for longer than the hook's timeout:** unreachable until its next turn ends. How
-  long a timeout holds is open.
+  long a timeout holds is open, and remains the one real gap in this path.
 
 ### Delivering to Codex
 
@@ -231,6 +257,14 @@ Every message is labeled with the sender's vendor, account and session name, and
 came through Armada.
 
 ### Addressing
+
+**Cross-account addressing is the thing Armada uniquely provides, and it is now measured.**
+Claude Code's own `ListAgents`, run from a session in `~/.claude-skitrust`, listed 15 peers
+and **not one** of the eight live sessions in `~/.claude` — because the session registry
+lives inside each config folder and the tool reads only its own. The transport underneath
+has no such boundary: one `cc-socks` directory per uid held both accounts' sockets
+interleaved. So the split is discovery, not reach, and `ClaudeConfigFolder.discoverAll()`
+is the half Claude Code does not have.
 
 `list_agents` returns names agents can use:
 
@@ -355,11 +389,14 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-10 | A standalone native app, not only an MCP server | Monitoring isn't MCP-shaped; the app is the long-running process an MCP-only design lacked |
 | 2026-09-10 | Standalone, not a Bastion feature | Security (own release channel), flexibility, research; the crowded market was accepted |
 | 2026-09-10 | v1 watches sessions rather than running them | Running agents (Claudexor's model) raises subscription-terms questions for client distribution; the author works in the VS Code extension |
+| 2026-09-13 | Deliver to Claude Code through Armada's own hook path, not through Claude Code's peer socket | The peer socket authenticates the connecting pid against its own session key, so a non-session process is dropped even holding the correct `peerToken` — measured against a session started for the test. Would otherwise have removed a per-session process and all `settings.json` writes for the Claude half |
+| 2026-09-13 | Cross-account messaging stays a reason to build this | Measured: the socket namespace is per-uid and already shared, but `ListAgents` sees only its own config folder. Reach was never the obstacle; discovery is, and Armada already enumerates every folder |
 | 2026-09-12 | Context usage is read from transcripts, exact figures only, no estimated categories | `get_context_usage` gives the real breakdown but only to whoever owns the session's pipes or holds Remote Control, both out of scope; re-tokenizing attachment text by character count would put a guess in a table of measurements. **New input to the "watch, don't launch" decision above: a session Armada launched itself would yield the exact breakdown for free.** |
 | 2026-09-12 | The prefix breakdown comes from a probe Armada spawns, the per-session figures stay on transcripts | The row above rests on "only to whoever owns the session's pipes", which turned out to be wrong: a headless `claude` answers `get_context_usage` too. It answers about **itself** — same project and config, empty conversation — so it supplies exactly the part a transcript cannot (system prompt, tools, memory files, skills) and none of the part a transcript already has. `ContextProbe` and `ContextCompositions` ship it, cached per project. Kept as a second row rather than a correction to the first: the first decision was right on the evidence it had, and this one only became possible once a probe existed for `get_usage`. |
 | 2026-09-10 | No Claude sign-in; no credentials held | Anthropic's terms bar third-party Claude.ai login and credential handling |
 | 2026-09-10 | Local, several accounts per vendor, across vendors | Multi-machine sync and multi-user weren't needed |
 | 2026-09-10 | Direct messages first; board, handoff and forward-suggestions on the roadmap | — |
+| 2026-09-13 | Armada starts sessions, by handing a startup script to the user's terminal | The line the scope drew was between *watching* and *running*, and the feature that was actually wanted sits on the watching side of a better line: starting a session is one launch and no ownership, where hosting one means a process per session, its pipes, and a chat UI. The two rejected routes were AppleScript, which puts an Automation consent prompt in front of a button the person just clicked, and a headless `claude` Armada owns — measured at 128MB RSS and three MCP children per idle process in `ClaudeControl`, before any UI to talk to it exists. A script also happens to be the only place the account can be set: the launching process's environment does not reach the new window (measured 2026-09-13). |
 | 2026-09-10 | App plus a local Unix socket | Message folders (no socket, events survive the app closing; recommended at the time); a separate background service (two processes, too much for v1) |
 | 2026-09-10 | Swift per session, Node only once | All Node by adapting mcp-a2a (about 750 MB at 16 sessions); all Swift (drops the A2A peer; no Swift A2A SDK) |
 | 2026-09-10 | mcp-a2a's A2A peer kept, off by default | Dropping working, tested code that the handoff stage needs |
