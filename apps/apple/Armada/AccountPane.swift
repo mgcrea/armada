@@ -47,7 +47,7 @@ struct AccountPaneView: View {
     HSplitView {
       sessions
         .frame(minWidth: 320, idealWidth: 420)
-      SessionDetail(session: selected, account: account, now: now)
+      detail
         .frame(minWidth: 300, idealWidth: 340)
     }
     .navigationTitle(account.displayName)
@@ -167,8 +167,22 @@ struct AccountPaneView: View {
       .id(session.id)
   }
 
+  /// **No fallback to the first row.** The pane used to open on whichever session
+  /// happened to sort first, which is a choice nobody made and left the account itself
+  /// with nowhere to be described. Nil is now a state with a view of its own — see
+  /// `AccountOverview` — reached at launch, by clicking empty space in the list, and by
+  /// ⌘-clicking the selected row.
   private var selected: Session? {
-    account.sessions.sessions.first { $0.id == selection } ?? account.sessions.sessions.first
+    account.sessions.sessions.first { $0.id == selection }
+  }
+
+  /// The right half: one session, or the account it belongs to.
+  @ViewBuilder private var detail: some View {
+    if let selected {
+      SessionDetail(session: selected, account: account, now: now)
+    } else {
+      AccountOverview(account: account)
+    }
   }
 
   /// The one session a context menu is about. Selection here is single, so a set of
@@ -218,9 +232,6 @@ struct UsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
-        // Left of the sort control, and the only button in either header that does
-        // something rather than changing how something is shown.
-        NewSessionMenu(agent: .claude(account.folder), projects: account.recentProjects)
         // The list's control, in the pane's only existing chrome. Not a toolbar —
         // both windows are hosted `NSWindow`s with no `NSToolbar`, see `HostedWindow`
         // — and not a row of its own, because a new row adds height to a pane whose

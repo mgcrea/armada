@@ -17,11 +17,13 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
   a badge saying which answered and how old it is.
 - **Menu bar**: an accessory app (`LSUIElement`) with a popover summarising every account,
   and a template glyph that fills when anything is working.
-- **New sessions**, per account: a New Session menu in each pane's header, listing the ten
-  folders that account ran in last, and "New Session in <project>" on a session's
-  right-click. It opens a terminal window with `claude` or `codex` running in that folder
-  on that account. Armada writes a startup script and hands it to Terminal; it never owns
-  the process, and the new session arrives through the watchers like any other.
+- **New sessions**, per account: the detail pane with nothing selected is an account
+  overview — the six folders that account ran in last, one click each, a folder picker,
+  and a tally of what the account's sessions are doing. "New Session in <project>" is also
+  on a session's right-click. Starting one opens a terminal window with `claude` or
+  `codex` running in that folder on that account: Armada writes a startup script and
+  hands it to Terminal, never owns the process, and the new session arrives through the
+  watchers like any other.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -64,7 +66,9 @@ transcripts, separate rate limits.
 | `SessionSortMenu` | that choice as one menu, and the grouped list's section header |
 | `NewSession` | writes a session's startup script and hands it to a terminal |
 | `TerminalApp` | which terminals can be handed one, and which of them is chosen |
-| `NewSessionLauncher` / `NewSessionMenu` | the click, its failure alert, and the menu |
+| `NewSessionLauncher` | the click, and the alert when a launch fails |
+| `AccountOverview` / `CodexOverview` | the detail pane with nothing selected, per vendor |
+| `NewSessionSection` / `SessionTallySection` | the two halves both overviews are built from |
 | `RecentProject` | the folders an account has run in, for that menu |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
@@ -139,6 +143,13 @@ Each of these cost time here, and none is visible from the code that depends on 
   the last folder anyone wants a session in. `RecentProject` drops anything under the
   temporary directories — on location, not on the word "scratchpad", which is a
   convention and not Armada's to rely on.
+- **The detail pane no longer falls back to the first session.** `selected` is nil when
+  nothing is selected, which is a state with a view of its own — the account overview —
+  rather than an empty branch inside `SessionDetail`. Both detail views therefore take a
+  non-optional session. The overview is reached at launch, by clicking empty space in the
+  list, and by ⌘-clicking the selected row; there is no other way back to it, which is
+  the same deal Mail offers and the reason the New Session control lives there rather
+  than in the header.
 - **`INFOPLIST_KEY_LSUIElement = YES`** is what makes this a menu bar app. Without it there
   is a permanent Dock icon and `DockPresence` is meaningless.
 - **Three package products**, each needing *both* a product dependency and a Frameworks

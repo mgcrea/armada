@@ -34,7 +34,7 @@ struct CodexPaneView: View {
     HSplitView {
       sessions
         .frame(minWidth: 320, idealWidth: 420)
-      CodexSessionDetail(session: selected, account: account, now: now)
+      detail
         .frame(minWidth: 300, idealWidth: 340)
     }
     .navigationTitle(account.displayName)
@@ -137,8 +137,19 @@ struct CodexPaneView: View {
     return account.sessions.sessions.first { $0.id == id }
   }
 
+  /// No fallback to the first row, as in `AccountPaneView` and for its reasons: with
+  /// nothing selected the pane describes the home itself. See `CodexOverview`.
   private var selected: CodexSession? {
-    account.sessions.sessions.first { $0.id == selection } ?? account.sessions.sessions.first
+    account.sessions.sessions.first { $0.id == selection }
+  }
+
+  /// The right half: one session, or the home it belongs to.
+  @ViewBuilder private var detail: some View {
+    if let selected {
+      CodexSessionDetail(session: selected, account: account, now: now)
+    } else {
+      CodexOverview(account: account)
+    }
   }
 
   /// Counts live and recent separately. "14 sessions" would be a lie of the kind
@@ -193,9 +204,6 @@ struct CodexUsageHeader: View {
           .foregroundStyle(.secondary)
           Spacer(minLength: 0)
         }
-        // Twinned with `UsageHeader`, including the order: what starts something,
-        // then what reorders the list.
-        NewSessionMenu(agent: .codex(account.home), projects: account.recentProjects)
         // Where `UsageHeader` puts it, for the reasons given there.
         SessionSortMenu()
       }
@@ -480,71 +488,64 @@ struct CodexContextSection: View {
   }
 }
 
+/// One Codex session, in full. Takes a session rather than an optional one, as
+/// `SessionDetail` does: "nothing selected" is `CodexOverview` now.
 struct CodexSessionDetail: View {
-  let session: CodexSession?
+  let session: CodexSession
   let account: CodexAccount
   let now: Date
 
   var body: some View {
     Form {
-      if let session {
-        Section {
-          LabeledContent("State") {
-            HStack(spacing: 6) {
-              CodexStateDot(state: session.state)
-              Text(session.state.label)
-            }
+      Section {
+        LabeledContent("State") {
+          HStack(spacing: 6) {
+            CodexStateDot(state: session.state)
+            Text(session.state.label)
           }
-          Text(explanation(session.state))
-            .font(.caption)
+        }
+        Text(explanation(session.state))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      // Above "Session", matching `SessionDetail`: the context is the live fact
+      // worth checking, and the folder and version are reference you read once.
+      CodexContextSection(session: session, now: now)
+      Section("Session") {
+        LabeledContent("Project", value: session.meta.projectName)
+        LabeledContent("Folder", value: session.meta.cwd)
+          .lineLimit(3)
+          .truncationMode(.head)
+        if let kind = session.kindLabel {
+          LabeledContent("Started by", value: kind)
+        }
+        if let model = session.meta.model {
+          LabeledContent("Model", value: model)
+        }
+        if let version = session.meta.cliVersion {
+          LabeledContent("Codex", value: version)
+        }
+        if let tokens = session.totalTokens {
+          // Named for what it is, now that the Context section above shows
+          // occupancy. These two numbers look alike and mean opposite things: this
+          // one only ever grows, and on a long session it runs to several times the
+          // window.
+          LabeledContent("Tokens used", value: tokens.formatted(.number))
+            .help("Every request in this session added up, not how full the window is.")
+        }
+      }
+      if let parent = session.meta.parentThreadId {
+        Section("Subagent") {
+          Text("Spawned by another thread.")
             .foregroundStyle(.secondary)
+          LabeledContent("Parent", value: String(parent.prefix(8)))
+            .help(parent)
         }
-        // Above "Session", matching `SessionDetail`: the context is the live fact
-        // worth checking, and the folder and version are reference you read once.
-        CodexContextSection(session: session, now: now)
-        Section("Session") {
-          LabeledContent("Project", value: session.meta.projectName)
-          LabeledContent("Folder", value: session.meta.cwd)
-            .lineLimit(3)
-            .truncationMode(.head)
-          if let kind = session.kindLabel {
-            LabeledContent("Started by", value: kind)
-          }
-          if let model = session.meta.model {
-            LabeledContent("Model", value: model)
-          }
-          if let version = session.meta.cliVersion {
-            LabeledContent("Codex", value: version)
-          }
-          if let tokens = session.totalTokens {
-            // Named for what it is, now that the Context section above shows
-            // occupancy. These two numbers look alike and mean opposite things: this
-            // one only ever grows, and on a long session it runs to several times the
-            // window.
-            LabeledContent("Tokens used", value: tokens.formatted(.number))
-              .help("Every request in this session added up, not how full the window is.")
-          }
-        }
-        if let parent = session.meta.parentThreadId {
-          Section("Subagent") {
-            Text("Spawned by another thread.")
-              .foregroundStyle(.secondary)
-            LabeledContent("Parent", value: String(parent.prefix(8)))
-              .help(parent)
-          }
-        }
-      } else {
-        Text("No session selected").foregroundStyle(.secondary)
       }
 
-      Section("Codex") {
-        LabeledContent("Home", value: account.displayPath)
-          .lineLimit(2)
-          .truncationMode(.head)
-        if let plan = account.planLabel {
-          LabeledContent("Plan", value: plan)
-        }
-      }
+      // Shared with `CodexOverview`, which describes the same home with nothing
+      // selected.
+      CodexHomeSection(account: account)
     }
     .formStyle(.grouped)
   }

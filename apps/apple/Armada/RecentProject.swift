@@ -32,9 +32,10 @@ nonisolated struct RecentProject: Identifiable, Hashable, Sendable {
 
   var displayPath: String { (path as NSString).abbreviatingWithTildeInPath }
 
-  /// How many the menu holds. Long enough to reach yesterday's work, short enough to
-  /// stay a menu rather than a folder picker with extra steps.
-  static let limit = 10
+  /// How many the overview offers. Long enough to reach yesterday's work, short enough
+  /// that the section stays a shortcut rather than a folder picker with extra steps —
+  /// and short enough to leave the account's own summary above the fold beneath it.
+  static let limit = 6
 
   /// Claude Code's `projects` map, newest first.
   ///

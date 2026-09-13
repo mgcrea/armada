@@ -76,8 +76,12 @@ struct StateDot: View {
   }
 }
 
+/// One session, in full.
+///
+/// Takes a session rather than an optional one: "nothing selected" is a different
+/// view now (`AccountOverview`), not an empty branch inside this one.
 struct SessionDetail: View {
-  let session: Session?
+  let session: Session
   let account: Account
   let now: Date
 
@@ -88,80 +92,68 @@ struct SessionDetail: View {
 
   var body: some View {
     Form {
-      if let session {
-        Section {
-          LabeledContent("State") {
-            HStack(spacing: 6) {
-              StateDot(state: session.state)
-              Text(session.state.label)
-            }
-          }
-          // What it wants, in Claude Code's own words. Shown verbatim and never
-          // matched against: `SessionRegistry.waitingFor` is display text built from a
-          // per-dialog table, and the set grows with every new kind of prompt.
-          if let waitingFor = session.waitingFor {
-            LabeledContent("Waiting for", value: waitingFor)
-          }
-          if session.state.isBestEffort {
-            Text(
-              "Inferred from an unanswered tool_use in the transcript: Claude Code reports the session as busy but writes nothing while a tool runs, so a running tool and one waiting for your approval look the same here. A session stopped at a prompt usually reports that itself, and shows as \"Waiting for you\"."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          }
-          FocusButton(host: host, cwd: session.registry.cwd, didLookUp: didLookUpHost)
-        }
-        // Above "Session": the context is the live fact worth checking, while the
-        // pid and the folder are reference you look up once.
-        ContextSection(
-          session: session, accountModelID: account.modelID,
-          composition: account.compositions.composition(for: session.registry.cwd), now: now)
-        Section("Session") {
-          LabeledContent("Project", value: session.registry.projectName)
-          LabeledContent("Folder", value: session.registry.cwd)
-            .lineLimit(3)
-            .truncationMode(.head)
-          LabeledContent("PID", value: String(session.registry.pid))
-          if let version = session.registry.version {
-            LabeledContent("Claude Code", value: version)
-          }
-          if let entrypoint = session.registry.entrypoint {
-            LabeledContent("Started from", value: entrypoint)
+      Section {
+        LabeledContent("State") {
+          HStack(spacing: 6) {
+            StateDot(state: session.state)
+            Text(session.state.label)
           }
         }
-        if session.title == nil, let reason = session.untitledReason {
-          Section("No title") {
-            Text(reason).foregroundStyle(.secondary)
-            Text(
-              session.transcript == nil
-                ? "A session that has never been prompted has no transcript, so there is nothing to take a title from."
-                : "A resumed session gets a new id and a transcript with no title in it, and no link back to the original."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          }
+        // What it wants, in Claude Code's own words. Shown verbatim and never
+        // matched against: `SessionRegistry.waitingFor` is display text built from a
+        // per-dialog table, and the set grows with every new kind of prompt.
+        if let waitingFor = session.waitingFor {
+          LabeledContent("Waiting for", value: waitingFor)
         }
-      } else {
-        Text("No session selected").foregroundStyle(.secondary)
+        if session.state.isBestEffort {
+          Text(
+            "Inferred from an unanswered tool_use in the transcript: Claude Code reports the session as busy but writes nothing while a tool runs, so a running tool and one waiting for your approval look the same here. A session stopped at a prompt usually reports that itself, and shows as \"Waiting for you\"."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+        FocusButton(host: host, cwd: session.registry.cwd, didLookUp: didLookUpHost)
+      }
+      // Above "Session": the context is the live fact worth checking, while the
+      // pid and the folder are reference you look up once.
+      ContextSection(
+        session: session, accountModelID: account.modelID,
+        composition: account.compositions.composition(for: session.registry.cwd), now: now)
+      Section("Session") {
+        LabeledContent("Project", value: session.registry.projectName)
+        LabeledContent("Folder", value: session.registry.cwd)
+          .lineLimit(3)
+          .truncationMode(.head)
+        LabeledContent("PID", value: String(session.registry.pid))
+        if let version = session.registry.version {
+          LabeledContent("Claude Code", value: version)
+        }
+        if let entrypoint = session.registry.entrypoint {
+          LabeledContent("Started from", value: entrypoint)
+        }
+      }
+      if session.title == nil, let reason = session.untitledReason {
+        Section("No title") {
+          Text(reason).foregroundStyle(.secondary)
+          Text(
+            session.transcript == nil
+              ? "A session that has never been prompted has no transcript, so there is nothing to take a title from."
+              : "A resumed session gets a new id and a transcript with no title in it, and no link back to the original."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
       }
 
       // Which folder this row came from. Cheap to show and the thing that makes
-      // two accounts legible: the same project can be open in both.
-      Section("Account") {
-        LabeledContent("Organization", value: account.displayName)
-        if let plan = account.planLabel {
-          LabeledContent("Plan", value: plan)
-        }
-        LabeledContent("Config folder", value: account.displayPath)
-          .lineLimit(2)
-          .truncationMode(.head)
-      }
+      // two accounts legible: the same project can be open in both. Shared with
+      // `AccountOverview`, which describes the same account with nothing selected.
+      AccountSection(account: account)
     }
     .formStyle(.grouped)
-    .task(id: session?.id) {
+    .task(id: session.id) {
       didLookUpHost = false
       host = nil
-      guard let session else { return }
       host = SessionHostLookup.host(for: session.registry)
       didLookUpHost = true
       // Only the project being looked at is ever probed. A process per project in the
