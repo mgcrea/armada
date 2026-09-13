@@ -130,3 +130,14 @@ icon-check: ## Fail if the icon is stale against its source SVG
 
 .PHONY: icon icon-check
 
+# ── Audits ────────────────────────────────────────────────────────────────────
+#
+# Root-level because the script is, and because the claim is about the repo
+# rather than about the Xcode project. Not in APPLE_TARGETS: that list is read
+# out of apps/apple/Makefile's own `## ` comments, so a target defined here
+# cannot collide with one defined there.
+
+audit: build ## Assert the built app cannot reach the network
+	@scripts/audit-network.sh
+
+.PHONY: audit

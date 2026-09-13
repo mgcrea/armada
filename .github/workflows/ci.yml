@@ -35,3 +35,10 @@ jobs:
       # answers "does it still compile", not "is it shippable".
       - name: Build 🏗️
         run: make build XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
+
+      # The claim that nothing Armada reads leaves the Mac, asserted against the
+      # bundle that was just built rather than against the sources. It depends on
+      # `build`, so the same signing flags go with it — without them the target
+      # would rebuild with signing on and fail before the audit ever ran.
+      - name: Audit the network claim 🔍
+        run: make audit XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
