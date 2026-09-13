@@ -1,4 +1,23 @@
 .DS_Store
+*.swp
+
+# Agent tooling state. Note this also keeps .claude/skills/ local: a project
+# skill committed here would be shared with every clone, and this is the choice
+# not to. Ignored rather than merely untracked because it is one `git add -A`
+# away from riding along into a commit.
+#
+# NOT .idea/, which is tracked here on purpose — the icon's design canvas lives
+# in .idea/design/app-icon/ and is the provenance for design/armada-mark.svg.
+.claude
+
+# Xcode
 apps/apple/.build/
+DerivedData/
 xcuserdata/
 *.xcuserstate
+*.moved-aside
+*.hmap
+*.dSYM
+
+# SwiftPM
+.swiftpm/
