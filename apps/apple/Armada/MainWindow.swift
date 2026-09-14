@@ -61,6 +61,20 @@ struct MainWindowView: View {
   @AppStorage(SidebarItem.defaultsKey) private var storedAccount: String = ""
 
   var body: some View {
+    // Asked once, across the top of the window, and gone for good once answered
+    // either way. A card rather than a dialog: see `UpdateConsentCard`.
+    //
+    // A sibling above the split view, not a `safeAreaInset` on it. The split view's
+    // columns are AppKit-hosted and do not honour an inset from outside, so as one
+    // the card floated over the sidebar and the usage strip instead of pushing them
+    // down — the same trap `AccountPaneView` writes up for its header.
+    VStack(spacing: 0) {
+      UpdateConsentCard()
+      splitView
+    }
+  }
+
+  private var splitView: some View {
     NavigationSplitView {
       List(selection: selection) {
         Section("Overview") {
@@ -127,11 +141,6 @@ struct MainWindowView: View {
           }
         }
       }
-    }
-    // Asked once, across the top of the window, and gone for good once answered
-    // either way. A card rather than a dialog: see `UpdateConsentCard`.
-    .safeAreaInset(edge: .top, spacing: 0) {
-      UpdateConsentCard()
     }
   }
 
