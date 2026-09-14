@@ -325,7 +325,7 @@ build-release: ## Build, sign and notarize a shippable Armada.app
 # handed: the keychain's here, SPARKLE_ED_PRIVATE_KEY in CI. A mismatch is a
 # well-formed feed with a valid signature that every installed copy refuses, and
 # the fix could only reach them as the update they are refusing. So the extracted
-# value has to be exactly one signature, and scripts/verify-ed-signature.mjs has
+# value has to be exactly one signature, and scripts/verify-update-signature.mjs has
 # to accept it over the zip for the key read out of the built Info.plist, before
 # the feed is written.
 appcast: ## Sign the stapled zip and write a one-item appcast
@@ -353,7 +353,7 @@ appcast: ## Sign the stapled zip and write a one-item appcast
 		&& printf '%s\n' "$$signature" | grep -Eq '^[A-Za-z0-9+/]{86}==$$' \
 		|| { echo "  !! sign_update's output is not exactly one ed25519 signature; not shipping a feed" >&2; exit 1; }; \
 	edkey=$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist"); \
-	node scripts/verify-ed-signature.mjs "$(RELEASE_ZIP)" "$$signature" "$$edkey" \
+	node scripts/verify-update-signature.mjs "$(RELEASE_ZIP)" "$$signature" "$$edkey" \
 		|| { echo "  !! the signature does not verify against the app's SUPublicEDKey; every installed copy would refuse this update" >&2; exit 1; }; \
 	version=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$(RELEASE_APP)/Contents/Info.plist"); \
 	build=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$(RELEASE_APP)/Contents/Info.plist"); \

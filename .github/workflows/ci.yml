@@ -194,7 +194,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Node only for scripts/changelog-notes.mjs and scripts/verify-ed-signature.mjs,
+      # Node only for scripts/changelog-notes.mjs and scripts/verify-update-signature.mjs,
       # neither of which has a dependency.
       - name: Setup node 🔧
         uses: actions/setup-node@v6
