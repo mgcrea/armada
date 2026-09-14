@@ -11,7 +11,7 @@ enum LicenseLinks {
 
   /// Whether /buy resolves to a live payment link.
   ///
-  /// The same flag, for the same reason, as `SHIPPED` on the website — a button
+  /// The same flag, for the same reason, as `SELLING` on the website — a button
   /// here is a promise that there is something on the other end of it. The two
   /// move together, and this one is the slower half: the site can be redeployed
   /// in a minute, while a build that has shipped carries whatever it was compiled
@@ -229,20 +229,62 @@ struct LicensePane: View {
     }
   }
 
+  /// The largest dropped file this reads. A key is about 240 characters, so a file
+  /// anywhere near this size is not one.
+  private static let maxDroppedBytes = 64 * 1024
+
+  /// A dropped `.license` file, read into the field and applied.
+  ///
+  /// **Checked before it is read.** A drop is whatever somebody dragged, and this used
+  /// to read the first file whole as text whatever it was — a disk image included. Now
+  /// only a regular file of at most `maxDroppedBytes` is opened, and when several are
+  /// dropped at once the one named `.license` wins, since that is the file the
+  /// purchase email carries.
   private func accept(_ providers: [NSItemProvider]) -> Bool {
-    guard let provider = providers.first else { return false }
-    provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-      guard
-        let data,
-        let url = URL(dataRepresentation: data, relativeTo: nil),
-        let text = try? String(contentsOf: url, encoding: .utf8)
-      else { return }
-      Task { @MainActor in
-        entry = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        apply(entry)
+    let files = providers.filter {
+      $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+    }
+    guard !files.isEmpty else { return false }
+    Task {
+      var urls: [URL] = []
+      for provider in files {
+        if let url = await Self.fileURL(from: provider) { urls.append(url) }
       }
+      guard
+        let url = urls.first(where: { $0.pathExtension.lowercased() == "license" }) ?? urls.first
+      else { return }
+      guard let text = Self.keyText(at: url) else {
+        problem = "\(url.lastPathComponent) is not a licence key file"
+        return
+      }
+      entry = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      apply(entry)
     }
     return true
+  }
+
+  private nonisolated static func fileURL(from provider: NSItemProvider) async -> URL? {
+    await withCheckedContinuation { continuation in
+      provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+        continuation.resume(
+          returning: data.flatMap { URL(dataRepresentation: $0, relativeTo: nil) })
+      }
+    }
+  }
+
+  /// The file's text, or nil for anything that cannot be a key file. The size is
+  /// checked on disk first and then again on what was read, so a file that grows in
+  /// between is refused rather than read whole.
+  private static func keyText(at url: URL) -> String? {
+    guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+      values.isRegularFile == true, (values.fileSize ?? 0) <= maxDroppedBytes,
+      let handle = try? FileHandle(forReadingFrom: url)
+    else { return nil }
+    defer { try? handle.close() }
+    guard let data = try? handle.read(upToCount: maxDroppedBytes + 1),
+      data.count <= maxDroppedBytes
+    else { return nil }
+    return String(data: data, encoding: .utf8)
   }
 
   /// The date half of an ISO timestamp. The clock time is noise on a receipt.

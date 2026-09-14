@@ -60,10 +60,14 @@ nonisolated enum LicenseKey {
   /// constant and its tests read this line to assert the two agree.
   static let publicKey = "OTc_jH9ZwYjtYaU0_MP74gsiupje0ZafXTmTiRafI0E"
 
+  /// - Parameter publicKey: the key signatures are checked against. Always
+  ///   `LicenseKey.publicKey` in the app; a parameter so `make unit` can sign its own
+  ///   keys and reach the refusals that only a correctly signed key can reach.
   static func check(
     _ key: String?,
     major: Int = AppInfo.major,
-    revoked: Set<String> = Revocations.ids
+    revoked: Set<String> = Revocations.ids,
+    publicKey: String = LicenseKey.publicKey
   ) -> LicenseCheck {
     guard let key, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return .refused("no licence key")
@@ -80,11 +84,8 @@ nonisolated enum LicenseKey {
     guard let payload = base64Url(parts[1]), let signature = base64Url(parts[2]) else {
       return .refused("payload or signature is not base64url")
     }
-    guard let claims = try? JSONDecoder().decode(Claims.self, from: payload) else {
-      return .refused("payload is not a licence")
-    }
 
-    guard let verifier = signer else {
+    guard let verifier = signer(publicKey) else {
       return .refused("this build has no signing key compiled in")
     }
     // Over the ENCODED payload, not the decoded claims: JSON key order and
@@ -92,6 +93,13 @@ nonisolated enum LicenseKey {
     // is JavaScript in a Worker and this is Swift.
     guard verifier.isValidSignature(signature, for: Data(parts[1].utf8)) else {
       return .refused("signature does not match")
+    }
+
+    // Decoded only once the signature has vouched for the bytes. Nothing a stranger
+    // typed should reach a parser before that, and a tampered key then gets the one
+    // answer that is true of it, rather than whichever part happened to break first.
+    guard let claims = try? JSONDecoder().decode(Claims.self, from: payload) else {
+      return .refused("payload is not a licence")
     }
 
     // After the signature, never before. A forged id must not be waved through
@@ -116,7 +124,7 @@ nonisolated enum LicenseKey {
     let issuedAt: String
   }
 
-  private static var signer: Curve25519.Signing.PublicKey? {
+  private static func signer(_ publicKey: String) -> Curve25519.Signing.PublicKey? {
     guard let raw = base64Url(publicKey), !raw.isEmpty else { return nil }
     return try? Curve25519.Signing.PublicKey(rawRepresentation: raw)
   }
