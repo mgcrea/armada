@@ -13,6 +13,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Read-only unless a job asks for more, and only release-app does, beside its own
+# `permissions:`. Without this every job's GITHUB_TOKEN gets the repository's
+# default, which can be write, including in the jobs that run a pull request's code.
+permissions:
+  contents: read
+
+# Third-party actions are pinned to a commit, with the tag it was resolved from
+# beside it: a tag is a pointer its owner can move to new code, and these run in
+# jobs holding the Cloudflare token or the right to publish a release.
+# attest-build-provenance is GitHub's own, and pinned anyway because it holds
+# `id-token: write`. actions/checkout and actions/setup-node ride their major tags.
+# To move a pin: gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
 jobs:
   app:
     name: App
@@ -27,7 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -51,25 +63,104 @@ jobs:
       # different build than the one they are inside.
       - name: Changelog drift 🔍
         run: make changelog-check
+      # The icon bundle and the three menu bar imagesets are generated, and a
+      # hand-edited copy builds and ships. appshot comes from its public release at
+      # a pinned version, checked against a digest written here rather than the
+      # .sha256 published beside it, which whoever could replace the one could
+      # replace the other.
+      - name: Icon drift 🔍
+        env:
+          APPSHOT_VERSION: v0.10.0
+          APPSHOT_SHA256: 0a83e1a931d0db20bf1989a9aa16e57662c5510d3c0386021e4a18c50678fcea
+        run: |
+          name="appshot-$APPSHOT_VERSION-macos-universal"
+          curl -fsSL --max-time 120 -o "$RUNNER_TEMP/$name.tar.gz" \
+            "https://github.com/mgcrea/appshot/releases/download/$APPSHOT_VERSION/$name.tar.gz"
+          echo "$APPSHOT_SHA256  $RUNNER_TEMP/$name.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP"
+          PATH="$RUNNER_TEMP/$name:$PATH" make icon-check
       # The site is built on every push so a broken page fails here, on the pull
       # request, rather than in the deploy job after it has merged. Public assets
       # are LFS pointers in this checkout; Astro copies public/ verbatim, so the
       # build does not need their bytes — the deploy job does, and pulls them.
+      # `astro check` first, because Vite strips types without checking them: a type
+      # error in a page or in config.ts builds, and deploys.
       - name: Build the website 🌐
-        run: pnpm -C apps/website build
+        run: |
+          pnpm -C apps/website typecheck
+          pnpm -C apps/website build
+      # Warns, never fails. `@mgcrea/feedback-contract` does not register "armada"
+      # in any published version yet, so a failing gate would be red on every push
+      # and block every deploy until it does. The rest of what it asserts (the CSP
+      # origin, the field names, diagnostics left visible, a page linking to the
+      # form) fails silently in a browser, so each problem is raised as an
+      # annotation on the run rather than left in a log nobody opens. Make this a
+      # plain `run: pnpm -C apps/website run feedback:check` once the contract ships.
+      - name: Feedback form wiring 🔍
+        run: |
+          if out=$(pnpm -C apps/website run feedback:check 2>&1); then status=0; else status=$?; fi
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | awk '
+            /^feedback:check WARNING: / { sub(/^feedback:check WARNING: /, ""); print "::warning title=feedback:check::" $0; next }
+            /^feedback:check FAILED/ { failed = 1; next }
+            failed && /^  - / { sub(/^  - /, ""); print "::warning title=feedback:check::" $0 }
+          '
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=feedback:check::exited $status; not gating on it until the feedback contract registers armada"
+          fi
       # The licence Worker's suite runs in the Workers runtime (miniflare) against a
       # local D1, and includes the check that it mints byte-identical keys to
       # scripts/lib/license.mjs — the half of the money loop nothing else tests.
+      #
+      # The generated Env types are checked first, against .dev.vars.example, which
+      # is what worker-configuration.d.ts was generated from, so no real .dev.vars is
+      # needed. A binding added to wrangler.jsonc without regenerating would
+      # otherwise typecheck against the Env it no longer matches.
       - name: API tests 🧪
         run: |
+          pnpm -C apps/api exec wrangler types --check --env-file=.dev.vars.example
           pnpm -C apps/api typecheck
           pnpm -C apps/api test
+      # The cross-language check, and the one whose failure costs money. JavaScript
+      # mints the keys and Swift accepts them, so a disagreement lives between the
+      # two, where neither side's own tests can see it. This compiles the real
+      # License.swift and runs keys signed with the real signing key through it.
+      #
+      # Bastion's guard, copied: it needs LICENSE_SIGNING_KEY, which a fork never
+      # has, so it skips loudly rather than failing there, and `if:` cannot read
+      # `secrets`, so the guard is in the shell. A repository secret if it is set,
+      # never an org-wide one: it is the one key that cannot be rotated without
+      # refusing every licence ever sold.
+      - name: Licence round trip 🔍
+        env:
+          LICENSE_SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
+        run: |
+          if [ -z "$LICENSE_SIGNING_KEY" ]; then
+            echo "::warning::no LICENSE_SIGNING_KEY secret; skipping the licence round trip"
+            exit 0
+          fi
+          make license-check
 
       # No signing here: there is no certificate on the runner for this job, and it
       # answers "does it still compile", not "is it shippable". release-app below
       # is the job that signs.
       - name: Build 🏗️
         run: make build XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
+
+      # The app's pure files, compiled beside a check driver with `swiftc` under the
+      # app target's own language settings: the transcript parsers, the forecasts, the
+      # sort order and the licence refusals, which nothing else exercises. No app, no
+      # network, and seconds rather than a build, but after it so a compile error in the
+      # app reads as the build failing rather than as a unit check.
+      - name: Unit checks (swift) 🧪
+        run: make -C apps/apple unit
+
+      # The MCP tool table's suite, against a fake fleet. After the build rather than
+      # among the fast gates, because it compiles the package and swift-mcp-kit.
+      # `-C apps/apple`, because the root's `make test` also runs the script and
+      # Worker suites, which the fast gates above have already run.
+      - name: Tests (swift) 🧪
+        run: make -C apps/apple test
 
       # The claim that nothing Armada reads leaves the Mac beyond the opt-in update
       # check, asserted against the bundle that was just built. It depends on
@@ -103,7 +194,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Node only for scripts/changelog-notes.mjs, which has no dependencies.
+      # Node only for scripts/changelog-notes.mjs and scripts/verify-ed-signature.mjs,
+      # neither of which has a dependency.
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -140,7 +232,10 @@ jobs:
           # tag's section in the Sparkle feed, and the release body below is the
           # same section as markdown. A stale heading ships the previous release's
           # notes to everyone deciding whether to install.
-          head=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+          # The first `## [` heading of any kind. Matching only numbered ones read
+          # straight past an `## [Unreleased]` left on top, and passed whenever the
+          # tag's own section sat below it.
+          head=$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
           if [ "$head" != "$version" ]; then
             echo "::error::the first CHANGELOG section is [$head], not [$version] — is it still [Unreleased]?"
             fail=1
@@ -234,23 +329,27 @@ jobs:
         run: make appcast
 
       - name: Attest provenance 🔏
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           # The feed too: it names the bytes Sparkle will install.
           subject-path: |
             apps/apple/.build/Armada.zip
             apps/apple/.build/appcast.xml
 
-      # The body is the top CHANGELOG section verbatim — the same text the appcast
-      # renders to HTML, so the two are one release described once.
+      # The tag's own CHANGELOG section as markdown, from the parse the appcast
+      # renders to HTML, so the two are one release described once and neither
+      # shows `### Internal`. It exits non-zero on a missing or empty section. The
+      # awk this replaced took whichever section came first, Internal and all.
       - name: Release notes 📝
-        run: awk '/^## /{ if (n++) exit } n' CHANGELOG.md | tail -n +2 > "$RUNNER_TEMP/notes.md"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/changelog-notes.mjs --markdown "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/notes.md"
 
       # The asset names carry no version on purpose: that is what makes
       # /releases/latest/download/<asset> a permanent URL, which the website's
       # redirects point at. The version lives in the tag.
       - name: Release 🚀
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: Armada ${{ steps.version.outputs.version }}
           body_path: ${{ runner.temp }}/notes.md
@@ -279,7 +378,7 @@ jobs:
       - name: Checkout 🛎️
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -301,11 +400,22 @@ jobs:
   # armada.mgcrea.io, on every push to main. The release itself never needs this:
   # /download, /checksum and /appcast.xml are 302s to releases/latest/download, so a
   # tag publishes without a site deploy.
+  #
+  # After deploy-api, for the root `deploy` target's reason: the Worker the /buy
+  # flow lands on has to be live first, so a failed API deploy holds the site back.
+  # A skipped one does not. `needs` alone would skip this job whenever deploy-api
+  # was skipped, with nothing in the run saying why, so the condition names what
+  # it waits for. A missing Cloudflare token is not a skip: deploy-api warns and
+  # succeeds, and this job then warns on its own.
   deploy-website:
     name: Deploy website
     runs-on: ubuntu-latest
-    needs: [app]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [app, deploy-api]
+    if: >-
+      ${{ !cancelled()
+      && needs.app.result == 'success'
+      && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped')
+      && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     environment: production
     steps:
       # lfs: true, or the deploy uploads pointer files where the icons and the
@@ -315,7 +425,7 @@ jobs:
         with:
           lfs: true
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
