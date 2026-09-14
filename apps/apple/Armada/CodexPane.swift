@@ -31,10 +31,14 @@ struct CodexPaneView: View {
     // into an unreadable stack inside a 280pt system inspector. This pane kept the
     // inspector until it gained the same panel, at which point it inherited the same
     // problem — the two panes are twinned, so the fix is too.
+    //
+    // Each pane in a `GeometryReader` for the same reason as well: without it,
+    // selecting a row swaps the detail's root view, and the split collapses that pane
+    // to its `minWidth` and gives the list everything else.
     HSplitView {
-      sessions
+      GeometryReader { _ in sessions }
         .frame(minWidth: 320, idealWidth: 420)
-      detail
+      GeometryReader { _ in detail }
         .frame(minWidth: 300, idealWidth: 340)
     }
     .navigationTitle(account.displayName)
@@ -188,38 +192,42 @@ struct CodexUsageHeader: View {
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
 
   var body: some View {
-    VStack(spacing: 0) {
-      HStack(alignment: .top, spacing: 24) {
-        if let usage = account.usage, !usage.isEmpty {
-          meter(usage.primary)
-          meter(usage.secondary)
-          Spacer(minLength: 0)
-          VStack(alignment: .trailing, spacing: 2) {
-            Text("last turn").font(.caption2).foregroundStyle(.tertiary)
-            Text(usage.observedAt, format: .relative(presentation: .named))
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          .help(
-            "Codex only reports its limits inside a session log, so these figures are as old as the last turn it ran."
-          )
-        } else {
-          Label(
-            account.sessions.didScan ? "No usage reported yet" : "Reading usage…",
-            systemImage: "gauge.with.dots.needle.bottom.50percent"
-          )
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          Spacer(minLength: 0)
-        }
-        // Where `UsageHeader` puts it, for the reasons given there.
-        SessionSortMenu()
+    // The same `UsageStrip` as `UsageHeader`, so the two headers give way to a narrow
+    // pane in the same steps and the sort menu lands in the same place in both.
+    UsageStrip {
+      if let usage = account.usage, !usage.isEmpty {
+        meter(usage.primary)
+        meter(usage.secondary)
+      } else {
+        Label(
+          account.sessions.didScan ? "No usage reported yet" : "Reading usage…",
+          systemImage: "gauge.with.dots.needle.bottom.50percent"
+        )
+        .font(.callout)
+        .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      Divider()
+    } status: {
+      if let usage = account.usage, !usage.isEmpty {
+        lastTurn(usage.observedAt)
+      }
     }
-    .background(.bar)
+  }
+
+  /// The age of the figures, on one line for `UsageStrip`'s top corner and laid out
+  /// as `StalenessBadge(style: .inline)` is. Its own view rather than that badge,
+  /// because what dates these figures is a turn, not a cache or a probe, and the
+  /// words should say so.
+  private func lastTurn(_ observedAt: Date) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 3) {
+      Text("last turn").font(.caption2).foregroundStyle(.tertiary)
+      Text(observedAt, format: .relative(presentation: .named))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+    .lineLimit(1)
+    .help(
+      "Codex only reports its limits inside a session log, so these figures are as old as the last turn it ran."
+    )
   }
 
   /// The same `CompactMeter` the Claude pane uses, including its footnote — which

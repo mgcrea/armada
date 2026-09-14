@@ -44,10 +44,20 @@ struct AccountPaneView: View {
     // pins the window's frame for 750ms against SwiftUI resizing a hosted
     // `NavigationSplitView` on its own. Without it, changing the pane's internal
     // layout moves SwiftUI's idea of the fitting size and the window jumps on open.
+    //
+    // **Each pane sits in a `GeometryReader`, and that is what holds the divider
+    // still.** Without one, a pane whose root view changes branch collapses for a
+    // layout pass, and `NSSplitView` clamps it back to its `minWidth` and hands every
+    // other point to the far side. Measured 2026-09-14 on a 1728pt window: 973/755
+    // before selecting a row, then 100, 0, and 1427/300 once the detail had swapped
+    // `AccountOverview` for `SessionDetail`. A list left at its 320pt floor beside a
+    // 1,200pt form is the mirror image. A `GeometryReader` takes whatever width it is
+    // offered and never reports its content's, so a swap inside it does not reach
+    // the split.
     HSplitView {
-      sessions
+      GeometryReader { _ in sessions }
         .frame(minWidth: 320, idealWidth: 420)
-      detail
+      GeometryReader { _ in detail }
         .frame(minWidth: 300, idealWidth: 340)
     }
     .navigationTitle(account.displayName)
@@ -217,42 +227,32 @@ struct UsageHeader: View {
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
 
   var body: some View {
-    VStack(spacing: 0) {
-      HStack(alignment: .top, spacing: 24) {
-        if let usage = account.usage, !usage.isEmpty {
-          // See `UsageSnapshot.window(_:correctedBy:now:)`: a refusal newer than the
-          // cache overrules it, and nothing else does.
-          let five = usage.window(.fiveHour, correctedBy: account.quotaHit, now: now)
-          let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
-          CompactMeter(
-            title: "Session", subtitle: "5 hours", window: five,
-            forecast: forecast(five, .fiveHour, usage.fetchedAt), now: now)
-          CompactMeter(
-            title: "Weekly", subtitle: "7 days", window: seven,
-            forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now)
-          Spacer(minLength: 0)
-          StalenessBadge(fetchedAt: usage.fetchedAt, now: now, source: usage.source)
-        } else {
-          Label(
-            account.didReadUsage ? "No usage data yet" : "Reading usage…",
-            systemImage: "gauge.with.dots.needle.bottom.50percent"
-          )
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          Spacer(minLength: 0)
-        }
-        // The list's control, in the pane's only existing chrome. Not a toolbar —
-        // both windows are hosted `NSWindow`s with no `NSToolbar`, see `HostedWindow`
-        // — and not a row of its own, because a new row adds height to a pane whose
-        // fitting size `OpeningResizeGuard` exists to defend. Outside the `if`, so a
-        // pane still reading its usage figures has it too.
-        SessionSortMenu()
+    UsageStrip {
+      if let usage = account.usage, !usage.isEmpty {
+        // See `UsageSnapshot.window(_:correctedBy:now:)`: a refusal newer than the
+        // cache overrules it, and nothing else does.
+        let five = usage.window(.fiveHour, correctedBy: account.quotaHit, now: now)
+        let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
+        CompactMeter(
+          title: "Session", subtitle: "5 hours", window: five,
+          forecast: forecast(five, .fiveHour, usage.fetchedAt), now: now)
+        CompactMeter(
+          title: "Weekly", subtitle: "7 days", window: seven,
+          forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now)
+      } else {
+        Label(
+          account.didReadUsage ? "No usage data yet" : "Reading usage…",
+          systemImage: "gauge.with.dots.needle.bottom.50percent"
+        )
+        .font(.callout)
+        .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      Divider()
+    } status: {
+      if let usage = account.usage, !usage.isEmpty {
+        StalenessBadge(
+          fetchedAt: usage.fetchedAt, now: now, source: usage.source, style: .inline)
+      }
     }
-    .background(.bar)
   }
 
   private func forecast(
@@ -266,6 +266,67 @@ struct UsageHeader: View {
   }
 }
 
+/// The layout both panes' usage headers share: the meters on the left, and two
+/// things pinned to the strip's trailing corners — how old the figures are at the
+/// top, the list's sort menu at the bottom.
+///
+/// **The corners hold wherever the meters go.** The column on the right stretches to
+/// the height of the row, so when a narrow pane stacks the meters and the strip grows
+/// taller, the sort menu moves down with it and stays directly above the list it
+/// sorts. The stretch is `.frame(maxHeight: .infinity)` on that column, and it only
+/// works together with `.fixedSize(vertical:)` on the stack: a stack places its
+/// children at its own final height, which is what hands the column the meters'
+/// height, but a stretchy child alone would make the whole strip stretchy and set it
+/// competing with the `List` below for the pane's height.
+///
+/// **Only the meters change shape.** Everything on one row spilled out of both sides
+/// of a list dragged down to its 320pt floor, and its texts with no line limit wrapped
+/// a character per line. So `ViewThatFits` keeps the meters side by side while they
+/// fit beside the corner column, and stacks them when they do not. At the floor with
+/// a long age, the age line truncates rather than wrapping.
+///
+/// Not a toolbar — both windows are hosted `NSWindow`s with no `NSToolbar`, see
+/// `HostedWindow` — and no row of its own, because a new row adds height to a pane
+/// whose fitting size `OpeningResizeGuard` exists to defend. The sort menu sits
+/// outside `meters`, so a pane still reading its usage figures has it too.
+struct UsageStrip<Meters: View, Status: View>: View {
+  private let meters: Meters
+  private let status: Status
+
+  init(@ViewBuilder meters: () -> Meters, @ViewBuilder status: () -> Status) {
+    self.meters = meters()
+    self.status = status()
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ViewThatFits(in: .horizontal) {
+        row { HStack(alignment: .top, spacing: 24) { meters } }
+        row { VStack(alignment: .leading, spacing: 10) { meters } }
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      Divider()
+    }
+    .background(.bar)
+  }
+
+  /// The meters in whichever shape, beside the corner column.
+  private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    HStack(alignment: .top, spacing: 0) {
+      content()
+      Spacer(minLength: 16)
+      VStack(alignment: .trailing, spacing: 6) {
+        status
+        Spacer(minLength: 0)
+        SessionSortMenu()
+      }
+      .frame(maxHeight: .infinity)
+    }
+  }
+}
+
 /// A meter sized for the header strip.
 struct CompactMeter: View {
   let title: LocalizedStringKey
@@ -276,13 +337,18 @@ struct CompactMeter: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
+      // Held to one line, both of these. Squeezed, a `Text` with no limit wraps a
+      // character per line, and that is what once made the header strip hundreds of
+      // points tall in a narrow pane.
       HStack(spacing: 6) {
         Text(title).font(.caption).foregroundStyle(.secondary)
         Text(subtitle).font(.caption2).foregroundStyle(.tertiary)
       }
+      .lineLimit(1)
       if let window {
         HStack(spacing: 8) {
           UsageFigure(window: window, now: now, font: .title3)
+            .fixedSize()
           // 9pt rather than the 6pt default, which is the size this strip has always
           // rendered at: the pace tick used to inflate the track it sat in by 3pt,
           // and the number here was tuned by eye against a bar that was already
@@ -328,12 +394,16 @@ struct StalenessBadge: View {
   var source: UsageSnapshot.Source = .cache
   var style: Style = .full
 
-  /// `.compact` is the popover's. The two-line stack below is sized for a header
-  /// strip with a `Spacer` in front of it and does not belong in a 320pt panel, but
+  /// `.compact` is the popover's. The two-line stack below is sized for the end of a
+  /// row with a `Spacer` in front of it and does not belong in a 320pt panel, but
   /// the panel is exactly where the age was missing — it was the one surface showing
   /// a percentage with nothing to say how old it was. One tertiary line, and the
   /// same thresholds, so the two surfaces cannot disagree about what "stale" means.
-  enum Style { case full, compact }
+  ///
+  /// `.inline` is the session list's header: the words of `.full` on one line, so it
+  /// fits `UsageStrip`'s top corner above the sort menu without taking a second
+  /// line's height out of the column beside the meters.
+  enum Style { case full, inline, compact }
 
   private static let fresh: TimeInterval = 5 * 60
   private static let stale: TimeInterval = 60 * 60
@@ -362,16 +432,21 @@ struct StalenessBadge: View {
         if age > staleAfter {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
-            .font(style == .full ? nil : .caption2)
+            .font(triangleFont)
         }
-        if style == .full {
+        switch style {
+        case .full:
           VStack(alignment: .trailing, spacing: 2) {
             Text("as of").font(.caption2).foregroundStyle(.tertiary)
-            Text(fetchedAt, format: .relative(presentation: .named))
-              .font(.caption)
-              .foregroundStyle(age > Self.fresh ? .secondary : .primary)
+            relative(fetchedAt, age: age)
           }
-        } else {
+        case .inline:
+          HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text("as of").font(.caption2).foregroundStyle(.tertiary)
+            relative(fetchedAt, age: age)
+          }
+          .lineLimit(1)
+        case .compact:
           Text(
             "\(source == .live ? "checked" : "figures from") \(fetchedAt, format: .relative(presentation: .named))"
           )
@@ -384,6 +459,23 @@ struct StalenessBadge: View {
       }
       .help(help(age: age))
     }
+  }
+
+  /// Sized to the line it sits on: the two-line stack can take a full-size glyph, the
+  /// single lines cannot.
+  private var triangleFont: Font? {
+    switch style {
+    case .full: nil
+    case .inline: .caption
+    case .compact: .caption2
+    }
+  }
+
+  /// The age itself, as `.full` and `.inline` both write it.
+  private func relative(_ fetchedAt: Date, age: TimeInterval) -> some View {
+    Text(fetchedAt, format: .relative(presentation: .named))
+      .font(.caption)
+      .foregroundStyle(age > Self.fresh ? .secondary : .primary)
   }
 
   private func help(age: TimeInterval) -> String {
