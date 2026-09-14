@@ -1,17 +1,19 @@
 // CHANGELOG.md, parsed once.
 //
-// Two things read this file and they must not disagree about it: the Sparkle
-// appcast, which renders one section as HTML at release time, and the app's
-// What's New pane, which is generated from the most recent sections at build
-// time. Two parsers over one hand-written file drift the first time somebody
-// writes a bullet in a shape neither anticipated, and the failure is silent in
-// both directions — the appcast keeps rendering while the pane quietly drops a
-// bullet. So there is one parser, and `renderHTML` below is the appcast's
-// renderer moved here verbatim.
+// Three things read this file and they must not disagree about it: the Sparkle
+// appcast, which renders one section as HTML at release time; the GitHub release
+// body, which renders the same section as markdown; and the app's What's New
+// pane, which is generated from the most recent sections at build time. Two
+// parsers over one hand-written file drift the first time somebody writes a
+// bullet in a shape neither anticipated, and the failure is silent in both
+// directions — the appcast keeps rendering while the pane quietly drops a
+// bullet. So there is one parser, `renderHTML` below is the appcast's renderer
+// moved here verbatim, and which sections a user is never shown is decided here
+// once (`HIDDEN_SECTIONS`) rather than by each caller.
 //
-// `renderHTML` reads `entry.paragraphs` and nothing else. That is the whole
+// Both renderers read `entry.paragraphs` and nothing else. That is the whole
 // reason entries carry their raw paragraphs alongside the `headline`/`body`
-// split the Swift generator wants: the HTML path never sees the split, so
+// split the Swift generator wants: the release paths never see the split, so
 // changing how the split works cannot move a byte of the appcast.
 
 /**
@@ -132,6 +134,28 @@ export const parse = (markdown) => {
   return releases;
 };
 
+// ─── What a user is shown ─────────────────────────────────────────────────────
+
+/**
+ * Sections that exist for the repository rather than for the user: prose about
+ * CI and generators, which somebody deciding whether to update gets nothing from.
+ *
+ * This set used to live in `generate-changelog.mjs` alone, so the What's New pane
+ * left `### Internal` out while the appcast and the GitHub release body put it in
+ * front of every user. `parse` still keeps these groups, so a check over the
+ * source can see them; every renderer drops them through `visibleGroups`.
+ */
+export const HIDDEN_SECTIONS = new Set(["Internal"]);
+
+/**
+ * A release's groups, minus `HIDDEN_SECTIONS`.
+ *
+ * @param {Release} release
+ * @returns {Group[]}
+ */
+export const visibleGroups = (release) =>
+  release.groups.filter((group) => !HIDDEN_SECTIONS.has(group.name));
+
 // ─── HTML, for the appcast ────────────────────────────────────────────────────
 //
 // Moved here from `changelog-notes.mjs` character for character. Sparkle renders
@@ -171,7 +195,7 @@ export const inline = (text) => {
  * One release as the HTML Sparkle shows.
  *
  * Reads `entry.paragraphs`, never `headline`/`body`, so the split those two
- * carry cannot move the output.
+ * carry cannot move the output. Leaves out `HIDDEN_SECTIONS`.
  *
  * @param {Release} release
  * @returns {string}
@@ -179,7 +203,7 @@ export const inline = (text) => {
 export const renderHTML = (release) => {
   const html = [];
   for (const text of release.lead) html.push(`<p>${inline(text)}</p>`);
-  for (const group of release.groups) {
+  for (const group of visibleGroups(release)) {
     html.push(`<h3>${inline(group.name)}</h3>`);
     for (const text of group.lead) html.push(`<p>${inline(text)}</p>`);
     if (group.entries.length === 0) continue;
@@ -190,4 +214,46 @@ export const renderHTML = (release) => {
     html.push("</ul>");
   }
   return html.join("\n");
+};
+
+// ─── Markdown, for the GitHub release ─────────────────────────────────────────
+//
+// The release body used to be cut out of CHANGELOG.md with awk: the literal first
+// section, whichever it was, `### Internal` and all. Rendered from the parse
+// instead, it is the tag's own section with exactly the groups the appcast shows.
+//
+// Re-emitted rather than sliced, which costs the source's line wrapping: a wrapped
+// paragraph comes back as one line, which GitHub renders the same. Slicing would
+// need a second idea of where a section and a group end, which is the drift this
+// file exists to prevent.
+
+/**
+ * One release as the markdown of a GitHub release body. Leaves out
+ * `HIDDEN_SECTIONS`, as `renderHTML` does.
+ *
+ * A lead's lines are joined into one paragraph. `parse` keeps a line per entry and
+ * does not record a blank line between two lead paragraphs, so joining is the
+ * reading that is right for a wrapped paragraph, which is what this file holds.
+ *
+ * @param {Release} release
+ * @returns {string}
+ */
+export const renderMarkdown = (release) => {
+  const blocks = [];
+  if (release.lead.length > 0) blocks.push(release.lead.join(" "));
+  for (const group of visibleGroups(release)) {
+    blocks.push(`### ${group.name}`);
+    if (group.lead.length > 0) blocks.push(group.lead.join(" "));
+    if (group.entries.length === 0) continue;
+    blocks.push(
+      group.entries
+        .map((entry) =>
+          entry.paragraphs
+            .map((text, index) => (index === 0 ? `- ${text}` : `  ${text}`))
+            .join("\n\n"),
+        )
+        .join("\n"),
+    );
+  }
+  return blocks.join("\n\n");
 };

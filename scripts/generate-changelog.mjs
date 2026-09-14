@@ -16,8 +16,11 @@
 // Two things, both here rather than in SwiftUI, so that the bytes never reach
 // the binary and the decision is visible where the data is discarded:
 //
-//   - `### Internal` sections. Repo-facing prose about CI and generators; a user
-//     asking what changed in the app gets nothing from it.
+//   - `HIDDEN_SECTIONS` (`### Internal`). Repo-facing prose about CI and
+//     generators; a user asking what changed in the app gets nothing from it.
+//     The set lives in `lib/changelog.mjs`, because the appcast and the GitHub
+//     release body have to leave out the same sections, and it once lived here
+//     alone while both of them showed it.
 //   - Everything past the most recent `SHOWN` releases. This is the pane you
 //     open after updating, not an archive.
 //
@@ -41,7 +44,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parse } from "./lib/changelog.mjs";
+import { parse, visibleGroups } from "./lib/changelog.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CHECK = process.argv.includes("--check");
@@ -50,9 +53,6 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 
 /** How many released versions reach the app. Raising it is this line. */
 const SHOWN = 5;
-
-/** Sections that exist for the repository rather than for the user. */
-const HIDDEN_SECTIONS = new Set(["Internal"]);
 
 const BANNER = "generated from CHANGELOG.md by `make changelog` — do not edit by hand";
 
@@ -73,9 +73,9 @@ const all = parse(read("CHANGELOG.md"));
 
 const visible = (release) => ({
   ...release,
-  sections: release.groups
-    .filter((group) => !HIDDEN_SECTIONS.has(group.name))
-    .filter((group) => group.lead.length > 0 || group.entries.length > 0),
+  sections: visibleGroups(release).filter(
+    (group) => group.lead.length > 0 || group.entries.length > 0,
+  ),
 });
 
 const unreleased = all.find((r) => r.unreleased);

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parse, renderHTML } from "./changelog.mjs";
+import { HIDDEN_SECTIONS, parse, renderHTML, renderMarkdown, visibleGroups } from "./changelog.mjs";
 
 /**
  * The failures these guard against are silent in both directions.
@@ -23,6 +25,7 @@ import { parse, renderHTML } from "./changelog.mjs";
  *   - a bullet with a second paragraph after a blank line
  *   - a bare number, which the placeholder restoration once ate as an index
  *   - a `## [Unreleased]` heading, which carries no date
+ *   - a `### Internal` group, which no renderer may show a user
  */
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -54,6 +57,10 @@ Not every fix here is a bullet; this line is the group's own lead.
 ### Note for 1.0.0 users
 
 - No headline on this one at all.
+
+### Internal
+
+- **CI.** Repo-facing prose that no user should be shown.
 
 ## [1.0.0] - 2026-01-31
 
@@ -107,13 +114,24 @@ describe("parse", () => {
     assert.equal(notes.entries[0].headline, null);
     assert.deepEqual(notes.entries[0].body, ["No headline on this one at all."]);
   });
+
+  it("keeps a hidden section in the parse, for the renderers to drop", () => {
+    assert.deepEqual(
+      releases[1].groups.map((group) => group.name),
+      ["Fixed", "Note for 1.0.0 users", "Internal"],
+    );
+    assert.deepEqual(
+      visibleGroups(releases[1]).map((group) => group.name),
+      ["Fixed", "Note for 1.0.0 users"],
+    );
+  });
 });
 
 describe("renderHTML", () => {
   const [, release] = parse(FIXTURE);
   const html = renderHTML(release);
 
-  it("renders the whole section exactly", () => {
+  it("renders the whole section exactly, without its Internal group", () => {
     assert.equal(
       html,
       [
@@ -143,6 +161,39 @@ describe("renderHTML", () => {
   });
 });
 
+describe("renderMarkdown", () => {
+  const [, release] = parse(FIXTURE);
+
+  it("renders the whole section exactly, without its Internal group", () => {
+    assert.equal(
+      renderMarkdown(release),
+      [
+        "### Fixed",
+        "",
+        "Not every fix here is a bullet; this line is the group's own lead.",
+        "",
+        "- **A surface that shells out to `node` could not find it.** " +
+          "From March 2026 onward the gateway answers 400 and keeps serving.",
+        "",
+        "  A second paragraph, after a blank line.",
+        "- **Plain.** One line only.",
+        "",
+        "### Note for 1.0.0 users",
+        "",
+        "- No headline on this one at all.",
+      ].join("\n"),
+    );
+  });
+
+  it("renders nothing, in either format, for a section holding only hidden groups", () => {
+    const [internalOnly] = parse(
+      "## [0.1.0] - 2026-01-01\n\n### Internal\n\n- **CI.** Only this.\n",
+    );
+    assert.equal(renderMarkdown(internalOnly), "");
+    assert.equal(renderHTML(internalOnly), "");
+  });
+});
+
 describe("the real CHANGELOG.md", () => {
   const releases = parse(readFileSync(join(root, "CHANGELOG.md"), "utf8"));
 
@@ -165,15 +216,34 @@ describe("the real CHANGELOG.md", () => {
     }
   });
 
+  it("shows no hidden section in either rendering", () => {
+    for (const release of releases) {
+      for (const name of HIDDEN_SECTIONS) {
+        assert.doesNotMatch(
+          renderHTML(release),
+          new RegExp(`<h3>${name}</h3>`),
+          `${release.version}: ### ${name} reached the appcast`,
+        );
+        assert.doesNotMatch(
+          renderMarkdown(release),
+          new RegExp(`^### ${name}$`, "m"),
+          `${release.version}: ### ${name} reached the release body`,
+        );
+      }
+    }
+  });
+
   it("round-trips every code span, over the whole file", () => {
     // Not `doesNotMatch(/undefined/)`: 1.3.0's prose is ABOUT a field that read
     // back as `undefined`, so the blunt check fails on a correct render. What
     // actually needs asserting is that no placeholder was eaten — every code
-    // span in the source has to come out the other side as a <code>.
+    // span in the source has to come out the other side as a <code>. Counted
+    // over the visible groups, because a span in `### Internal` is meant to be
+    // missing.
     for (const release of releases) {
       const sources = [
         ...release.lead,
-        ...release.groups.flatMap((group) => [
+        ...visibleGroups(release).flatMap((group) => [
           group.name,
           ...group.lead,
           ...group.entries.flatMap((entry) => entry.paragraphs),
@@ -183,5 +253,43 @@ describe("the real CHANGELOG.md", () => {
       const rendered = (renderHTML(release).match(/<code>/g) ?? []).length;
       assert.equal(rendered, spans, `${release.version}: ${spans - rendered} code span(s) lost`);
     }
+  });
+});
+
+describe("changelog-notes.mjs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "changelog-notes-"));
+  const file = join(dir, "CHANGELOG.md");
+  // 0.9.0 holds nothing but a hidden group: a heading that matches, over notes
+  // that would reach users empty.
+  writeFileSync(
+    file,
+    `${FIXTURE}\n## [0.9.0] - 2026-01-01\n\n### Internal\n\n- Repo-facing prose only.\n`,
+  );
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const notes = (...args) =>
+    spawnSync(process.execPath, [join(root, "scripts", "changelog-notes.mjs"), ...args, file], {
+      encoding: "utf8",
+    });
+
+  it("takes the named version's section, not the first one in the file", () => {
+    const result = notes("--markdown", "1.0.0");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "### Added\n\n- **First.** It shipped.\n");
+  });
+
+  it("leaves Internal out of the appcast HTML and the release markdown alike", () => {
+    for (const args of [["1.2.0"], ["--markdown", "1.2.0"]]) {
+      const result = notes(...args);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Fixed/);
+      assert.doesNotMatch(result.stdout, /Internal|Repo-facing/);
+    }
+  });
+
+  it("exits non-zero rather than printing empty notes", () => {
+    assert.equal(notes("--markdown", "9.9.9").status, 1);
+    assert.equal(notes("0.9.0").status, 1);
+    assert.equal(notes("--markdown", "0.9.0").status, 1);
   });
 });
