@@ -54,7 +54,13 @@ if (!privateKey) {
   process.exit(2);
 }
 
-const email = valueOf("email", "");
+// Trimmed and lowercased the way the Worker stores a buyer's address. The email
+// is inside the signed payload, so a key minted here for "Buyer@Example.com "
+// and the key the Worker minted for the same person differ byte for byte, and a
+// replacement minted by hand would not match the row `/license/resend` looks
+// up. Done here rather than in lib/license.mjs, whose output is asserted
+// byte-identical to the Worker's for the same input.
+const email = valueOf("email", "").trim().toLowerCase();
 if (!email.includes("@")) {
   console.error("FATAL: --email=<address> is required, and must look like one");
   process.exit(2);
