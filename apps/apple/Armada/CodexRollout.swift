@@ -164,8 +164,10 @@ nonisolated struct CodexRolloutTail: Sendable {
 /// run to 2MB and there are 418 of them. Everything works from a bounded head read
 /// and a bounded tail read.
 ///
-/// `nonisolated` is load-bearing under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-/// — without it this file's I/O happens on the thread drawing the window.
+/// `nonisolated` is load-bearing under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`:
+/// without it these would be main-actor isolated, and `CodexWatcher.scan`, which runs
+/// detached, could not call them. The keyword does not keep the I/O off the main
+/// thread by itself; `scan` running detached is what does that.
 nonisolated enum CodexRollout {
   /// The first line alone is ~22KB, because `session_meta` embeds the full system
   /// prompt in `base_instructions.text` (18KB of it). 64KB covers that line plus
@@ -198,10 +200,14 @@ nonisolated enum CodexRollout {
     defer { try? handle.close() }
     guard let head = try? handle.read(upToCount: headBytes) else { return nil }
 
-    // The last line of a bounded read is almost certainly truncated; dropping it
-    // costs nothing here because what is wanted sits in the first few.
+    // A read that filled `headBytes` without ending on a newline stopped part-way
+    // through a line, and dropping that one costs nothing: what is wanted sits in the
+    // first few. **Only then.** A read that came up short reached the end of the file,
+    // so its last line is whole, and a young rollout can be little more than its
+    // `session_meta` and one `turn_context` — dropping the last line there threw away
+    // the model, or the session itself.
     var lines = head.split(separator: 0x0A, omittingEmptySubsequences: true)
-    if lines.count > 1 { lines.removeLast() }
+    if head.count == headBytes, head.last != 0x0A, !lines.isEmpty { lines.removeLast() }
 
     var meta: CodexSessionMeta?
     var model: String?
@@ -253,16 +259,13 @@ nonisolated enum CodexRollout {
     try? handle.seek(toOffset: start)
     guard let chunk = try? handle.readToEnd() else { return nil }
 
-    var lines = chunk.split(separator: 0x0A, omittingEmptySubsequences: true)
-    // A tail read starts mid-line unless it started at byte zero.
-    if start > 0, !lines.isEmpty { lines.removeFirst() }
-
     var lastEventType: String?
     var lastEventAt: Date?
     var rateLimits: CodexRateLimits?
     var totalTokens: Int?
 
-    for line in lines.reversed() {
+    // A tail read starts mid-line unless it started at byte zero.
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: start > 0) {
       guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
       else { continue }
       let payload = object["payload"] as? [String: Any]

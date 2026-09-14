@@ -36,6 +36,15 @@ nonisolated struct CodexScan: Sendable {
   let titles: [String: String]
   /// The newest rate limits seen in anything this scan actually read.
   let rateLimits: CodexRateLimits?
+  /// The title index's modification date as of the last time it was read.
+  let titleIndexStamp: Date?
+}
+
+/// What a background scan needs to know about a session the watcher already holds.
+nonisolated struct CodexKnownSession: Sendable {
+  let size: UInt64
+  let meta: CodexSessionMeta
+  let hasTitle: Bool
 }
 
 /// Every recent Codex session, kept current from the filesystem.
@@ -81,6 +90,8 @@ final class CodexWatcher {
   private var timer: DispatchSourceTimer?
   private var isScanning = false
   private var wantsAnotherScan = false
+  /// See `scan`, where this decides whether the title index is worth re-reading.
+  private var titleIndexStamp: Date?
 
   private let queue = DispatchQueue(label: "io.mgcrea.armada.codex")
 
@@ -148,6 +159,7 @@ final class CodexWatcher {
     timer?.cancel()
     timer = nil
     wantsAnotherScan = false
+    titleIndexStamp = nil
     byId = [:]
     sessions = []
   }
@@ -162,10 +174,13 @@ final class CodexWatcher {
     isScanning = true
 
     let home = self.home
-    let known = byId.mapValues { ($0.tailScannedSize, $0.meta) }
+    let known = byId.mapValues {
+      CodexKnownSession(size: $0.tailScannedSize, meta: $0.meta, hasTitle: $0.title != nil)
+    }
+    let titleIndexStamp = self.titleIndexStamp
 
     Task.detached(priority: .utility) {
-      let scan = CodexWatcher.scan(home: home, known: known)
+      let scan = CodexWatcher.scan(home: home, known: known, titleIndexStamp: titleIndexStamp)
       await MainActor.run { self.apply(scan) }
     }
   }
@@ -177,7 +192,7 @@ final class CodexWatcher {
   /// inside `recentWindow` (or holding a lock) are considered at all, and a file
   /// whose size has not changed since the last scan is not opened.
   nonisolated static func scan(
-    home: CodexHome, known: [String: (UInt64, CodexSessionMeta)]
+    home: CodexHome, known: [String: CodexKnownSession], titleIndexStamp: Date?
   ) -> CodexScan {
     let fileManager = FileManager.default
     let locked = CodexLocks.liveSessionIDs(in: home.locksDir)
@@ -209,8 +224,8 @@ final class CodexWatcher {
         }
 
         let cached = known[sessionId]
-        let unchanged = cached?.0 == size
-        let meta = unchanged ? nil : CodexRollout.meta(at: url) ?? cached?.1
+        let unchanged = cached?.size == size
+        let meta = unchanged ? nil : CodexRollout.meta(at: url) ?? cached?.meta
         let tail = unchanged ? nil : CodexRollout.tail(at: url)
         if isNewest { newestRollout = (url, modified, tail != nil) }
 
@@ -246,10 +261,24 @@ final class CodexWatcher {
 
     // Only when something is untitled: the index is 104KB and re-reading it on
     // every write of every rollout would be the most expensive thing here.
-    let needsTitles = entries.contains { known[$0.sessionId] == nil }
+    //
+    // **Untitled, not merely new.** Codex names a thread some time after its rollout
+    // starts, so reading only for sessions seen for the first time left every one
+    // named a moment later untitled for as long as it stayed listed. And a
+    // `guardian_review` subagent is never named at all, so for an untitled session
+    // that is already known the index is re-read only once it has changed since the
+    // last read; otherwise one listed subagent would put this read on every pass.
+    let indexModified =
+      (try? fileManager.attributesOfItem(atPath: home.sessionIndex.path(percentEncoded: false)))?[
+        .modificationDate] as? Date
+    let hasNew = entries.contains { known[$0.sessionId] == nil }
+    let hasUntitled = entries.contains { known[$0.sessionId]?.hasTitle == false }
+    let needsTitles = hasNew || (hasUntitled && indexModified != titleIndexStamp)
     let titles = needsTitles ? CodexTitleIndex.read(home.sessionIndex) : [:]
 
-    return CodexScan(entries: entries, titles: titles, rateLimits: newest)
+    return CodexScan(
+      entries: entries, titles: titles, rateLimits: newest,
+      titleIndexStamp: needsTitles ? indexModified : titleIndexStamp)
   }
 
   private func apply(_ scan: CodexScan) {
@@ -306,6 +335,7 @@ final class CodexWatcher {
       // changes when a turn writes a new `token_count`.
       UsageHistory.shared.record(limits.asSnapshot, for: home.id)
     }
+    titleIndexStamp = scan.titleIndexStamp
     didScan = true
 
     isScanning = false
@@ -317,7 +347,7 @@ final class CodexWatcher {
 
   /// The opening reading, off the main actor.
   ///
-  /// Modelled on `SessionWatcher.scanTitleInBackground`, including why it is keyed by
+  /// Modelled on `SessionWatcher.deepScanInBackground`, including why it is keyed by
   /// id rather than capturing the session: the answer is applied to whichever session
   /// still holds that id when it lands, and dropped if the session went away while the
   /// read was running.

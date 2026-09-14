@@ -26,7 +26,7 @@ nonisolated enum CodexContext {
   static func newestReading(inChunk chunk: Data, droppingFirstLine: Bool) -> (
     reading: ContextReading, limit: Int
   )? {
-    for line in lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       if let found = reading(fromLine: line) { return found }
     }
     return nil
@@ -39,7 +39,7 @@ nonisolated enum CodexContext {
   /// several entries. `token_usage_record` carries the same numbers a second time and
   /// is deliberately not parsed here, which is what keeps that true.
   static func series(inChunk chunk: Data, droppingFirstLine: Bool) -> [ContextReading] {
-    lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).compactMap {
+    JSONLines.oldestFirst(chunk, droppingFirstLine: droppingFirstLine).compactMap {
       reading(fromLine: $0)?.reading
     }
   }
@@ -58,18 +58,12 @@ nonisolated enum CodexContext {
     guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
     defer { try? handle.close() }
     guard let head = try? handle.read(upToCount: budget) else { return nil }
-    for line in lines(inChunk: head, droppingFirstLine: false) {
+    for line in JSONLines.oldestFirst(head, droppingFirstLine: false) {
       if let found = reading(fromLine: line) {
         return ContextBaseline(loadedAtStart: found.reading.total)
       }
     }
     return nil
-  }
-
-  private static func lines(inChunk chunk: Data, droppingFirstLine: Bool) -> [Data] {
-    var lines = chunk.split(separator: 0x0A, omittingEmptySubsequences: true).map { Data($0) }
-    if droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
-    return lines
   }
 
   /// One `token_count` event's usage, or nil for every other kind of line.

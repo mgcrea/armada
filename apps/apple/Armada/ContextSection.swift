@@ -23,7 +23,6 @@ struct ContextSection: View {
         messageModelID: context.modelID,
         observedTotal: context.total)
       let categories = categories(context: context)
-      let used = categories.reduce(0) { $0 + $1.tokens }
 
       ContextPanel(
         // The resolved id, not `message.model`: the variant suffix is the whole

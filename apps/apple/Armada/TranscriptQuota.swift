@@ -31,9 +31,9 @@ nonisolated struct QuotaHit: Sendable, Hashable {
 
 /// Reading the refusal out of a transcript.
 ///
-/// `nonisolated` and tail-only, for the reasons spelled out in `TranscriptTitle` —
-/// the files run to 13MB and none of this may happen on the main actor or read a
-/// whole one on a write.
+/// `nonisolated` so a background task can call it, which is all that keyword buys —
+/// see `TranscriptTitle` for why it does not decide the thread. And tail-only: the
+/// files run to 13MB, and nothing here may read a whole one on a write.
 ///
 /// **No full-scan fallback, unlike the titles.** A rejection that has scrolled out
 /// of the 64KB tail is a rejection from long enough ago that its window has almost
@@ -59,10 +59,7 @@ nonisolated enum TranscriptQuota {
   /// undocumented shape in a file that belongs to another program. Four fields are
   /// read and the rest — the overage trio, the fallback flag — are left alone.
   static func newestHit(inChunk chunk: Data, droppingFirstLine: Bool) -> QuotaHit? {
-    var lines = chunk.split(separator: 0x0A, omittingEmptySubsequences: true)
-    if droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
-
-    for line in lines.reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       // Cheap reject before paying for a JSON parse, as the title scan does. Almost
       // no line in a transcript carries this key.
       guard line.range(of: Data("quotaLimits".utf8)) != nil,

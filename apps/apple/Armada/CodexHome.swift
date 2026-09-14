@@ -32,12 +32,6 @@ nonisolated struct CodexHome: Sendable, Hashable {
   /// folder and a custom one alike.
   var sessionsDir: URL { base.appending(path: "sessions", directoryHint: .isDirectory) }
 
-  /// Where a rollout goes when the session is archived from the UI. Not scanned:
-  /// an archived session is by definition not one Armada should be watching.
-  var archivedDir: URL {
-    base.appending(path: "archived_sessions", directoryHint: .isDirectory)
-  }
-
   /// `<sessionId>.lock`, one per session that a Codex process currently owns.
   /// See `CodexLocks`.
   var locksDir: URL {

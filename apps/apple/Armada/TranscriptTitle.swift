@@ -6,11 +6,13 @@ import Foundation
 /// on the machine this was measured on. Nothing here may scan a whole file on a
 /// change; everything works from the tail.
 ///
-/// `nonisolated` on purpose, and load-bearing. The project builds with
-/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without this every read here
-/// would be main-actor work — and the full-scan fallback below is measured at
-/// 141ms across this machine's live sessions, which is not something to do on the
-/// thread drawing the window.
+/// `nonisolated` on purpose. The project builds with
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without it every function here
+/// would be main-actor isolated, and the detached deep scan in `SessionWatcher` could
+/// not call any of them. **It does not move the work anywhere**: a synchronous
+/// `nonisolated` function runs on whichever thread calls it. Keeping a read off the
+/// thread drawing the window is the caller's decision, and `SessionWatcher` makes it
+/// per read: the 64KB tail stays inline, the whole-file scan goes detached.
 nonisolated enum TranscriptTitle {
   /// How much of the end of the file to read. The newest `ai-title` sits a median
   /// 15.3KB from the end (p90 29.6KB); 64KB finds it in 96% of 553 titled
@@ -39,14 +41,13 @@ nonisolated enum TranscriptTitle {
     return (chunk, start > 0)
   }
 
-  /// The first `headBytes` of a transcript.
+  /// How much of the start of a transcript holds its opening context reading.
   ///
-  /// The counterpart to `tail(of:)`, and it needs no `droppingFirstLine` flag: a read
-  /// that starts at byte zero starts on a line boundary by definition.
-  ///
-  /// Only one thing wants this — the session's *opening* context reading, which is
-  /// everything Claude Code loaded before the first prompt. That figure never
-  /// changes, so this is read at most once per session and never on the hot path.
+  /// Only one thing wants it: the session's *opening* figure, everything Claude Code
+  /// loaded before the first prompt. The deep scan slices this much off the front of
+  /// the buffer it has already read, rather than walking 50MB for an answer that sits
+  /// near the top. A slice from byte zero starts on a line boundary by definition, so
+  /// it needs no `droppingFirstLine`.
   ///
   /// **256KB, and the number is measured.** Across 30 transcripts over 100KB on
   /// 2026-09-12, the first `assistant` entry sat a median 61.6KB into the file, p90
@@ -54,13 +55,7 @@ nonisolated enum TranscriptTitle {
   /// file-history entries. 256KB covered every one of them with room to spare.
   static let headBytes = 256 * 1024
 
-  static func head(of url: URL) -> Data? {
-    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-    defer { try? handle.close() }
-    return try? handle.read(upToCount: headBytes)
-  }
-
-  /// The title Claude Code shows for this session, or nil.
+  /// The last `ai-title` in a buffer of newline-delimited JSON, or nil.
   ///
   /// **Keeps the LAST match, not the first.** Titles are rewritten throughout a
   /// session — up to 267 `ai-title` entries in one transcript, and 289 transcripts
@@ -68,40 +63,8 @@ nonisolated enum TranscriptTitle {
   /// around line 15, a refined one a line later, then the refined one re-appended
   /// every 15–25 lines; taking the first gets the draft. The spike's
   /// `SessionWatch.swift` has this bug, which is why it is called out here.
-  ///
-  /// `fullScanFallback` covers the transcripts that stopped re-appending titles
-  /// long ago (p99 is 4MB from the end, max 13MB). Off by default for the hot
-  /// path; the watcher turns it on once per file, off the main actor.
-  ///
-  /// **It is not the ~4% case the spike reported.** Measured against this
-  /// machine's 19 live sessions, only 3 had their newest title inside the 64KB
-  /// tail — 16%, against the spike's 96%. The spike sampled 553 transcripts
-  /// "active in the prior 3 weeks", a population full of short recent ones;
-  /// Armada looks only at sessions that are live *now*, which skew long-running
-  /// (9–16 hours and 0.6–9.5MB here) and long past their last title write. So the
-  /// fallback is the common path for this app, not the rare one, and it is sized
-  /// accordingly: 54MB and 141ms across those 19, which is why the caller does it
-  /// in the background and why it is attempted at most once per session.
-  static func newestTitle(at url: URL, fullScanFallback: Bool = false) -> String? {
-    guard let tail = tail(of: url) else { return nil }
-
-    if let title = newestTitle(inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine) {
-      return title
-    }
-    guard fullScanFallback, tail.droppingFirstLine else { return nil }
-
-    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-    defer { try? handle.close() }
-    guard let whole = try? handle.readToEnd() else { return nil }
-    return newestTitle(inChunk: whole, droppingFirstLine: false)
-  }
-
-  /// The last `ai-title` in a buffer of newline-delimited JSON.
   static func newestTitle(inChunk chunk: Data, droppingFirstLine: Bool) -> String? {
-    var lines = chunk.split(separator: 0x0A, omittingEmptySubsequences: true)
-    if droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
-
-    for line in lines.reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       // Cheap reject before paying for a JSON parse: most lines are not titles.
       guard line.range(of: Data("ai-title".utf8)) != nil,
         let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
@@ -116,6 +79,10 @@ nonisolated enum TranscriptTitle {
   /// Whether the newest entry is an assistant `tool_use` with no `tool_result`
   /// answering it — the session is running a tool, or waiting for approval to.
   ///
+  /// **Takes a buffer, not a URL**, like every other parser here: the caller has
+  /// usually just read this tail for the title, and reading it a second time for this
+  /// answer was the one place a transcript write still cost two reads.
+  ///
   /// **Best-effort, and the UI says so.** `docs/claude-code-sessions.md` files this
   /// as open question 1: the rule is supported by a snapshot of 14 live sessions
   /// (idle ones ended on `stop_reason: end_turn`, working ones on an unanswered
@@ -126,15 +93,10 @@ nonisolated enum TranscriptTitle {
   /// It cannot tell "running a tool" from "waiting for your approval": one session
   /// in that snapshot had sat on an unanswered `tool_use` for 10.5 hours. Telling
   /// those apart needs hooks, which this prototype deliberately does not install.
-  static func isAwaitingToolResult(at url: URL) -> Bool {
-    guard let tail = tail(of: url) else { return false }
-
-    var lines = tail.chunk.split(separator: 0x0A, omittingEmptySubsequences: true)
-    if tail.droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
-
+  static func isAwaitingToolResult(inChunk chunk: Data, droppingFirstLine: Bool) -> Bool {
     // Walk backwards to the newest entry that is a user or assistant turn;
     // everything else (file-history, cost-state, mode, …) is noise for this.
-    for line in lines.reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
         let type = object["type"] as? String
       else { continue }

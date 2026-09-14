@@ -41,9 +41,10 @@ nonisolated struct ContextReading: Sendable, Hashable {
 
 /// Reading context out of a transcript.
 ///
-/// `nonisolated` and buffer-based, for the reasons `TranscriptTitle` spells out: the
-/// files run to 50MB, the project builds with `SWIFT_DEFAULT_ACTOR_ISOLATION =
-/// MainActor`, and none of this may happen on the thread drawing the window.
+/// `nonisolated` so the detached deep scan can call it at all under
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`. As `TranscriptTitle` spells out, that
+/// lifts the main-actor default and nothing more: which thread parses a 50MB buffer is
+/// decided by the caller, and `SessionWatcher` decides it.
 ///
 /// **Takes a buffer, never a URL.** `SessionWatcher.refreshTitle` already reads one
 /// 64KB tail per transcript write and hands it to two parsers; this is the third.
@@ -56,7 +57,7 @@ nonisolated enum TranscriptContext {
   /// repeats the same `usage` object, so the newest block and the newest request
   /// agree about the total. Only `series(…)` below has to care.
   static func newestReading(inChunk chunk: Data, droppingFirstLine: Bool) -> ContextReading? {
-    for line in lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       if let reading = reading(fromLine: line) { return reading }
     }
     return nil
@@ -71,7 +72,7 @@ nonisolated enum TranscriptContext {
   /// session: 379344 → 383213 → 384317 → 386716 → 388217 → 389013, monotonic, about
   /// 1.9k per request.
   static func series(inChunk chunk: Data, droppingFirstLine: Bool) -> [ContextReading] {
-    lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).compactMap {
+    JSONLines.oldestFirst(chunk, droppingFirstLine: droppingFirstLine).compactMap {
       reading(fromLine: $0, firstBlockOnly: true)
     }
   }
@@ -89,7 +90,7 @@ nonisolated enum TranscriptContext {
   ///
   /// Newest wins, as with `ai-title`: a session that ran `/model` writes another one.
   static func newestModelID(inChunk chunk: Data, droppingFirstLine: Bool) -> String? {
-    for line in lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       // Cheap reject before paying for a JSON parse, as every other parser here
       // does. Almost no line carries this key.
       guard line.range(of: Data("\"modelId\"".utf8)) != nil,
@@ -103,14 +104,6 @@ nonisolated enum TranscriptContext {
       return modelID
     }
     return nil
-  }
-
-  private static func lines(inChunk chunk: Data, droppingFirstLine: Bool) -> [Data] {
-    var lines = chunk.split(separator: 0x0A, omittingEmptySubsequences: true).map { Data($0) }
-    // A tail read starts mid-line unless it started at byte zero, and that first
-    // fragment is not parseable JSON.
-    if droppingFirstLine, !lines.isEmpty { lines.removeFirst() }
-    return lines
   }
 
   /// One assistant entry's usage, or nil for every other kind of line.
@@ -174,14 +167,16 @@ nonisolated struct Compaction: Sendable, Hashable {
   var wasManual: Bool { trigger == "manual" }
 }
 
-extension TranscriptContext {
+// `nonisolated` like the type it extends: under main-actor default isolation an
+// extension does not inherit that from its type, and both of these run in the deep scan.
+nonisolated extension TranscriptContext {
   /// The opening reading, from a head buffer.
   ///
   /// **A session shorter than `headBytes` hands the same entry to this and to
   /// `newestReading`,** and that is correct rather than a bug: a session one turn old
   /// has grown by nothing, and the derived "added since" row is legitimately zero.
   static func baseline(inChunk chunk: Data) -> ContextBaseline? {
-    for line in lines(inChunk: chunk, droppingFirstLine: false) {
+    for line in JSONLines.oldestFirst(chunk, droppingFirstLine: false) {
       if let reading = reading(fromLine: line) {
         return ContextBaseline(loadedAtStart: reading.total)
       }
@@ -200,7 +195,7 @@ extension TranscriptContext {
   /// anything: it is the only thing that makes the running total fall between turns,
   /// and both turns are in the tail. See `Session.hasCompactedSinceBaseline`.
   static func newestCompaction(inChunk chunk: Data, droppingFirstLine: Bool) -> Compaction? {
-    for line in lines(inChunk: chunk, droppingFirstLine: droppingFirstLine).reversed() {
+    for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       guard line.range(of: Data("compact_boundary".utf8)) != nil,
         let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
         object["subtype"] as? String == "compact_boundary",

@@ -20,6 +20,50 @@ private nonisolated func sessionEventCallback(
   Task { @MainActor in watcher.handle(paths: cfPaths) }
 }
 
+/// At most `limit` whole-transcript reads at once, across every account.
+///
+/// **Launch is the case this exists for.** Every session adopted at startup schedules
+/// its one deep scan in the same instant, nineteen of them on this Mac with the largest
+/// transcript at 50MB, and a detached task each held every one of those files in memory
+/// together. Two at a time finishes the backlog a little later and caps the peak at the
+/// two largest files, which is invisible to a row that already renders its registry name
+/// while it waits for a title.
+private actor DeepScanGate {
+  private let limit: Int
+  private var running = 0
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+
+  init(limit: Int) {
+    self.limit = limit
+  }
+
+  func acquire() async {
+    guard running >= limit else {
+      running += 1
+      return
+    }
+    await withCheckedContinuation { waiting.append($0) }
+  }
+
+  /// Hands the slot straight to the next waiter rather than freeing it, so a scan that
+  /// arrives in between cannot jump the queue.
+  func release() {
+    if waiting.isEmpty {
+      running -= 1
+    } else {
+      waiting.removeFirst().resume()
+    }
+  }
+}
+
+/// What one deep scan found. See `SessionWatcher.deepScanInBackground`.
+private nonisolated struct DeepScan: Sendable {
+  let title: String?
+  let reading: ContextReading?
+  let baseline: ContextBaseline?
+  let compaction: Compaction?
+}
+
 /// Every live Claude Code session, kept current from the filesystem.
 ///
 /// Watches rather than polls, which is the fleet convention and here also the only
@@ -34,6 +78,9 @@ final class SessionWatcher {
   /// idle 21s after its last write in the spike (20s threshold plus the 1s tick),
   /// which was correct.
   static let idleAfter: TimeInterval = 20
+
+  /// Shared by every account's watcher, because memory is shared by every account.
+  private nonisolated static let deepScans = DeepScanGate(limit: 2)
 
   private(set) var sessions: [Session] = []
 
@@ -175,9 +222,17 @@ final class SessionWatcher {
   }
 
   /// Route a batch of filesystem events.
+  ///
+  /// One file name and one dictionary lookup per path, rather than every path against
+  /// every session with a `URL` built for each pair: a busy turn delivers dozens of
+  /// paths a batch, and a folder can hold nineteen sessions. A session written several
+  /// times in one batch is refreshed once, which is all the size gate in `refreshTitle`
+  /// would have let through anyway.
   fileprivate func handle(paths: [String]) {
     let sessionsPath = folder.sessionsDir.path(percentEncoded: false)
     var needsRescan = false
+    var written: [Session] = []
+    var seen: Set<String> = []
 
     for path in paths {
       if path.hasPrefix(sessionsPath) {
@@ -186,13 +241,17 @@ final class SessionWatcher {
       }
       // A transcript write. Exact filename match, so a subagent writing under
       // `projects/<enc-cwd>/<sessionId>/…` does not mark its parent working.
-      for session in sessions
-      where TranscriptLocator.isTranscript(path: path, sessionId: session.id) {
-        if session.transcript == nil { session.transcript = URL(filePath: path) }
-        session.lastWrite = Date()
-        refreshTitle(session)
-        refreshState(session, wrote: true)
-      }
+      guard let id = TranscriptLocator.sessionID(ofTranscriptPath: path),
+        let session = byId[id], seen.insert(id).inserted
+      else { continue }
+      if session.transcript == nil { session.transcript = URL(filePath: path) }
+      written.append(session)
+    }
+
+    for session in written {
+      session.lastWrite = Date()
+      refreshTitle(session)
+      refreshState(session, wrote: true)
     }
 
     if needsRescan { rescan() }
@@ -211,6 +270,9 @@ final class SessionWatcher {
       // lie this threshold used to tell.
       guard SessionState(registryStatus: session.registry.status) == nil else { continue }
       let silence = now.timeIntervalSince(session.lastWrite ?? .distantPast)
+      // Every second, for as long as a session sits on a tool call with no status
+      // reported. That costs a `stat` rather than a tail read: see
+      // `isAwaitingToolResult(_:transcript:)`.
       if silence > Self.idleAfter {
         refreshState(session, wrote: false)
       }
@@ -276,6 +338,18 @@ final class SessionWatcher {
     session.titleScannedSize = size
 
     guard let tail = TranscriptTitle.tail(of: transcript) else { return }
+
+    // The tool-use answer rides the same read, stamped with the `stat` above, so the
+    // `refreshState` that follows an adoption finds it cached rather than reading this
+    // tail a second time. A file that grew between the `stat` and the read leaves an
+    // answer newer than its stamp, which only costs the next check a re-read.
+    if let modified = attributes[.modificationDate] as? Date {
+      session.toolResultCheck = (
+        size, modified,
+        TranscriptTitle.isAwaitingToolResult(
+          inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+      )
+    }
 
     // Newest wins, and nothing found leaves what is already held — see
     // `Session.quotaHit` for why an absent record is not a retraction.
@@ -350,13 +424,23 @@ final class SessionWatcher {
   /// Three answers out of **one** read of the file, which is the whole reason they
   /// share a pass:
   ///
-  /// - the title, when the tail did not have it (the common case — 16 of this
-  ///   machine's 19 live sessions);
+  /// - the title, when the tail did not have it;
   /// - the opening context reading, from the head of the same buffer. The first
   ///   `assistant` entry sits a median 61.6KB in, max 193KB across 30 transcripts;
   /// - the newest compaction, which no tail can reach: measured across 40 transcripts
   ///   over 500KB, the 4 that had compacted carried the boundary 160KB to 8.7MB from
   ///   the end.
+  ///
+  /// **The title is not the ~4% case the spike reported.** Measured against this
+  /// machine's 19 live sessions, only 3 had their newest title inside the 64KB tail —
+  /// 16%, against the spike's 96%. The spike sampled 553 transcripts "active in the
+  /// prior 3 weeks", a population full of short recent ones; Armada looks only at
+  /// sessions that are live *now*, which skew long-running (9–16 hours and 0.6–9.5MB
+  /// here) and long past their last title write, with p99 4MB and max 13MB between
+  /// the newest title and the end of the file. So the whole-file read is the common
+  /// path for this app, not the rare one, and it is sized accordingly: 54MB and 141ms
+  /// across those 19, which is why it runs detached, why it runs at most once per
+  /// session, and why `DeepScanGate` lets only two run at a time.
   ///
   /// Keyed by session id rather than capturing the `Session`, which is
   /// `@Observable` and main-actor state: the answers are applied to whichever
@@ -364,30 +448,39 @@ final class SessionWatcher {
   /// while the scan was running.
   private func deepScanInBackground(sessionId: String, transcript: URL) {
     Task.detached(priority: .utility) { [weak self] in
-      guard let handle = try? FileHandle(forReadingFrom: transcript),
-        let whole = try? handle.readToEnd()
-      else { return }
-      try? handle.close()
-
-      let title = TranscriptTitle.newestTitle(inChunk: whole, droppingFirstLine: false)
-      // Seeds the panel for a session whose newest turn is already out of tail range
-      // — see `refreshContext`. Applied below only if nothing better has arrived.
-      let reading = TranscriptContext.newestReading(inChunk: whole, droppingFirstLine: false)
-      // The baseline is in the first entries, so it is read off a prefix rather than
-      // by walking a 50MB buffer that has already answered everything else.
-      let baseline = TranscriptContext.baseline(
-        inChunk: whole.prefix(TranscriptTitle.headBytes))
-      let compaction = TranscriptContext.newestCompaction(
-        inChunk: whole, droppingFirstLine: false)
+      await SessionWatcher.deepScans.acquire()
+      let found = SessionWatcher.deepScan(transcript)
+      await SessionWatcher.deepScans.release()
+      guard let found else { return }
 
       await MainActor.run {
         guard let self, let session = self.byId[sessionId] else { return }
-        if let title, session.title == nil { session.title = title }
-        if let reading, session.context == nil { session.context = reading }
-        session.baseline = baseline
-        session.compaction = compaction
+        if let title = found.title, session.title == nil { session.title = title }
+        if let reading = found.reading, session.context == nil { session.context = reading }
+        session.baseline = found.baseline
+        session.compaction = found.compaction
       }
     }
+  }
+
+  /// The read and the three parses, as one synchronous function the gate can bracket.
+  ///
+  /// The parsers walk the buffer through `JSONLines`, so what this holds is the file
+  /// itself and nothing proportional to it on top.
+  private nonisolated static func deepScan(_ transcript: URL) -> DeepScan? {
+    guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
+    defer { try? handle.close() }
+    guard let whole = try? handle.readToEnd() else { return nil }
+
+    return DeepScan(
+      title: TranscriptTitle.newestTitle(inChunk: whole, droppingFirstLine: false),
+      // Seeds the panel for a session whose newest turn is already out of tail range
+      // — see `refreshContext`. Applied only if nothing better has arrived.
+      reading: TranscriptContext.newestReading(inChunk: whole, droppingFirstLine: false),
+      // The baseline is in the first entries, so it is read off a prefix rather than
+      // by walking a 50MB buffer that has already answered everything else.
+      baseline: TranscriptContext.baseline(inChunk: whole.prefix(TranscriptTitle.headBytes)),
+      compaction: TranscriptContext.newestCompaction(inChunk: whole, droppingFirstLine: false))
   }
 
   /// Working on a write; otherwise the tool-use check decides between "running a
@@ -416,7 +509,8 @@ final class SessionWatcher {
         session.state = reported
         return
       }
-      session.state = TranscriptTitle.isAwaitingToolResult(at: transcript) ? .runningTool : .working
+      session.state =
+        isAwaitingToolResult(session, transcript: transcript) ? .runningTool : .working
       return
     }
 
@@ -426,6 +520,33 @@ final class SessionWatcher {
       session.state = .idle
       return
     }
-    session.state = TranscriptTitle.isAwaitingToolResult(at: transcript) ? .runningTool : .idle
+    session.state = isAwaitingToolResult(session, transcript: transcript) ? .runningTool : .idle
+  }
+
+  /// Whether the transcript ends on an unanswered `tool_use`, read at most once per
+  /// version of the file.
+  ///
+  /// **Keyed on size and modification date, and that is what bounds `tick()`.** A
+  /// session on a build that reports no status, parked on a long tool call, stays
+  /// `.runningTool` and is asked about every second for as long as the call runs,
+  /// which used to be a 64KB read and a JSON walk each time. A file that has not
+  /// changed cannot change the answer, so a `stat` settles it. `refreshTitle` fills the
+  /// same cache from the tail it has just read.
+  private func isAwaitingToolResult(_ session: Session, transcript: URL) -> Bool {
+    let attributes = try? FileManager.default.attributesOfItem(
+      atPath: transcript.path(percentEncoded: false))
+    let size = attributes?[.size] as? UInt64
+    let modified = attributes?[.modificationDate] as? Date
+    if let size, let modified, let check = session.toolResultCheck,
+      check.size == size, check.modified == modified
+    {
+      return check.awaiting
+    }
+
+    guard let tail = TranscriptTitle.tail(of: transcript) else { return false }
+    let awaiting = TranscriptTitle.isAwaitingToolResult(
+      inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
+    if let size, let modified { session.toolResultCheck = (size, modified, awaiting) }
+    return awaiting
   }
 }

@@ -50,13 +50,21 @@ enum TranscriptLocator {
     return slashes == alphanumeric ? [slashes] : [slashes, alphanumeric]
   }
 
-  /// Whether a path that changed is *this* session's transcript.
+  /// The session id a changed path would be the transcript of, or nil when its file
+  /// name is not `<something>.jsonl`.
   ///
-  /// Exact-match on the file name rather than a prefix test, because subagent work
-  /// lands under `projects/<enc-cwd>/<sessionId>/…` — a directory named for the
-  /// session, holding files that are not its transcript. A prefix test would mark
-  /// the parent session working every time a subagent wrote anything.
-  static func isTranscript(path: String, sessionId: String) -> Bool {
-    URL(filePath: path).lastPathComponent == "\(sessionId).jsonl"
+  /// The file name alone rather than a prefix test, because subagent work lands under
+  /// `projects/<enc-cwd>/<sessionId>/…` — a directory named for the session, holding
+  /// files that are not its transcript. A prefix test would mark the parent session
+  /// working every time a subagent wrote anything. The caller looks the id up among
+  /// its live sessions, so a file whose own name is no live session's id matches
+  /// nothing.
+  ///
+  /// A string slice rather than a `URL` per path: this runs on every path of every
+  /// FSEvents batch.
+  static func sessionID(ofTranscriptPath path: String) -> String? {
+    let name = path.lastIndex(of: "/").map { path[path.index(after: $0)...] } ?? path[...]
+    guard name.hasSuffix(".jsonl"), name.count > ".jsonl".count else { return nil }
+    return String(name.dropLast(".jsonl".count))
   }
 }
