@@ -53,6 +53,9 @@ nonisolated struct UsageForecast: Sendable, Hashable {
   /// When the allowance runs out, if it is on course to. Nil when it is not.
   let exhaustsAt: Date?
   let length: UsageWindowLength
+  /// The `now` this forecast was computed for, so `verdict` measures the reset against
+  /// the same instant as every figure above rather than reading the clock itself.
+  let now: Date
 
   /// Percentage points ahead of (positive) or behind (negative) the pace marker.
   var deltaPoints: Double { (used - expected) * 100 }
@@ -133,6 +136,7 @@ nonisolated struct UsageForecast: Sendable, Hashable {
     self.projected = projected
     self.resetsAt = resetsAt
     self.length = length
+    self.now = now
     // The curve reaches the limit at the weighted fraction `expected / used`, which
     // is inside the window exactly when the projection is over it.
     self.exhaustsAt =
@@ -162,7 +166,7 @@ nonisolated struct UsageForecast: Sendable, Hashable {
     // it. A five-hour window reports 40 points unspent most of the time — true,
     // useless, and said so often it would teach people to stop reading the line.
     if length == .sevenDay, forfeitPoints > Self.significantForfeit,
-      resetsAt.timeIntervalSinceNow <= Self.forfeitHorizon
+      resetsAt.timeIntervalSince(now) <= Self.forfeitHorizon
     {
       return .forfeiting(forfeitPoints)
     }

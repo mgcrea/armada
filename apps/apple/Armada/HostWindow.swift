@@ -156,7 +156,9 @@ enum HostWindow {
   /// `armada-old`, or one simply editing `armada.ts`, both contain `armada` and
   /// neither is the window wanted. Requiring the characters either side of the hit
   /// to be non-word characters settles it without knowing any title format.
-  private static func mentions(_ title: String, _ folder: String) -> Bool {
+  ///
+  /// Internal rather than private only so `make unit` can reach it.
+  static func mentions(_ title: String, _ folder: String) -> Bool {
     guard !folder.isEmpty else { return false }
     var searched = title.startIndex
     while let found = title.range(of: folder, range: searched..<title.endIndex) {

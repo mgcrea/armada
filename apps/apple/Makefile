@@ -94,6 +94,14 @@ build: sparkle ## Build the app (CONFIG=Debug by default; the root's build-relea
 		-configuration $(CONFIG) -destination '$(DESTINATION)' \
 		-derivedDataPath $(DERIVED_DATA) $(BUILD_ARGS)
 
+# The MCP package's own suite: its tool table, run against a fake fleet with no app, no
+# config folder and no bound port. `swift test` rather than `xcodebuild test`, because the
+# package is plain SwiftPM and the app target has no test bundle — the `FleetSource`
+# protocol is what moved everything worth testing out of it. The app's own pure files are
+# checked separately, by `unit` below.
+test: ## Run the ArmadaMCP package tests
+	swift test --package-path Packages/ArmadaMCP
+
 # `-f` matches this recipe's own shell as well as the app, which is why the match is
 # anchored on the launched binary's absolute path: that shell's command line starts
 # with /bin/sh, not with the path.
@@ -115,7 +123,7 @@ run: build quit ## Build and launch the app
 clean: ## Remove build products
 	rm -rf $(DERIVED_DATA)
 
-.PHONY: help sparkle build run quit clean \
+.PHONY: help sparkle build test run quit clean \
 	format-swift format-swift-check swift-format-version blame-setup
 
 # ── Formatting ────────────────────────────────────────────────────────────────
@@ -134,7 +142,8 @@ clean: ## Remove build products
 # `// swift-format-ignore-file` comments inside source -- so a recursive walk from
 # above reformats other people's code. Recompute with fleet-apple-conventions'
 # scripts/swift_src.py rather than editing this by hand.
-SWIFT_SRC := Armada
+SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaMCP/Sources \
+	Packages/ArmadaMCP/Tests
 
 # swift-format's version follows whichever Xcode is selected, so a toolchain bump
 # can reformat the whole tree with no change to `.swift-format` and turn the gate
@@ -165,3 +174,45 @@ format-swift-check: swift-format-version ## Fail on unformatted Swift
 blame-setup: ## Teach git blame to skip the formatting-only commits
 	@git -C ../.. config blame.ignoreRevsFile .git-blame-ignore-revs
 	@echo "git blame will skip the commits in .git-blame-ignore-revs"
+
+# ── Unit checks ───────────────────────────────────────────────────────────────
+#
+# The app target has no test bundle, so the files that are pure functions of their
+# input are compiled beside a check driver with `swiftc` and run: bastion's `make
+# unit`, and the shape the root's `license-check` already uses for License.swift.
+# No app, no network, no config folder, no port.
+#
+# Compiled with the app target's own language settings: Swift 6, main-actor default
+# isolation, and the two approachable-concurrency features that change what compiles.
+# A file that stops building alone under them fails here the way it would fail the
+# app. Every file listed has to compile without the rest of the app; where one reached
+# further, it was given a seam rather than more of the app on this line.
+UNIT_BIN := $(DERIVED_DATA)/unit-check
+UNIT_SRC := \
+	Armada/JSONLines.swift \
+	Armada/TranscriptTitle.swift \
+	Armada/TranscriptContext.swift \
+	Armada/TranscriptQuota.swift \
+	Armada/UsageSnapshot.swift \
+	Armada/UsageForecast.swift \
+	Armada/DayWeights.swift \
+	Armada/ContextWindow.swift \
+	Armada/CodexContext.swift \
+	Armada/CodexRollout.swift \
+	Armada/SessionOrder.swift \
+	Armada/Changelog.swift \
+	Armada/HostWindow.swift \
+	Armada/License.swift \
+	Armada/Revocations.swift \
+	UnitChecks/AppInfoStub.swift \
+	UnitChecks/UnitCheck.swift
+
+unit: ## Check the parsers, forecasts, sort order and licence refusals, with no app and no network
+	@mkdir -p $(DERIVED_DATA)
+	@xcrun swiftc -swift-version 6 -default-isolation MainActor \
+		-enable-upcoming-feature InferIsolatedConformances \
+		-enable-upcoming-feature NonisolatedNonsendingByDefault \
+		-o $(UNIT_BIN) $(UNIT_SRC)
+	@$(UNIT_BIN)
+
+.PHONY: unit

@@ -36,8 +36,9 @@ protocol SessionListItem: Identifiable where ID == String {
   /// so it leads; work in progress follows; finished work sinks. Grouping by state is
   /// a triage view, and triage does not start with the things that need nothing.
   ///
-  /// Lives here rather than on the enums because it is a property of *this list's*
-  /// reading order, not of the state: nothing else in the app ranks states.
+  /// Lives with the list's conformances in `SessionListConformances.swift` rather than
+  /// on the enums, because it is a property of *this list's* reading order, not of the
+  /// state: nothing else in the app ranks states.
   var stateRank: Int { get }
 
   /// How full this session's context window is, in tokens, as of its newest turn.
@@ -51,60 +52,6 @@ protocol SessionListItem: Identifiable where ID == String {
   /// Nil for a session that has never been prompted, and for the moment between a
   /// session appearing and its first transcript read.
   var contextTokens: Int? { get }
-}
-
-extension Session: SessionListItem {
-  var projectName: String { registry.projectName }
-  var projectPath: String { registry.cwd }
-  var startedAt: Date? { registry.startedAtDate }
-
-  /// The registry's own `updatedAt` first, then the transcript, then the start time.
-  ///
-  /// **`updatedAt` is the authority and the other two are fallbacks.** Claude Code
-  /// rewrites the registry on every status change, so it moves for a session waiting
-  /// on a permission prompt — which writes no transcript and which the mtime seeding
-  /// in `SessionWatcher.refreshTitle` therefore cannot see. `lastWrite` still covers
-  /// a folder on an older build that writes no `updatedAt`, and `startedAt` covers a
-  /// session that has never been prompted and so has no transcript at all.
-  var lastActivity: Date? {
-    registry.updatedAtDate ?? lastWrite ?? registry.startedAtDate
-  }
-
-  var stateKey: String { state.rawValue }
-  var stateLabel: String { state.label }
-  var stateRank: Int {
-    switch state {
-    case .waiting: 0
-    case .working: 1
-    case .runningTool: 2
-    case .idle: 3
-    }
-  }
-
-  var contextTokens: Int? { context?.total }
-}
-
-extension CodexSession: SessionListItem {
-  var projectName: String { meta.projectName }
-  var projectPath: String { meta.cwd }
-  var startedAt: Date? { meta.startedAt }
-  var lastActivity: Date? { lastEventAt ?? meta.startedAt }
-
-  var stateKey: String { state.rawValue }
-  var stateLabel: String { state.label }
-  var stateRank: Int {
-    switch state {
-    case .awaitingInput: 0
-    case .working: 1
-    case .ended: 2
-    }
-  }
-
-  /// `context`, not `totalTokens`. Codex is the only vendor that reports a cumulative
-  /// figure, and putting it here would make one column mean occupancy in the Claude
-  /// pane and lifetime spend in the Codex one. `totalTokens` keeps its own row in
-  /// `CodexSessionDetail`, which is where a number with no counterpart belongs.
-  var contextTokens: Int? { context?.total }
 }
 
 /// How the session list is ordered.
