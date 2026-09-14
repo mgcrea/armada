@@ -392,3 +392,26 @@ sparkle-key-shred: ## Overwrite and remove an exported sparkle_key.pem
 	fi
 
 .PHONY: bundle sign notarize build-release appcast install-release sparkle-keys sparkle-key-shred
+
+# ── Licence ───────────────────────────────────────────────────────────────────
+#
+# The other half of the money loop. A refund or a lost chargeback marks the row in
+# the Worker's D1; nothing reaches the app until this bakes the list into the next
+# build, because the app is not allowed to ask anyone anything at runtime.
+revocations: ## Rewrite the baked-in revocation list from the Worker's D1
+	@node scripts/generate-revocations.mjs
+
+# JavaScript mints the keys and Swift accepts them, so the disagreement that would
+# cost money lives between the two — and neither side's own tests can see it. This
+# compiles the real License.swift and feeds it keys signed with the real private
+# key from .env, which is also what proves that key matches the public one
+# compiled in.
+license-check: ## Prove a minted licence key verifies in the app's own verifier
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/license-check \
+		apps/apple/Armada/License.swift apps/apple/Armada/Revocations.swift \
+		scripts/license-check.swift
+	@node --env-file-if-exists=.env scripts/license-check.mjs \
+		| apps/apple/.build/license-check
+
+.PHONY: revocations license-check

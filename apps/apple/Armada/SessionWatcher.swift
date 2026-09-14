@@ -93,6 +93,24 @@ final class SessionWatcher {
     timer = tick
   }
 
+  /// Tear the watch down: the stream, then the clock, then the list.
+  ///
+  /// The stream's context holds this watcher UNRETAINED, so it is stopped and
+  /// invalidated here, before whatever owns the watcher lets go of it. A callback
+  /// already queued is safe — the `Task` it creates holds the watcher strongly.
+  func stop() {
+    if let stream {
+      FSEventStreamStop(stream)
+      FSEventStreamInvalidate(stream)
+      FSEventStreamRelease(stream)
+      self.stream = nil
+    }
+    timer?.cancel()
+    timer = nil
+    byId = [:]
+    sessions = []
+  }
+
   /// The newest rate-limit refusal across this folder's sessions, live or spent.
   ///
   /// Folder-wide because that is the scope a plan limit has: the windows belong to

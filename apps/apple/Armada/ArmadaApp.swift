@@ -125,8 +125,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before any view reads `Changelog.hasUnseen`, or a fresh install draws the
     // What's New dot on its very first launch.
     Changelog.markSeenIfUnset()
-    Accounts.shared.start()
-    CodexAccounts.shared.start()
+    // The watchers start only if a key verifies: at launch there is never a trial
+    // yet, since one is started by hand. See `EntitlementMonitor`.
+    EntitlementMonitor.shared.apply()
     DockPresence.observe()
     SessionHostLookup.observeHostTermination()
     MouseTap.shared.sync()
@@ -171,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct StatusMenu: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var monitor = EntitlementMonitor.shared
 
   /// The panel's clock, and the fix for the bug this panel had the longest: every
   /// reset time, every forecast and the staleness line below are relative to *now*,
@@ -229,7 +231,17 @@ struct StatusMenu: View {
         .help("About Armada")
       }
 
-      if accounts.all.isEmpty && codex.isEmpty {
+      // The gate, where the summary would be. Refused, the watchers are stopped and
+      // the blocks below would be empty anyway — and an empty panel reads as broken
+      // rather than as locked. See `EntitlementMonitor`.
+      if case .trial = monitor.current {
+        Divider()
+        TrialBanner()
+      }
+      if !monitor.current.isEntitled {
+        Divider()
+        LockedCard(compact: true)
+      } else if accounts.all.isEmpty && codex.isEmpty {
         Divider()
         Text("No Claude Code or Codex folder found")
           .font(.callout)

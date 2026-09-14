@@ -97,11 +97,23 @@ final class Accounts {
     all.first { $0.id == id }
   }
 
+  /// Whether the recorded history has been read this process. Once is enough: a
+  /// second read after the entitlement monitor restarts the watchers would load
+  /// the file over readings recorded since.
+  private var didLoadHistory = false
+
   func start() {
-    guard all.isEmpty else { return }
+    // Guarded on the clock rather than on `all`: `EntitlementMonitor` calls this on
+    // every key entered and every trial started, and on a Mac with no Claude folder
+    // `all` stays empty after discovery, so an `all.isEmpty` guard would stack a new
+    // pair of timers each time.
+    guard timer == nil else { return }
     // Before the accounts, so the first `refreshConfig` below appends to the
     // recorded history rather than starting a fresh one every launch.
-    UsageHistory.shared.load()
+    if !didLoadHistory {
+      UsageHistory.shared.load()
+      didLoadHistory = true
+    }
     all = ClaudeConfigFolder.discoverAll().map(Account.init(folder:))
     for account in all { account.start() }
 
@@ -121,6 +133,32 @@ final class Accounts {
     probeTimer = probe
 
     startWatchingConfigFiles()
+  }
+
+  /// Stop everything `start()` started, and forget the accounts.
+  ///
+  /// Called by `EntitlementMonitor` when the entitlement is refused — a trial
+  /// window closing, or a key removed — so an unlicensed Armada is not quietly
+  /// polling folders and spawning `claude` probes behind a locked panel.
+  ///
+  /// Streams before objects. Every FSEvents context here holds its watcher
+  /// UNRETAINED, so each stream is stopped and invalidated before the list that
+  /// keeps the watchers alive is emptied; a callback arriving after that would
+  /// otherwise reach a freed object.
+  func stop() {
+    if let stream {
+      FSEventStreamStop(stream)
+      FSEventStreamInvalidate(stream)
+      FSEventStreamRelease(stream)
+      self.stream = nil
+    }
+    timer?.cancel()
+    timer = nil
+    probeTimer?.cancel()
+    probeTimer = nil
+    for account in all { account.sessions.stop() }
+    all = []
+    lastProbe = [:]
   }
 
   /// Re-read every folder's `.claude.json` now.

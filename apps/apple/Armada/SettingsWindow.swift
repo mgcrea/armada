@@ -9,7 +9,8 @@ import SwiftUI
 /// the fleet's convention, and the reason `references/shared-package.md` spells
 /// the qualification out.
 ///
-/// No entitlement pane: Armada sells nothing, so there is nothing to unlock.
+/// Licence is a pane, as in both siblings: a key is 240 characters that arrive by
+/// paste or by drop, and it needs room and a window that survives losing focus.
 ///
 /// Mouse is its own pane rather than a sixth section of General, and the reason is
 /// shape rather than size: every other thing in General is a toggle or a picker that
@@ -26,6 +27,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case about
   case whatsNew
   case updates
+  case licence
   case help
 
   var title: LocalizedStringKey {
@@ -36,6 +38,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .about: "About"
     case .whatsNew: "What's New"
     case .updates: "Updates"
+    case .licence: "Licence"
     case .help: "Help"
     }
   }
@@ -48,6 +51,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .about: "info.circle"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
+    case .licence: "checkmark.seal"
     case .help: "questionmark.circle"
     }
   }
@@ -89,6 +93,7 @@ struct SettingsWindowView: View {
           preferIssueTracker: Support.preferIssueTracker)
       case .whatsNew: WhatsNewPane()
       case .updates: UpdatesPane()
+      case .licence: LicensePane()
       case .help:
         HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
       }
@@ -135,7 +140,7 @@ struct GeneralPane: View {
         }
       } footer: {
         Text(
-          "Armada watches sessions from the moment it starts. It never writes to your Claude configuration."
+          "Armada watches sessions whenever it is licensed or in a trial. It never writes to your Claude configuration."
         )
       }
 

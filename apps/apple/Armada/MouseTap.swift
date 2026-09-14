@@ -49,9 +49,13 @@ final class MouseTap {
   /// app on launch, the trust object when the grant arrives — rather than each of
   /// them deciding. Idempotent in both directions.
   func sync() {
+    // Capture runs while unlicensed too: it only learns a button number for the
+    // Detect button in Settings. Bindings themselves stop with the rest of Armada
+    // when the entitlement is refused — see `EntitlementMonitor`.
     let wanted =
       capture != nil
-      || (MouseBindingsStore.shared.isEnabled && !MouseBindingsStore.shared.bindings.isEmpty)
+      || (EntitlementMonitor.shared.current.isEntitled
+        && MouseBindingsStore.shared.isEnabled && !MouseBindingsStore.shared.bindings.isEmpty)
     if wanted && HostWindow.isTrusted {
       start()
     } else {

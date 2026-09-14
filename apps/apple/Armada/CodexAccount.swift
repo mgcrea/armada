@@ -61,10 +61,23 @@ final class CodexAccounts {
 
   func account(id: String) -> CodexAccount? { all.first { $0.id == id } }
 
+  /// A flag rather than `all.isEmpty`, for the reason `Accounts.start()` gives:
+  /// `EntitlementMonitor` calls `start()` repeatedly, and a Mac with no Codex home
+  /// has an empty list after discovery too.
+  private var isStarted = false
+
   func start() {
-    guard all.isEmpty else { return }
+    guard !isStarted else { return }
+    isStarted = true
     all = CodexHome.discoverAll().map(CodexAccount.init(home:))
     for account in all { account.start() }
+  }
+
+  /// Stop every watcher and forget the homes. See `Accounts.stop()`.
+  func stop() {
+    for account in all { account.sessions.stop() }
+    all = []
+    isStarted = false
   }
 
   var allSessions: [CodexSession] {

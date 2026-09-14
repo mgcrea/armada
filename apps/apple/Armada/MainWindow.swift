@@ -48,6 +48,7 @@ enum SidebarItem: Hashable {
 struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var monitor = EntitlementMonitor.shared
 
   /// What the sidebar had selected last time.
   ///
@@ -86,35 +87,44 @@ struct MainWindowView: View {
       }
       .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
       .safeAreaInset(edge: .bottom) {
-        Text("Armada \(AppInfo.shortVersion)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 8)
+        VStack(spacing: 4) {
+          LicenceStatusLine()
+          Text("Armada \(AppInfo.shortVersion)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
       }
     } detail: {
-      switch resolved {
-      case .usage:
-        UsagePaneView()
-      case .account(let id):
-        if let account = accounts.account(id: id) {
-          AccountPaneView(account: account)
-            // Rebuild the pane when the account changes, so the session selection
-            // inside it does not carry across to a different folder's list.
-            .id(account.id)
-        }
-      case .codex(let id):
-        if let account = codex.account(id: id) {
-          CodexPaneView(account: account)
-            .id(account.id)
-        }
-      case nil:
-        ContentUnavailableView {
-          Label("No agents found", systemImage: "folder.badge.questionmark")
-        } description: {
-          Text(
-            "Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex. None of them has a sessions folder yet."
-          )
+      // The gate. Refused, the watchers hold nothing, so every pane below would
+      // be the empty state — which says "no agents found", and that is not true.
+      if !monitor.current.isEntitled {
+        LockedCard(compact: false)
+      } else {
+        switch resolved {
+        case .usage:
+          UsagePaneView()
+        case .account(let id):
+          if let account = accounts.account(id: id) {
+            AccountPaneView(account: account)
+              // Rebuild the pane when the account changes, so the session selection
+              // inside it does not carry across to a different folder's list.
+              .id(account.id)
+          }
+        case .codex(let id):
+          if let account = codex.account(id: id) {
+            CodexPaneView(account: account)
+              .id(account.id)
+          }
+        case nil:
+          ContentUnavailableView {
+            Label("No agents found", systemImage: "folder.badge.questionmark")
+          } description: {
+            Text(
+              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex. None of them has a sessions folder yet."
+            )
+          }
         }
       }
     }

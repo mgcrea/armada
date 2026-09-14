@@ -132,6 +132,26 @@ final class CodexWatcher {
     timer = tick
   }
 
+  /// Tear the watch down, as `SessionWatcher.stop()` does and for its reason: the
+  /// stream's context holds this watcher unretained.
+  ///
+  /// A scan already running off the main actor holds the watcher strongly and will
+  /// still land in `apply`; clearing `wantsAnotherScan` is what stops it chaining
+  /// another one behind it on a watcher nothing is showing any more.
+  func stop() {
+    if let stream {
+      FSEventStreamStop(stream)
+      FSEventStreamInvalidate(stream)
+      FSEventStreamRelease(stream)
+      self.stream = nil
+    }
+    timer?.cancel()
+    timer = nil
+    wantsAnotherScan = false
+    byId = [:]
+    sessions = []
+  }
+
   /// Coalesce: a burst of writes during a turn is one scan, and a scan that
   /// arrives while one is running sets a flag rather than piling up.
   func scheduleScan() {
