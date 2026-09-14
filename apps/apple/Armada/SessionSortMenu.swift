@@ -49,27 +49,27 @@ struct SessionSortMenu: View {
       // one half of this choice the list cannot show you. Grouping needs no label
       // because a grouped list is visibly sections, with the folder written on each.
       //
-      // **The glyph names the control, and it is always `arrow.up.arrow.down`.** This
-      // used to be the sort's own glyph, and beside "Last activity" a clock read as a
-      // timestamp — a fact about the list rather than a button that reorders it. The
-      // per-sort glyphs stay on the rows inside the menu, where they tell the choices
-      // apart.
+      // The glyph is fixed, so it names the control rather than reading as a fact
+      // about the list. The per-sort glyphs are on the rows inside the menu.
       Label(sort.label, systemImage: "arrow.up.arrow.down")
         .font(.caption)
     }
     .menuStyle(.button)
-    // The chevron is what says "this opens a menu". Without it the button is a label
-    // on a faint background, and nothing about it invites a click.
+    // The two halves of the affordance. `.accessoryBar`, the system's style for a
+    // list's own options control in Finder and Mail, is what makes it read as
+    // pressable at rest without the weight of a push button; the chevron is what says
+    // that pressing it opens a menu rather than acting on the spot.
     .menuIndicator(.visible)
-    // `.accessoryBar` is the system's style for exactly this — a list's own options
-    // control, as in Finder and Mail. It reads as pressable at rest, which
-    // `.borderless` did not, without carrying the weight of a full push button.
     .buttonStyle(.accessoryBar)
     // Fixed, so the header's `Spacer` keeps it hard against the trailing edge and it
-    // never stretches. It costs the pane a caption's width, and no height at all —
-    // see `AccountPaneView.body` for why the fitting size is worth defending.
+    // never stretches. It costs the pane the glyph, the sort's name and the chevron
+    // in width, and no height at all — see `AccountPaneView.body` for why the fitting
+    // size is worth defending.
     .fixedSize()
     .help(helpText)
+    // Otherwise VoiceOver reads the label alone, "Last activity", which names a value
+    // and says nothing about what pressing it does.
+    .accessibilityLabel("Sort by \(sort.label)")
   }
 
   /// Says both halves, since the button only shows one of them.
