@@ -18,8 +18,7 @@
 // on a phone; the attachment is what they drop on the Licence pane without
 // selecting 240 characters of base64 by hand.
 //
-// The refund sentence is here because the EULA (apps/website/src/legal/EULA.txt,
-// §6) says it. Copy that promises something the terms do not is the expensive
+// The refund sentence is here because the EULA (apps/apple/EULA, §6) says it. Copy that promises something the terms do not is the expensive
 // kind of wrong, so these two move together or not at all.
 //
 // Line 3 of the body is the key and nothing else. test/worker/index.test.ts reads
@@ -41,7 +40,7 @@ const body = (key: string): string =>
     "re-sent.",
     "",
     "Within 30 days, for any reason or none, you can have your money back in full.",
-    "Reply to this message, or write to support@mgcrea.io.",
+    "Reply to this message, or write to olivier@mgcrea.io.",
     "",
     "Olivier",
   ].join("\n");

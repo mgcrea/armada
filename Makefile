@@ -428,3 +428,37 @@ site-deploy: ## Build and deploy armada.mgcrea.io, then check it answers
 	@curl -fsS -o /dev/null https://armada.mgcrea.io && echo "  armada.mgcrea.io answers"
 
 .PHONY: site-deploy
+
+# ── API ───────────────────────────────────────────────────────────────────────
+#
+# The licence Worker at api.armada.mgcrea.io: Stripe's webhook in, a signed key
+# out by email and on /thanks. Bastion's target, copied with its one hard lesson.
+
+API_URL := https://api.armada.mgcrea.io/health
+
+# Wrangler's d1 subcommands do not take `account_id` from wrangler.jsonc the way
+# `deploy` does, and the token reaches three accounts, so without an explicit one
+# they stop to ask — which inside a recipe is just a failure. The same value as
+# wrangler.jsonc, which already documents it as public.
+CF_ACCOUNT_ID := 0121e8859874c6fc0d674676e17d9f18
+
+api-deploy: ## Build and publish the licence Worker, refusing on unapplied migrations
+	@# Code expecting a table the database has not got deploys green and then fails
+	@# on the first webhook: bastion's Worker spent four days answering 500 to
+	@# every checkout that way, while the /health check below stayed 200. This
+	@# refuses rather than applies; `pnpm -C apps/api migrate` stays deliberate.
+	@CLOUDFLARE_ACCOUNT_ID=$(CF_ACCOUNT_ID) pnpm -C apps/api exec wrangler d1 migrations list armada-licenses --remote 2>&1 \
+		| grep -q 'No migrations to apply' \
+		|| { echo 'refusing to deploy: unapplied migrations in apps/api - run: pnpm -C apps/api migrate'; exit 1; }
+	@pnpm -C apps/api run release
+	@# A green `wrangler deploy` does not prove the Worker answers. This does.
+	@curl -fsS --max-time 20 -o /dev/null $(API_URL)
+	@echo "  deployed $(API_URL)"
+
+# Sequential sub-makes rather than prerequisites: under -j they may run in
+# parallel, and the Worker the site's /buy flow lands on has to be live first.
+deploy: ## Deploy both halves: the licence Worker, then the website
+	@$(MAKE) --no-print-directory api-deploy
+	@$(MAKE) --no-print-directory site-deploy
+
+.PHONY: api-deploy deploy

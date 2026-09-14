@@ -2,11 +2,10 @@
 /**
  * The licence terms, rendered as plain text, as both siblings render theirs.
  *
- * bastion and cupertino read `apps/apple/EULA` with `?raw`, so the page and the
- * file the app ships cannot disagree: this URL is what Stripe Checkout links as
- * the terms a buyer consents to. Armada ships no EULA yet, so the text lives in
- * `src/legal/EULA.txt` for now. When the app grows `apps/apple/EULA`, move the
- * file there and change the import path below; do not keep two copies.
+ * Read from `apps/apple/EULA` with `?raw`, as bastion and cupertino read theirs, so
+ * the page and the file the app ships cannot disagree: this URL is what Stripe
+ * Checkout links as the terms a buyer consents to. The text is bastion's agreement
+ * with the product and its scope changed, not a new draft.
  *
  * `?raw`, not `readFileSync`: Vite resolves this against THIS file at build time
  * and inlines the bytes, where a runtime read would resolve against the bundled
@@ -17,7 +16,7 @@ import Nav from "../components/Nav.astro";
 import { APP_NAME, DOCS, REPO_PUBLIC, SHIPPED } from "../config";
 import Layout from "../layouts/Layout.astro";
 
-import eula from "../legal/EULA.txt?raw";
+import eula from "../../../apple/EULA?raw";
 ---
 
 <Layout

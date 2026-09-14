@@ -9,11 +9,8 @@
     {
       "binding": "DB",
       "database_name": "armada-licenses",
-      // PLACEHOLDER, not a real database. `wrangler d1 create armada-licenses`
-      // prints the id that belongs here; paste it in before the first
-      // `pnpm migrate` or `pnpm release`. Only the remote binding needs it:
-      // `--local` keys on the name, so miniflare and the test suite ignore it.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Created 2026-09-14 with `wrangler d1 create armada-licenses` (WEUR).
+      "database_id": "29f5a5e5-5022-4553-b743-34e38401f10a",
       "migrations_dir": "./migrations"
     }
   ],
