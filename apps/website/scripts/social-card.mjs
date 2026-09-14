@@ -4,7 +4,7 @@
  *
  * bastion and cupertino compose theirs with `composeCard` in their repo-root
  * `scripts/lib/lockup.mjs`, which also writes the README banner. Armada has no
- * lockup yet (design/README.md: "When there is a site, this is where it goes"), so
+ * lockup yet (design/README.md: "If one is ever needed, this is where it goes"), so
  * this smaller composer lives beside the one script that uses it. When a lockup
  * module lands at the root, move this there rather than growing a twin.
  *

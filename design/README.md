@@ -26,9 +26,10 @@ Never hand-edit a generated file. The mark and the three menu bar glyphs are the
 geometry in the project, which is the whole point of generating the rest — and `make
 icon-check` fails on a copy that has drifted, rather than letting a hand-edited glyph ship.
 
-**There is no lockup.** Both siblings generate one for their websites; Armada has no site
-yet, so the file that would be composed for it does not exist. When there is a site, this is
-where it goes, and it should be composed from `armada-icon.svg` rather than drawn beside it —
+**There is no lockup.** Both siblings generate one for their websites. Armada's site sets the
+plated mark beside the word in live text instead, so the file that would be composed for it
+does not exist. If one is ever needed, this is where it goes, and it should be composed from
+`armada-icon.svg` rather than drawn beside it:
 cupertino's was hand-drawn alongside its mark and its hills had been wrong for two revisions
 before anyone noticed.
 
