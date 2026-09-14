@@ -11,6 +11,11 @@ export interface Props {
   /** Describes the picture, not the product. Pass one with any custom `ogImage`. */
   ogImageAlt?: string;
   schema?: SchemaObject | SchemaObject[];
+  /**
+   * Keep the page out of search results. The 404 passes it: it is served for
+   * every URL that does not exist, and an indexed copy stands in for all of them.
+   */
+  noindex?: boolean;
 }
 
 /**
@@ -25,6 +30,7 @@ const {
   ogImage = "/og-image.png",
   ogImageAlt = SOCIAL_CARD.alt,
   schema,
+  noindex = false,
 } = Astro.props;
 
 const canonicalHref = new URL(Astro.url.pathname, Astro.site).href;
@@ -48,6 +54,7 @@ const beacon = CF_ANALYTICS_TOKEN ? JSON.stringify({ token: CF_ANALYTICS_TOKEN }
 
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonicalHref} />
 
     <meta property="og:title" content={title} />
