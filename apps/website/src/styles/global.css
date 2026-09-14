@@ -1,0 +1,132 @@
+/* Tokens first, then Tailwind. The order is load-bearing; see tokens.css. */
+@import "./tokens.css";
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-bg-2: var(--color-bg-2);
+  --color-bg-3: var(--color-bg-3);
+  --color-fg: var(--color-fg);
+  --color-fg-dim: var(--color-fg-dim);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-rule: var(--color-rule);
+  --color-rule-2: var(--color-rule-2);
+  --color-accent: var(--color-accent);
+  --color-accent-hi: var(--color-accent-hi);
+  --color-accent-ink: var(--color-accent-ink);
+  --color-plate-top: var(--color-plate-top);
+  --color-ok: var(--color-ok);
+  --color-ok-ink: var(--color-ok-ink);
+  --color-warn: var(--color-warn);
+  --color-danger-ink: var(--color-danger-ink);
+  --color-chrome: var(--color-chrome);
+  --color-chrome-2: var(--color-chrome-2);
+}
+
+@theme {
+  /* The system stack, deliberately, as on both siblings. On the Macs this app is
+     for, the system stack is SF Pro, and it keeps `font-src 'self'` honest by
+     downloading nothing. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --container-wide: 1240px;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 78px;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+@utility wrap {
+  max-width: var(--container-wide);
+  margin-inline: auto;
+  padding-inline: clamp(20px, 4vw, 40px);
+}
+
+@utility mono {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+
+/* The icon's plate, quoted directly. Vertical, two stops, never rotated: the rule
+   design/README.md sets for the gradient. */
+@utility plate {
+  background: linear-gradient(180deg, var(--color-plate-top) 0%, var(--color-accent) 100%);
+}
+
+/* The menu bar glyphs are template images: pure black plus alpha, which macOS
+   inverts for a dark menu bar. Nothing does that on the web, so it is done here
+   by hand. They are not colour assets and must not be recoloured. */
+@utility template-glyph {
+  filter: invert(1);
+}
+
+/* ── Scroll reveal ───────────────────────────────────────────────────────────
+   `.in` is added by the observer in Layout.astro. With JS off nothing adds it,
+   so the reduced-motion block below doubles as the no-JS fallback only when the
+   observer is missing; Layout.astro adds `.in` to everything in that case. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* A bar in the glance diagram. The fill width is a per-element style attribute. */
+.bar {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

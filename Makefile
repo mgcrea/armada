@@ -415,3 +415,16 @@ license-check: ## Prove a minted licence key verifies in the app's own verifier
 		| apps/apple/.build/license-check
 
 .PHONY: revocations license-check
+
+# ── Website ───────────────────────────────────────────────────────────────────
+#
+# `pnpm run release`, spelled out: `deploy` is a pnpm builtin that exits 0 and
+# ships nothing, which is why the package script is called `release` fleet-wide —
+# and `run` makes the call a script even if pnpm ever grows a `release` of its own.
+# The curl is the part that proves a deploy happened rather than that a command
+# returned.
+site-deploy: ## Build and deploy armada.mgcrea.io, then check it answers
+	@pnpm -C apps/website run release
+	@curl -fsS -o /dev/null https://armada.mgcrea.io && echo "  armada.mgcrea.io answers"
+
+.PHONY: site-deploy

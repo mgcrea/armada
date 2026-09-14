@@ -1,0 +1,101 @@
+---
+import { APP_VERSION, DOWNLOAD, PRICING, SHIPPED, TRIAL } from "../config";
+import AppleGlyph from "./AppleGlyph.astro";
+import Button from "./Button.astro";
+import Glance from "./Glance.astro";
+import Logo from "./Logo.astro";
+
+/** Each one points at the section that backs it, so the strip is a table of contents. */
+const CLAIMS = [
+  { label: "claude code and codex", href: "#sessions" },
+  { label: "every account", href: "#limits" },
+  { label: "read locally", href: "#private" },
+  { label: "no vendor credentials", href: "#private" },
+] as const;
+---
+
+<section class="relative overflow-hidden pt-[80px] pb-[72px]">
+  <!-- The icon's own plate colour, bled off the top edge. The only large use of
+       the warm ramp on the page; everywhere else the accent is a single hue. -->
+  <div
+    class="pointer-events-none absolute inset-x-0 -top-[200px] h-[680px]"
+    style="background:radial-gradient(58% 68% at 50% 0%,rgba(246,161,119,.24) 0%,rgba(246,161,119,.05) 46%,transparent 72%)"
+    aria-hidden="true"
+  >
+  </div>
+
+  <div class="wrap relative grid grid-cols-1 items-center gap-14 lg:grid-cols-[1.05fr_1fr]">
+    <div class="flex flex-col gap-6">
+      <div class="flex items-center gap-4">
+        <Logo size={64} class="shadow-[0_18px_40px_-22px_rgba(246,161,119,.6)]" />
+        <div class="flex flex-col gap-1.5">
+          <span class="font-display text-[22px] leading-none font-semibold tracking-[-0.02em]"
+            >Armada</span
+          >
+          <span class="mono">
+            {SHIPPED ? `Version ${APP_VERSION}` : "Coming soon · not released yet"}
+          </span>
+        </div>
+      </div>
+
+      <h1
+        class="m-0 font-display text-[clamp(38px,5.6vw,64px)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance"
+      >
+        Every coding agent you have running, <span class="text-accent">on one screen.</span>
+      </h1>
+
+      <p class="m-0 max-w-[52ch] text-[16.5px] leading-[1.62] text-pretty text-fg-dim">
+        Armada is a menu bar app for Macs running many Claude Code and Codex sessions at once. See
+        which session is waiting on you, which one is about to run out of context, and how much of
+        each plan is left, for every account you use.
+      </p>
+
+      <ul class="m-0 flex list-none flex-wrap gap-x-2.5 gap-y-2 p-0">
+        {
+          CLAIMS.map((c) => (
+            <li>
+              <a
+                href={c.href}
+                class="mono block rounded-full border border-rule-2 px-3 py-[5px] transition-colors hover:border-fg-muted hover:!text-fg-dim"
+              >
+                {c.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+
+      {/* Until SHIPPED the honest primary action is reading on. The price is
+          stated now, because a price shown before launch is a promise the page
+          can keep, where a Buy button in front of a missing /buy is not. */}
+      <div class="flex flex-wrap items-center gap-3">
+        {
+          SHIPPED ? (
+            <>
+              <Button href={DOWNLOAD.href}>
+                <AppleGlyph size={16} />
+                Download for macOS
+              </Button>
+              <Button href={PRICING.buy} variant="secondary">
+                Buy a licence <span class="text-fg-dim">·</span> {PRICING.price}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button href="#sessions">See what it shows</Button>
+              <Button href="#pricing" variant="secondary">
+                {PRICING.price} once <span class="text-fg-dim">·</span> coming soon
+              </Button>
+            </>
+          )
+        }
+      </div>
+
+      <p class="mono m-0">
+        {DOWNLOAD.requires} · {TRIAL.minutes}-minute trial · {PRICING.refundDays}-day refund
+      </p>
+    </div>
+
+    <Glance />
+  </div>
+</section>

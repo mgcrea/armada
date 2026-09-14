@@ -1,0 +1,33 @@
+---
+import Button from "../components/Button.astro";
+import Footer from "../components/Footer.astro";
+import Logo from "../components/Logo.astro";
+import Nav from "../components/Nav.astro";
+import { APP_NAME, SITE_DOMAIN } from "../config";
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout
+  title={`Not found · ${APP_NAME}`}
+  description={`That page does not exist on ${SITE_DOMAIN}.`}
+>
+  <Nav />
+  <main
+    id="main"
+    tabindex="-1"
+    class="wrap flex min-h-[62vh] flex-col items-center justify-center gap-5 py-24 text-center"
+  >
+    <Logo size={64} />
+    <div class="mono text-accent">404</div>
+    <h1
+      class="m-0 font-display text-[clamp(30px,4.4vw,48px)] leading-[1.06] font-semibold tracking-[-0.04em]"
+    >
+      No session by that name.
+    </h1>
+    <p class="m-0 max-w-[46ch] text-[15.5px] leading-[1.68] text-pretty text-fg-dim">
+      That page does not exist. Every session you had running is still where you left it.
+    </p>
+    <Button href="/" size="lg">Back to the start</Button>
+  </main>
+  <Footer />
+</Layout>

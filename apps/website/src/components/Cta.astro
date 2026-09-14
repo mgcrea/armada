@@ -1,0 +1,87 @@
+---
+import {
+  DOWNLOAD,
+  PRICING,
+  SHIPPED,
+  SUPPORT_EMAIL,
+  SUPPORT_EMAIL_HREF,
+  TRIAL,
+} from "../config";
+import AppleGlyph from "./AppleGlyph.astro";
+import Button from "./Button.astro";
+import Logo from "./Logo.astro";
+---
+
+<section id="download" class="wrap scroll-mt-20 py-[96px]">
+  <div
+    class="reveal relative overflow-hidden rounded-[20px] border border-rule bg-bg-2 px-6 py-14 text-center sm:px-12"
+  >
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 h-[220px]"
+      style="background:radial-gradient(50% 100% at 50% 0%,rgba(246,161,119,.18) 0%,transparent 70%)"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div class="relative flex flex-col items-center gap-6">
+      <Logo size={64} />
+
+      {
+        SHIPPED ? (
+          <>
+            <h2 class="m-0 font-display text-[clamp(28px,3.6vw,42px)] leading-[1.1] font-semibold tracking-[-0.04em] text-balance">
+              Every session, one glance.
+            </h2>
+            <p class="m-0 max-w-[46ch] text-[15.5px] leading-[1.65] text-pretty text-fg-dim">
+              Signed with a Developer ID and notarized by Apple. One payment covers {PRICING.covers},
+              or try it for {TRIAL.minutes} minutes first and decide afterwards.
+            </p>
+
+            {/* The hero's order reversed, as on both siblings: a reader who has
+                got this far has read the price, so the filled button is Buy.
+                Download is not external: it is a zip, not a page. */}
+            <div class="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <Button href={PRICING.buy} size="lg" class="w-full sm:w-auto">
+                Buy a licence <span class="opacity-70">·</span> {PRICING.price}
+              </Button>
+              <Button href={DOWNLOAD.href} variant="secondary" size="lg" class="w-full sm:w-auto">
+                <AppleGlyph size={16} />
+                Download for macOS
+              </Button>
+            </div>
+
+            <p class="m-0 text-[12.5px] text-fg-muted">
+              {DOWNLOAD.requires} · {PRICING.refundDays}-day refund ·{" "}
+              <a class="underline underline-offset-2 hover:text-fg-dim" href={DOWNLOAD.checksum}>
+                SHA-256
+              </a>{" "}
+              ·{" "}
+              <a class="underline underline-offset-2 hover:text-fg-dim" href={DOWNLOAD.releases}>
+                release notes
+              </a>
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 class="m-0 font-display text-[clamp(28px,3.6vw,42px)] leading-[1.1] font-semibold tracking-[-0.04em] text-balance">
+              Coming soon.
+            </h2>
+            <p class="m-0 max-w-[48ch] text-[15.5px] leading-[1.65] text-pretty text-fg-dim">
+              The first release will be a Developer ID signed, notarized download, published on
+              GitHub. Updates stay off until you turn them on.
+            </p>
+            <p class="mono m-0">
+              {DOWNLOAD.requires} · {PRICING.price} once · {TRIAL.minutes}-minute trial
+            </p>
+            <p class="m-0 text-[13px] text-fg-muted">
+              Questions before then:{" "}
+              <a class="underline underline-offset-2 hover:text-fg-dim" href={SUPPORT_EMAIL_HREF}>
+                {SUPPORT_EMAIL}
+              </a>
+            </p>
+          </>
+        )
+      }
+    </div>
+  </div>
+</section>

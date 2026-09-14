@@ -1,0 +1,93 @@
+---
+/**
+ * The three things Armada does, one card each.
+ *
+ * Every line is traceable to the root README's Status table or to CHANGELOG.md.
+ * Nothing here names a count of sessions, a latency or a vendor build number,
+ * because none of those is a claim the site needs, and each would be one more
+ * thing to go stale. The Codex caveat at the bottom is the README's own: Codex
+ * support is thinner, and saying so costs less than a buyer finding out.
+ */
+import SectionHeader from "./SectionHeader.astro";
+
+const BLOCKS = [
+  {
+    id: "sessions",
+    eyebrow: "Sessions and context",
+    heading: "Which session is waiting on you.",
+    body: "Every live Claude Code session on each account, with its title, project, age and state. The state is read from Claude Code's own session registry rather than guessed, so a waiting session says what it wants.",
+    points: [
+      "Busy, waiting or idle, sorted by what needs you and groupable by project.",
+      "How full each context window is, where it started, how fast it has grown, and when it was last compacted.",
+      "<code>~/.claude</code>, every <code>~/.claude-*</code> folder and <code>CLAUDE_CONFIG_DIR</code> as accounts of their own, beside <code>~/.codex</code> and <code>CODEX_HOME</code>.",
+    ],
+  },
+  {
+    id: "limits",
+    eyebrow: "Plan limits and pace",
+    heading: "How much of each plan is left.",
+    body: "The 5-hour and 7-day windows for every account, with reset times, a pace line and a forecast. Claude accounts and Codex homes sit side by side.",
+    points: [
+      "Asked of each account's own <code>claude</code> in a request that costs no tokens, falling back to the cache on disk.",
+      "A badge says which of the two answered, and how old the figure is.",
+      "The forecast declines a reading too old to be sound rather than projecting from it.",
+    ],
+  },
+  {
+    id: "actions",
+    eyebrow: "Start, fork, focus",
+    heading: "Act on a session without hunting for it.",
+    body: "Armada never owns an agent process. It hands your terminal the command, and the new session shows up through the same watchers as every other.",
+    points: [
+      "Start <code>claude</code> or <code>codex</code> in a chosen folder, on a chosen account.",
+      "Fork a session from where it stands, through each vendor's own fork command. The original is left alone.",
+      "Focus brings forward the app a session runs in: VS Code, Terminal, whatever the process tree says.",
+      "Bind middle and extra mouse buttons to cycle the session list or send a keystroke.",
+    ],
+  },
+] as const;
+
+const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-fg";
+---
+
+<section id="features" class="wrap scroll-mt-20 py-[96px]">
+  <SectionHeader eyebrow="What it shows" heading="Three questions,<br />one glance.">
+    Sessions in one editor, Codex threads in another window, a second Claude account in its own
+    config folder. The editor shows the session you are looking at, and each vendor's own tools stop
+    at one account. Armada reads what the agents already write to disk and puts all of it in the menu
+    bar.
+  </SectionHeader>
+
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+    {
+      BLOCKS.map((b) => (
+        <article
+          id={b.id}
+          class="reveal flex scroll-mt-24 flex-col gap-4 rounded-[16px] border border-rule bg-bg-2 p-6 sm:p-7"
+        >
+          <div class="mono text-accent">{b.eyebrow}</div>
+          <h3 class="m-0 font-display text-[23px] leading-[1.18] font-semibold tracking-[-0.03em] text-balance">
+            {b.heading}
+          </h3>
+          <p class="m-0 text-[14.5px] leading-[1.65] text-pretty text-fg-dim">{b.body}</p>
+          <ul class:list={["m-0 mt-1 flex list-none flex-col gap-2.5 border-t border-rule p-0 pt-4", code]}>
+            {b.points.map((point) => (
+              <li class="flex gap-3 text-[13.5px] leading-[1.6] text-pretty text-fg-dim">
+                <span class="flex-none text-accent" aria-hidden="true">
+                  ·
+                </span>
+                <span set:html={point} />
+              </li>
+            ))}
+          </ul>
+        </article>
+      ))
+    }
+  </div>
+
+  <p class="mt-8 mb-0 max-w-[68ch] text-[13.5px] leading-[1.65] text-pretty text-fg-muted">
+    Codex support is newer and thinner than Claude Code's. Codex sessions have no Focus, because
+    Codex records no process id on disk, and its figures lead with how old they are, because Codex
+    keeps no usage cache to read live.
+  </p>
+</section>

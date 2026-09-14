@@ -1,0 +1,110 @@
+---
+/**
+ * The price, and the two separate ways to find out whether Armada is for you
+ * before committing. Cupertino's shape: one plate for the price and the button,
+ * a list of what the number buys beside it.
+ *
+ * The trial and the refund are not interchangeable and the copy must not blur
+ * them. The trial answers "does this work with my accounts", which only running
+ * it can answer. The refund answers "was it worth the money", asked afterwards.
+ *
+ * Nothing here renders a Buy button until SHIPPED, and /buy does not exist yet;
+ * see the note in public/_redirects.
+ */
+import { DOWNLOAD, PRICING, SHIPPED, TRIAL } from "../config";
+import Button from "./Button.astro";
+import SectionHeader from "./SectionHeader.astro";
+
+const covers = PRICING.covers.replace(/^./, (c) => c.toUpperCase());
+
+const included = [
+  `${covers}. The key is issued to you, not to a machine, and nothing counts your installs.`,
+  "One time, not a subscription. A 2.0, if there is one, would be a new purchase; nothing lapses in between.",
+  `A free ${TRIAL.minutes}-minute trial of the whole app, not a reduced version. Start it from a button when you are ready; nothing starts it on its own.`,
+  `${PRICING.refundDays} days to change your mind, no reason needed.`,
+  "No account and no licence server. The key is verified offline, on your Mac.",
+];
+---
+
+<section id="pricing" class="wrap scroll-mt-20 py-[96px]">
+  <SectionHeader eyebrow="Price" heading="Pay once.<br />Use it on every Mac.">
+    One licence covers {PRICING.covers}. The trial answers whether Armada works with your accounts;
+    the refund answers whether it was worth the money.
+  </SectionHeader>
+
+  <div class="reveal rounded-[16px] border border-rule bg-bg-2 p-6 sm:p-9">
+    <div class="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
+      <div
+        class="relative flex flex-none flex-col gap-3 overflow-hidden rounded-[14px] border border-rule-2 bg-bg-3 p-6 lg:w-[268px]"
+      >
+        <div
+          class="pointer-events-none absolute inset-x-0 top-0 h-[140px]"
+          style="background:radial-gradient(70% 100% at 50% 0%,rgba(246,161,119,.14) 0%,transparent 72%)"
+          aria-hidden="true"
+        >
+        </div>
+
+        <div class="relative flex flex-col gap-3">
+          <div class="font-display text-[52px] leading-none font-semibold tracking-[-0.04em]">
+            {PRICING.price}
+          </div>
+          <div class="text-[14px] leading-[1.6] text-fg-dim">
+            One time, for all of 1.x. Not a subscription.
+          </div>
+          {/* Both figures, because neither is a conversion of the other: the
+              dollar price is quoted tax-exclusive and the euro one VAT-inclusive.
+              Showing only the first would leave an EU buyer without the total
+              they are actually charged. */}
+          <div class="text-[13.5px] leading-[1.6] text-fg-dim">
+            {PRICING.eur.price} in the EU, VAT included.
+          </div>
+
+          {
+            SHIPPED ? (
+              <>
+                <Button href={PRICING.buy} size="lg" class="mt-2 w-full">
+                  Buy a licence
+                </Button>
+                <a
+                  href={DOWNLOAD.href}
+                  class="text-center text-[13.5px] text-fg-dim underline underline-offset-2 transition-colors hover:text-accent-hi"
+                >
+                  or try it free for {TRIAL.minutes} minutes
+                </a>
+                <div class="mono mt-1 text-center">{PRICING.refundDays}-day refund · no account</div>
+              </>
+            ) : (
+              <>
+                <div class="mono mt-2 !text-fg-dim">Coming soon</div>
+                <div class="text-[13px] leading-[1.6] text-fg-muted">
+                  On sale with the first release.
+                </div>
+              </>
+            )
+          }
+        </div>
+      </div>
+
+      <ul class="m-0 flex list-none flex-col gap-3 p-0">
+        {
+          included.map((line) => (
+            <li class="flex gap-3 text-[14.5px] leading-[1.6] text-pretty text-fg-dim">
+              <span class="flex-none text-accent" aria-hidden="true">
+                ·
+              </span>
+              {line}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+
+  <p class="mt-10 mb-0 max-w-[62ch] text-[14px] leading-[1.65] text-pretty text-fg-muted">
+    The trial is held in memory and never written to disk, so quitting Armada and opening it again
+    starts another one. Nothing prevents that, and nothing pretends to. The
+    <a href="/terms" class="text-fg-dim underline underline-offset-2 hover:text-accent-hi"
+      >licence terms</a
+    > set out the rest, including delivery of the key and the refund.
+  </p>
+</section>

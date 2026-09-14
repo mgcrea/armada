@@ -1,0 +1,18 @@
+# The site's rendered PNGs: the og:image card, the Stripe product image, the touch
+# icon and the favicon. `pnpm icons` rewrites every one of them in full whenever the
+# mark or the card copy changes, so as ordinary blobs each change adds the whole set
+# to history, forever, in every clone. LFS keeps the pointer in git and the bytes out.
+#
+# There are no app screenshots here yet (Armada has no capture pipeline). When there
+# are, add their directory below rather than a second .gitattributes.
+#
+# They are committed rather than generated at build time so a clone can build the
+# site without running `pnpm icons`, which needs the repo-root design/ and a Mac's
+# fonts. That is also why any CI job that builds or deploys this site must check out
+# with LFS (`lfs: true` on actions/checkout): `release` is `astro build && wrangler
+# deploy`, so a checkout without it publishes 130-byte pointer files named .png.
+#
+# This file lives in apps/website/ rather than at the repo root because its patterns
+# are relative to its own directory. Hoisting it up would silently stop matching, and
+# the next refresh would commit these as ordinary blobs.
+public/*.png filter=lfs diff=lfs merge=lfs -text

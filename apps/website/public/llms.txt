@@ -1,0 +1,66 @@
+# Armada
+
+> Every coding agent you have running, on one screen. A macOS menu bar app for someone running
+> many Claude Code and Codex sessions at once: what each session is doing, how full its context
+> window is, and how much of each plan is left, read locally from what the agents already write
+> to disk.
+
+Not released yet. macOS 26 or later, and macOS only. The first release will be a Developer ID
+signed, notarized zip published on GitHub releases. Not affiliated with Anthropic or OpenAI.
+
+## What it shows
+
+- Sessions, per account: every live Claude Code session with its title, project, age and state
+  (busy, waiting or idle), read from Claude Code's own session registry rather than inferred. A
+  waiting session says what it wants. Sorted by what needs you, groupable by project.
+- Context: how full each session's context window is, where it started, how fast it has grown,
+  and when it was last compacted.
+- Plan limits: the 5-hour and 7-day windows per account, with reset times, a pace line and a
+  forecast. Claude accounts and Codex homes side by side. Claude limits are asked of the
+  account's own `claude` in a request that costs no tokens, falling back to the cache on disk,
+  with a badge saying which answered and how old the figure is.
+- Accounts: `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and
+  `CODEX_HOME`.
+
+## What it does
+
+- Starts `claude` or `codex` in a chosen folder on a chosen account, in a terminal. Armada never
+  owns the agent process.
+- Forks a session from where it stands, through each vendor's own fork command. The original is
+  left alone.
+- Focus brings forward the application a Claude Code session runs in. Codex sessions have no
+  Focus, because Codex records no process id on disk.
+- Middle and extra mouse buttons can cycle the session list or send a keystroke.
+- The menu bar glyph fills while a session is working and rings when one wants attention.
+
+## Privacy and security
+
+- Armada reaches no network on its own. The one exception is the update check, off until you
+  turn it on. It reads one file, armada.mgcrea.io/appcast.xml, which redirects to the GitHub
+  release, and sends no identifier: not your licence key, not a machine id.
+- The licence key is verified offline, on your Mac, with a signature check. No licence server is
+  ever contacted by the app.
+- It never writes to Claude Code's or Codex's configuration; `~/.claude*` and `~/.codex` are read
+  only. It holds no vendor credentials and never opens Codex's `auth.json`.
+- What it writes: its preferences, usage history in
+  `~/Library/Application Support/io.mgcrea.armada` (kept 30 days, deletable from Settings), and a
+  startup script in its own temporary folder when you start a session.
+- `make audit` checks the no-network claim against every build: every Mach-O swept for URL
+  loading, DNS and TLS symbols, with one narrowly named exception for Sparkle.
+- Not sandboxed, by design: it has to read other tools' folders.
+- The `claude` it asks for plan limits talks to Anthropic over your own sign-in. That is the
+  program's job, not Armada's.
+
+## Price
+
+- $14.99 once (€14.99 in the EU, VAT included), covering every 1.x release, on every Mac you own.
+  Not a subscription.
+- A free 30-minute trial, started from a button and held in memory.
+- 30-day refund, no reason needed.
+
+## Links
+
+- Site: https://armada.mgcrea.io
+- Support: https://armada.mgcrea.io/support/
+- Privacy: https://armada.mgcrea.io/privacy
+- Terms: https://armada.mgcrea.io/terms

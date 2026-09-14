@@ -1,0 +1,25 @@
+---
+/**
+ * The plated mark, served from `public/app-icon.svg`, which `pnpm icons` copies
+ * from the repo-root `design/armada-icon.svg`. One rendering at every size: the
+ * mark has no simplified small variant, and inventing one here would be a second
+ * copy of the geometry to drift.
+ */
+export interface Props {
+  size?: number;
+  class?: string;
+  /** Empty by default: every use sits beside the word "Armada". */
+  alt?: string;
+}
+
+const { size = 23, class: className, alt = "" } = Astro.props;
+---
+
+<img
+  src="/app-icon.svg"
+  alt={alt}
+  width={size}
+  height={size}
+  class:list={className}
+  style={`width:${size}px;height:${size}px`}
+/>

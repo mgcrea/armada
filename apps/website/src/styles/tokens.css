@@ -1,0 +1,49 @@
+/* ── Tokens ──────────────────────────────────────────────────────────────────
+   Imported *before* `tailwindcss` in global.css, and that order is the reason
+   this file exists. Every colour utility Tailwind emits is a reference, such as
+   `color: var(--color-fg)`, not a literal. Left at the bottom of global.css these
+   definitions land after every utility that reads them, so a browser painting
+   from a partially parsed stylesheet resolves them all to
+   invalid-at-computed-value-time and the buttons paint in the UA link blue.
+   Defined first, the tokens are in the first kilobyte. (Found on cupertino.)
+
+   The neutrals are shared with bastion and cupertino to the digit, so the three
+   sites read as one family. What is Armada's own is the warm ramp, taken from
+   the icon's plate gradient in design/colors.json: #FFD9A2 at the top, #F6A177
+   at the bottom, a shade lighter and pinker than the siblings' #FFD08A/#F2895C.
+   Nothing else on the page is warm; the accent works because it is rationed.
+
+   Dark is the base, and there is one theme, as on both siblings. Everything is
+   still a token, so a light theme later is a second block and no component
+   edits. */
+:root {
+  --color-bg: #0b0c0f;
+  --color-bg-2: #131419;
+  --color-bg-3: #191a1d;
+  --color-fg: #f4f2ef;
+  --color-fg-dim: #9b9a96;
+  --color-fg-muted: #6e7076;
+  --color-rule: #22242a;
+  --color-rule-2: #2e3037;
+
+  /* Plate bottom. 9.6:1 on the ground, so one accent covers type and fills. */
+  --color-accent: #f6a177;
+  /* Hover and link lift, one step up the same ramp toward the plate top. */
+  --color-accent-hi: #f9ba95;
+  /* Sits on an accent fill. Near-black, as on both siblings: a brown ink on a
+     flat peach fill reads as a muddier orange. */
+  --color-accent-ink: #1b1c1f;
+  /* Plate top. Used only where the gradient itself is being quoted. */
+  --color-plate-top: #ffd9a2;
+
+  /* Session states in the glance diagram. The fill/ink split is bastion's: a dot
+     wants a fill colour, a label wants the same hue lifted for text. */
+  --color-ok: #3e9e63;
+  --color-ok-ink: #8fd9a9;
+  --color-warn: #e0a63f;
+  --color-danger-ink: #e4805c;
+
+  /* The menu bar strip in the glance diagram. */
+  --color-chrome: #1c1e23;
+  --color-chrome-2: #24262c;
+}

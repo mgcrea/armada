@@ -1,0 +1,33 @@
+{
+  "name": "@mgcrea/armada-website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "feedback:check": "astro build && node scripts/feedback-check.mjs",
+    "preview": "astro preview",
+    "release": "astro build && wrangler deploy",
+    "astro": "astro",
+    "check": "astro check",
+    "typecheck": "astro check",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "@mgcrea/feedback-contract": "^0.2.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.3.1",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.129.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

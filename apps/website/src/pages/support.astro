@@ -1,0 +1,127 @@
+---
+/**
+ * The support page.
+ *
+ * It exists because the app links to it: `SupportApp` in swift-support-kit renders
+ * Help items for the tracker, the feedback form and `siteURL + supportPath`, and
+ * that last one lands here.
+ *
+ * It routes rather than explains. Three channels, and the only thing a reader has
+ * to get right is which one their problem belongs in. The order differs from
+ * cupertino's on purpose: Armada has no public repository of its own
+ * (`preferIssueTracker` is false in apps/apple/Armada/Support.swift), so the
+ * private form leads and the shared public tracker comes second.
+ */
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import {
+  APP_NAME,
+  FEEDBACK_URL,
+  ISSUES_URL,
+  PRICING,
+  SHIPPED,
+  SITE_URL,
+  SUPPORT_EMAIL,
+  SUPPORT_EMAIL_HREF,
+} from "../config";
+import Layout from "../layouts/Layout.astro";
+
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  name: "Support",
+  url: `${SITE_URL}/support/`,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
+const h2 = "m-0 font-display text-[22px] font-semibold tracking-[-0.03em]";
+const lead = "mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty";
+const prose = "mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty";
+const link = "underline underline-offset-2";
+const strong = "font-medium text-fg";
+---
+
+<Layout
+  title={`Support · ${APP_NAME}`}
+  description={`Get help with ${APP_NAME}: a private feedback form for reports that quote your own sessions, the public tracker, or email for licences.`}
+  schema={schema}
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="wrap py-20">
+    <div class="mono text-accent">Support</div>
+    <h1 class="mt-3 mb-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
+      Support
+    </h1>
+    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
+      Three ways in, and which one to use comes down to a single question:
+      <strong class={strong}>does telling us what went wrong mean quoting your own work?</strong>
+    </p>
+    {
+      !SHIPPED && (
+        <p class="mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.6] text-fg-muted text-pretty">
+          {APP_NAME} is not released yet, so there are no licences to help with. Questions before
+          launch are welcome through any of the routes below.
+        </p>
+      )
+    }
+
+    <section class="mt-14">
+      <h2 class={h2}>Anything that quotes your own work</h2>
+      <p class={lead}>
+        A useful {APP_NAME} report often has to include a session title, a project path or an account
+        folder name. The <a href={FEEDBACK_URL} class={link}>feedback form</a> is private: no account
+        is needed, and the email address is optional. Leave it blank and the report is anonymous.
+      </p>
+      <p class={prose}>
+        <strong class={strong}>Choosing Send Feedback in the app does not send anything.</strong> It
+        hands your browser a URL and stops. Everything that URL carries (the app version, the macOS
+        version, the Mac model and the language) is visible in the address bar, and on the page as four
+        fields you can edit or clear before pressing Send.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>A bug or an idea you are happy to share</h2>
+      <p class={lead}>
+        The <a href={ISSUES_URL} rel="noopener" class={link}>public tracker</a> is shared by every
+        Magenta Creations app. It suits anything that is not about your own sessions: a feature
+        request, a question about how a figure is read, a pane that looks wrong. It is public, so the
+        answer is there for whoever asks next.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>Licences and payment</h2>
+      <p class={lead}>
+        Email <a href={SUPPORT_EMAIL_HREF} class={link}>{SUPPORT_EMAIL}</a> for a key that will not
+        activate, a key you have lost, or a refund within the {PRICING.refundDays}-day window, no reason
+        needed. A key is checked on your Mac and never sent anywhere, so a reply is the only way we can
+        look at one: quote the address you bought with rather than the key itself.
+      </p>
+      <p class={prose}>
+        What a key covers, and what the trial does, is set out in the
+        <a href="/terms" class={link}>licence terms</a>.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>Finding the Help pane</h2>
+      <p class={lead}>
+        {APP_NAME} lives in the menu bar and has no Dock icon. Open its settings, and the Help pane
+        links here and to the feedback form. Opening either one directly in a browser works exactly as
+        well: the app only ever hands them over.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>What to expect</h2>
+      <p class={lead}>
+        Everything gets read, and most things get an answer within a few working days. A report that
+        says which version, which macOS, and whether the session was Claude Code or Codex can usually
+        be answered in the first reply rather than the third.
+      </p>
+    </section>
+  </main>
+  <Footer />
+</Layout>

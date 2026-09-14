@@ -1,0 +1,102 @@
+---
+import {
+  BUNDLE_ID,
+  DOWNLOAD,
+  FEEDBACK_URL,
+  ISSUES_URL,
+  REPO_PUBLIC,
+  REPO_URL,
+  SHIPPED,
+  SIBLING_APPS,
+} from "../config";
+import Logo from "./Logo.astro";
+import MagentaMark from "./MagentaMark.astro";
+
+type FooterLink = { label: string; href: string; title?: string };
+
+/**
+ * Off-site links open a new tab; on-site ones do not. Cupertino's footer opens
+ * every link in a new tab, including its own privacy page, which is not worth
+ * copying.
+ */
+const isExternal = (href: string) => href.startsWith("http");
+
+const columns: { title: string; links: FooterLink[] }[] = [
+  {
+    title: "Help",
+    links: [
+      { label: "Support", href: "/support/" },
+      { label: "Feedback", href: FEEDBACK_URL },
+      { label: "Public tracker ↗", href: ISSUES_URL },
+    ],
+  },
+  {
+    title: "Legal",
+    links: [
+      { label: "Privacy", href: "/privacy" },
+      { label: "Terms", href: "/terms" },
+    ],
+  },
+  /** Only once there is something public to point at; see REPO_PUBLIC. */
+  {
+    title: "Source",
+    links: [
+      ...(REPO_PUBLIC ? [{ label: "GitHub ↗", href: REPO_URL }] : []),
+      ...(SHIPPED ? [{ label: "Releases", href: DOWNLOAD.releases }] : []),
+    ],
+  },
+  {
+    title: "More apps",
+    links: SIBLING_APPS.map((app) => ({
+      label: `${app.name} ↗`,
+      href: app.url,
+      title: app.blurb,
+    })),
+  },
+].filter((column) => column.links.length > 0);
+---
+
+<footer class="border-t border-rule py-12">
+  <div class="wrap flex flex-wrap gap-x-16 gap-y-10">
+    <div class="flex basis-full flex-col gap-3 sm:basis-auto sm:pr-8">
+      <div class="flex items-center gap-2.5">
+        <Logo size={22} />
+        <span class="font-display text-[14.5px] font-[590] tracking-[-0.02em] text-fg">Armada</span>
+      </div>
+      <p class="m-0 text-[12.5px] leading-[1.6] text-fg-muted">
+        Not affiliated with Anthropic or OpenAI.<br />
+        <code class="font-mono">{BUNDLE_ID}</code>
+      </p>
+      <a
+        href="https://mg-crea.com"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted transition-colors hover:text-accent-hi"
+      >
+        <MagentaMark size={13} uid="footer" />Magenta Creations
+      </a>
+    </div>
+
+    {
+      columns.map((c) => (
+        <div class="flex min-w-[120px] flex-col gap-3">
+          <div class="mono">{c.title}</div>
+          <ul class="m-0 flex list-none flex-col gap-2 p-0">
+            {c.links.map((l) => (
+              <li>
+                <a
+                  href={l.href}
+                  title={l.title}
+                  {...(isExternal(l.href) ? { target: "_blank", rel: "noopener" } : {})}
+                  class="text-[13px] text-fg-dim transition-colors hover:text-accent-hi"
+                >
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</footer>
