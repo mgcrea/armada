@@ -141,3 +141,18 @@ audit: build ## Assert the built app cannot reach the network
 	@scripts/audit-network.sh
 
 .PHONY: audit
+
+# ── Changelog ─────────────────────────────────────────────────────────────────
+#
+# CHANGELOG.md → Changelog.swift, the What's New pane's data. Root-level for the
+# same reason as the icon: the source is at the root, the output is in apps/apple.
+# `changelog-check` is the CI gate — a stale Changelog.swift fails there rather
+# than shipping notes that describe a different build.
+
+changelog: ## Regenerate Changelog.swift from CHANGELOG.md
+	@node scripts/generate-changelog.mjs
+
+changelog-check: ## Fail if Changelog.swift is stale against CHANGELOG.md
+	@node scripts/generate-changelog.mjs --check
+
+.PHONY: changelog changelog-check

@@ -18,13 +18,13 @@ import SwiftUI
 /// `MouseBindingRow`'s Detect.
 ///
 /// Help is a pane rather than rows on About, and last rather than beside it: it
-/// keeps the About → What's New → Updates reading order the fleet settled on
-/// free for the two panes Armada does not have yet.
+/// keeps the About → What's New → Updates reading order the fleet settled on.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case mouse
   case usage
   case about
+  case whatsNew
   case help
 
   var title: LocalizedStringKey {
@@ -33,6 +33,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .mouse: "Mouse"
     case .usage: "Usage"
     case .about: "About"
+    case .whatsNew: "What's New"
     case .help: "Help"
     }
   }
@@ -43,8 +44,15 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .mouse: "computermouse"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
+    case .whatsNew: "sparkles"
     case .help: "questionmark.circle"
     }
+  }
+
+  /// The unread-release count on What's New, and nothing anywhere else. Read on
+  /// every sidebar draw, so it clears the moment the pane marks the notes seen.
+  var badge: Int {
+    self == .whatsNew && Changelog.hasUnseen ? Changelog.unseen.count : 0
   }
 
   static var defaultPane: SettingsPane { .general }
@@ -76,6 +84,7 @@ struct SettingsWindowView: View {
           showsIdentifier: true,
           includesSupport: false,
           preferIssueTracker: Support.preferIssueTracker)
+      case .whatsNew: WhatsNewPane()
       case .help:
         HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
       }

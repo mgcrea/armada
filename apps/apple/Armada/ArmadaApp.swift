@@ -122,6 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
+    // Before any view reads `Changelog.hasUnseen`, or a fresh install draws the
+    // What's New dot on its very first launch.
+    Changelog.markSeenIfUnset()
     Accounts.shared.start()
     CodexAccounts.shared.start()
     DockPresence.observe()
@@ -263,6 +266,19 @@ struct StatusMenu: View {
           .keyboardShortcut("o")
 
         Spacer()
+
+        // Only while a release is unread, and a glyph rather than a word for the
+        // gear's reason: a third text button is the panel's summary spent on
+        // chrome. Tinted because it is news, which the gear beside it is not.
+        if Changelog.hasUnseen {
+          Button {
+            AppDelegate.shared?.showSettings(.whatsNew)
+          } label: {
+            Image(systemName: "sparkles")
+              .foregroundStyle(.tint)
+          }
+          .help("What's New in Armada")
+        }
 
         Button {
           AppDelegate.shared?.showSettings()
