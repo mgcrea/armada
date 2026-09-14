@@ -1,0 +1,19 @@
+# Secrets for the Stripe TEST-mode deployment. Copy to `.test.vars`, which is
+# gitignored (every `*.vars` is), fill it in, and push it with
+#
+#   node ../../scripts/push-worker-secrets.mjs .test.vars --env test
+#
+# `--env test` is not optional. Wrangler applies secrets to the DEFAULT
+# environment unless told otherwise, and the default here is the Worker taking
+# real money at api.armada.mgcrea.io. A test-mode webhook secret pushed there
+# refuses every genuine payment as an invalid signature, and nothing says why
+# until a buyer writes in. The `test` environment is declared in wrangler.jsonc;
+# deploy it once with `wrangler deploy --env test`.
+#
+# The same three keys as `.prod.vars`, from the test-mode side of the Stripe
+# dashboard. The licence signing key is the SAME value as production: a key
+# minted through a test purchase has to verify against the public key compiled
+# into the app, or the end-to-end test proves nothing.
+LICENSE_SIGNING_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_SECRET_KEY=
