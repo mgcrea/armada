@@ -235,10 +235,12 @@ struct UsageHeader: View {
         let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
         CompactMeter(
           title: "Session", subtitle: "5 hours", window: five,
-          forecast: forecast(five, .fiveHour, usage.fetchedAt), now: now)
+          forecast: forecast(five, .fiveHour, usage.fetchedAt), now: now,
+          menuBarLimit: MenuBarLimit(accountID: account.id, length: .fiveHour))
         CompactMeter(
           title: "Weekly", subtitle: "7 days", window: seven,
-          forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now)
+          forecast: forecast(seven, .sevenDay, usage.fetchedAt), now: now,
+          menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
       } else {
         Label(
           account.didReadUsage ? "No usage data yet" : "Reading usage…",
@@ -334,6 +336,10 @@ struct CompactMeter: View {
   let window: UsageWindow?
   var forecast: UsageForecast?
   let now: Date
+  /// Nil for a window with no length to name it by — see `CodexWindow.length`.
+  var menuBarLimit: MenuBarLimit?
+
+  @State private var hovering = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -343,6 +349,9 @@ struct CompactMeter: View {
       HStack(spacing: 6) {
         Text(title).font(.caption).foregroundStyle(.secondary)
         Text(subtitle).font(.caption2).foregroundStyle(.tertiary)
+        if let menuBarLimit {
+          MenuBarStar(limit: menuBarLimit, rowHovered: hovering)
+        }
       }
       .lineLimit(1)
       if let window {
@@ -365,6 +374,8 @@ struct CompactMeter: View {
         Text("—").foregroundStyle(.secondary)
       }
     }
+    .contentShape(.rect)
+    .onHover { hovering = $0 }
   }
 }
 

@@ -254,7 +254,8 @@ struct CodexUsageHeader: View {
         subtitle: LocalizedStringKey(window.subtitle),
         window: window.usage,
         forecast: forecast(window),
-        now: now)
+        now: now,
+        menuBarLimit: window.length.map { MenuBarLimit(accountID: account.id, length: $0) })
     }
   }
 

@@ -21,7 +21,11 @@ import SwiftUI
 /// history is a link away, and `CHANGELOG.md` remains the source of truth.
 ///
 /// Cupertino's file, copied: the three direct-distribution apps share no package.
-enum Changelog {
+///
+/// `nonisolated`, because `SettingsPane.badge` reads `hasUnseen`, and that requirement
+/// belongs to SupportKit's `Sendable` protocol, which gives it no actor to run on. Nothing
+/// here needs one: the members are constants, `UserDefaults` and the bundle.
+nonisolated enum Changelog {
   /// One released version.
   struct Release: Identifiable, Hashable {
     /// `"1.0.0"`. Compared against the marketing version and the seen key.
@@ -286,7 +290,7 @@ enum Changelog {
             ordinal: 10,
             headline: "Menu bar.",
             body: [
-              "An accessory app with a per-account popover, and a template glyph that fills while anything is working and rings when a session wants attention, on a configurable ladder.",
+              "An accessory app with a per-account popover, and a template glyph that fills while anything is working and rings when a session wants attention, on a configurable ladder. Star one plan limit, in Usage or above an account's sessions, and its percentage sits beside the glyph in small type.",
             ]),
           Entry(
             ordinal: 11,
@@ -312,25 +316,37 @@ enum Changelog {
             body: [
               "One key covers every 1.x release on every Mac you own and is verified offline, on the Mac. Without one Armada watches nothing and says so where the sessions would be; the trial runs everything, and is started by hand.",
             ]),
+          Entry(
+            ordinal: 15,
+            headline: "A supervisor for the fleet, off until you turn it on.",
+            body: [
+              "Settings ▸ Supervisor runs a read-only MCP server on 127.0.0.1 and starts a Claude Code session with it attached, so you can ask one session which of the others need you, what any of them is doing or last said, and how much plan is left. Five tools, none of which can change a session, start one or write anywhere. The session runs on your own plan, and its connection details never touch your Claude configuration.",
+            ]),
         ]),
       Section(
         name: "Changed",
         lead: [],
         entries: [
           Entry(
-            ordinal: 15,
+            ordinal: 16,
+            headline: "The network claim names the one socket Armada listens on.",
+            body: [
+              "The supervisor's MCP endpoint binds 127.0.0.1 and nothing else, and `make audit` checks that in the listener's source beside Sparkle's allowance.",
+            ]),
+          Entry(
+            ordinal: 17,
             headline: "The network claim names its one exception.",
             body: [
               "`SECURITY.md` and `make audit` now say Armada reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle exactly the capability it was measured to use.",
             ]),
           Entry(
-            ordinal: 16,
+            ordinal: 18,
             headline: "The scope line \"v1 watches; it doesn't launch agents\" was reopened",
             body: [
               ", deliberately, when New Session landed. Armada still never owns an agent process and still holds no credentials; what changed is that it can ask a terminal to start one.",
             ]),
           Entry(
-            ordinal: 17,
+            ordinal: 19,
             headline: "The menu bar halo is three assets",
             body: [
               "rather than a composed overlay, drawn as two arcs offset from each sail.",
@@ -341,31 +357,31 @@ enum Changelog {
         lead: [],
         entries: [
           Entry(
-            ordinal: 18,
+            ordinal: 20,
             headline: "Codex plan limits lagged",
             body: [
               "behind what was on disk: the newest figures usually live in a rollout the session scan has no reason to open. The scan now always tails the newest rollout in the tree.",
             ]),
           Entry(
-            ordinal: 19,
+            ordinal: 21,
             headline: "A Codex writer lock spans a session, not a turn",
             body: [
               "— confirmed, which is what makes \"waiting for input\" reachable.",
             ]),
           Entry(
-            ordinal: 20,
+            ordinal: 22,
             headline: "A session adopted mid-flight showed the wrong age",
             body: [
               ", because `lastWrite` was not seeded from disk.",
             ]),
           Entry(
-            ordinal: 21,
+            ordinal: 23,
             headline: "`CLAUDE_CONFIG_DIR` carried a trailing slash",
             body: [
               ", which made a stored value silently fail to match.",
             ]),
           Entry(
-            ordinal: 22,
+            ordinal: 24,
             headline: "Selecting a session added a ghost row",
             body: [
               "for the same project, gone a second later. Armada's own `claude` probes register as sessions on 2.1.269, and the list took them for real ones. Registries whose process is Armada's child are now skipped.",

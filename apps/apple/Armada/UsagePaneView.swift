@@ -126,19 +126,21 @@ struct AccountUsageCard: View {
         : limit.window
       return WindowRowModel(
         id: limit.id, title: limit.title, subtitle: limit.subtitle, window: window,
-        length: length, isBinding: limit.isActive)
+        length: length, isBinding: limit.isActive,
+        menuBarLimit: MenuBarLimit(
+          accountID: account.id, length: length, model: limit.scopeModelName))
     }
     if !fromLimits.isEmpty { return fromLimits }
     return [
       corrected(.fiveHour, in: usage).map {
         WindowRowModel(
           id: "five_hour", title: "Session", subtitle: "5 hours", window: $0, length: .fiveHour,
-          isBinding: false)
+          isBinding: false, menuBarLimit: MenuBarLimit(accountID: account.id, length: .fiveHour))
       },
       corrected(.sevenDay, in: usage).map {
         WindowRowModel(
           id: "seven_day", title: "Weekly", subtitle: "7 days", window: $0, length: .sevenDay,
-          isBinding: false)
+          isBinding: false, menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
       },
     ].compactMap { $0 }
   }
@@ -200,12 +202,14 @@ struct CodexUsageCard: View {
       snapshot.fiveHour.map {
         WindowRowModel(
           id: "codex-five-hour", title: "Session", subtitle: "5 hours", window: $0,
-          length: .fiveHour, isBinding: false)
+          length: .fiveHour, isBinding: false,
+          menuBarLimit: MenuBarLimit(accountID: account.id, length: .fiveHour))
       },
       snapshot.sevenDay.map {
         WindowRowModel(
           id: "codex-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
-          length: .sevenDay, isBinding: false)
+          length: .sevenDay, isBinding: false,
+          menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
       },
     ].compactMap { $0 }
   }
@@ -218,6 +222,7 @@ struct WindowRowModel: Identifiable {
   let window: UsageWindow
   let length: UsageWindowLength
   let isBinding: Bool
+  let menuBarLimit: MenuBarLimit
 }
 
 /// One window: the name, the number, the bar and the verdict.
@@ -226,6 +231,8 @@ struct WindowRow: View {
   let weights: DayWeights
   let fetchedAt: Date?
   let now: Date
+
+  @State private var hovering = false
 
   var body: some View {
     // Nothing to project from a window a refusal has already closed — see the same
@@ -250,6 +257,7 @@ struct WindowRow: View {
             .background(.tint.opacity(0.18), in: .capsule)
             .help("The window Claude Code is currently measuring you against.")
         }
+        MenuBarStar(limit: row.menuBarLimit, rowHovered: hovering)
         Spacer(minLength: 8)
         UsageFigure(window: row.window, now: now, font: .body)
       }
@@ -260,6 +268,9 @@ struct WindowRow: View {
         voided: row.window.hasRolled(asOf: now))
       UsageFootnote(window: row.window, forecast: forecast, now: now)
     }
+    // The whole row, gaps included, or the star only appears over the text.
+    .contentShape(.rect)
+    .onHover { hovering = $0 }
   }
 }
 

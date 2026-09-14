@@ -56,10 +56,35 @@ private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
+  @AppStorage(MenuBarLimit.defaultsKey) private var storedLimit = ""
+
+  /// For `UsageWindow.hasRolled` alone: a starred window that turns over while
+  /// nothing is polling must still drop its figure for the dash. A minute is finer
+  /// than any window's reset needs, and the figures themselves arrive by observation.
+  @State private var now = Date()
+  private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
-    Image(assetName)
-      .accessibilityLabel(accessibilityLabel)
+    Group {
+      if let figure {
+        Image(nsImage: MenuBarFigureImage.image(asset: assetName, figure: figure))
+      } else {
+        Image(assetName)
+      }
+    }
+    .accessibilityLabel(accessibilityLabel)
+    .onReceive(clock) { now = $0 }
+  }
+
+  private var starred: (limit: MenuBarLimit, window: UsageWindow)? {
+    guard let limit = MenuBarLimit(stored: storedLimit),
+      let window = limit.window(accounts: accounts, codex: codex, now: now)
+    else { return nil }
+    return (limit, window)
+  }
+
+  private var figure: String? {
+    starred.map { MenuBarLimit.figure($0.window, now: now) }
   }
 
   /// Across every account and every vendor: the menu bar answers "is anything of
@@ -91,12 +116,54 @@ private struct MenuBarLabel: View {
   /// for VoiceOver here wants to know whether anything is asking for them before
   /// they are told how many sessions are mid-turn.
   private var accessibilityLabel: String {
-    switch (isWorking, isHaloLit) {
-    case (true, true): "Armada — a session is working and wants you"
-    case (true, false): "Armada — a session is working"
-    case (false, true): "Armada — a session is waiting on you"
-    case (false, false): "Armada — all sessions idle"
+    let state =
+      switch (isWorking, isHaloLit) {
+      case (true, true): "Armada — a session is working and wants you"
+      case (true, false): "Armada — a session is working"
+      case (false, true): "Armada — a session is waiting on you"
+      case (false, false): "Armada — all sessions idle"
+      }
+    guard let starred else { return state }
+    let name = starred.limit.spokenName
+    if starred.window.hasRolled(asOf: now) { return "\(state), \(name) has reset" }
+    return "\(state), \(name) at \(starred.window.utilization) percent"
+  }
+}
+
+/// The glyph and the starred figure, drawn into one template image.
+///
+/// **One image rather than an `Image` and a `Text` side by side in the label**, for
+/// the reason `MenuBarLabel` gives about the halo: SwiftUI turns a `MenuBarExtra`
+/// label into a single template image, and what it does with anything composed
+/// beside or over it is not something to rely on — cupertino measured a small overlay
+/// never being drawn. It is also the only way the figure gets to be small: a title on
+/// the status item is set in the menu bar's own 13pt, which is as loud as the clock.
+///
+/// Black on transparent and marked as a template, so AppKit tints it exactly as it
+/// tints the assets. Cached per asset and figure, because the label's body runs on
+/// every session update and there are only three glyphs and about a hundred figures.
+@MainActor
+enum MenuBarFigureImage {
+  private static var cache: [String: NSImage] = [:]
+
+  static func image(asset: String, figure: String) -> NSImage {
+    let key = "\(asset)|\(figure)"
+    if let cached = cache[key] { return cached }
+    let renderer = ImageRenderer(
+      content: HStack(spacing: 2) {
+        Image(asset).renderingMode(.template)
+        Text(figure).font(.system(size: 11, weight: .medium).monospacedDigit())
+      }
+      .foregroundStyle(.black))
+    // 2x whatever the display, which is every Mac menu bar that ships: the 18pt glyph
+    // stops being a vector here, and a 1x bitmap of it would be soft on Retina.
+    renderer.scale = 2
+    guard let image = renderer.nsImage else {
+      return NSImage(named: asset) ?? NSImage()
     }
+    image.isTemplate = true
+    cache[key] = image
+    return image
   }
 }
 
@@ -178,19 +245,32 @@ struct StatusMenu: View {
   /// reset time, every forecast and the staleness line below are relative to *now*,
   /// and nothing else here moves. The two windows both push state in from a pane
   /// that owns a tick; the popover owns nothing, so a body evaluated at 12:58 still
-  /// said "resets in 2m" at half past two. Same one-second `Timer.publish` the three
-  /// panes use, rather than a second mechanism that would drift from them.
+  /// said "resets in 2m" at half past two.
   ///
-  /// One second is finer than anything on this panel needs — the shortest thing it
-  /// renders is "in 4h" — and unlike a pane's clock this one may well go on ticking
-  /// while the panel is closed, since SwiftUI keeps `MenuBarExtra` content alive. It
-  /// is kept anyway: the work per tick is assigning a `Date`, and matching what the
-  /// panes do is worth more than shaving that. `TimelineView(.periodic:)` would pause
-  /// itself while hidden and is the tidier answer if this ever shows up in a profile.
-  @State private var now = Date()
-  private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
+  /// **A `TimelineView`, not the one-second `Timer.publish` the panes use**, because
+  /// this is the one surface that is closed nearly all the time. SwiftUI keeps
+  /// `MenuBarExtra` content alive with the panel shut, so a timer here went on ticking
+  /// for nobody; a periodic timeline pauses while it is not on screen. One second is
+  /// finer than anything on this panel needs — the shortest thing it renders is "in
+  /// 4h" — and keeps it in step with the panes while it is open.
   var body: some View {
+    TimelineView(.periodic(from: .now, by: 1)) { timeline in
+      panel(now: timeline.date)
+    }
+    // Belt and braces beside the timeline. The timeline keeps the *rendering* honest;
+    // this asks for a fresh *reading* the moment the panel is opened, rather than
+    // waiting out the rest of a poll in front of someone who just clicked to find
+    // out. The file re-reads and the Codex scan are nearly free; `probeAll` is not,
+    // which is why it throttles itself — opening the panel twice in a row is one
+    // process, not two.
+    .onAppear {
+      accounts.refreshAll()
+      accounts.probeAll()
+      codex.refreshAll()
+    }
+  }
+
+  private func panel(now: Date) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         // The title opens the window, same as the footer button. A heading that
@@ -310,18 +390,6 @@ struct StatusMenu: View {
     }
     .padding(12)
     .frame(width: 320)
-    .onReceive(clock) { now = $0 }
-    // Belt and braces beside the tick above. The tick keeps the *rendering* honest;
-    // this asks for a fresh *reading* the moment the panel is opened, rather than
-    // waiting out the rest of a poll in front of someone who just clicked to find
-    // out. The file re-reads and the Codex scan are nearly free; `probeAll` is not,
-    // which is why it throttles itself — opening the panel twice in a row is one
-    // process, not two.
-    .onAppear {
-      accounts.refreshAll()
-      accounts.probeAll()
-      codex.refreshAll()
-    }
   }
 }
 
