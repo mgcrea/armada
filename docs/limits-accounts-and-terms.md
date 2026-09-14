@@ -188,8 +188,11 @@ Four sources, in the order Armada now prefers them.
    Measured against both folders on 2026-09-12:
 
    - **Free.** `total_cost_usd: 0`, `total_api_duration_ms: 0`. A control request is not a
-     prompt. No session registry file and no transcript are written, so the spawned process
-     does not show up in Armada's own session list.
+     prompt, and no transcript is written.
+   - **But it does register as a session.** Corrected 2026-09-14 against 2.1.269: the
+     spawned process writes `sessions/<pid>.json` (`"entrypoint": "sdk-cli"`) for as long as
+     it runs, so without a filter it shows up in Armada's own session list as a ghost row.
+     `SessionRegistry.isArmadaProbe` drops any registry whose process is Armada's child.
    - **~1.2s warm**, and one process per config folder. Too expensive for the 30s file
      poll; fine on a 3-minute timer and when the popover opens.
    - **Same shape as the cache.** The `rate_limits` object it answers with has the same

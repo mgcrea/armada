@@ -74,6 +74,9 @@ below are grouped by what they do rather than replayed commit by commit.
   from disk.
 - **`CLAUDE_CONFIG_DIR` carried a trailing slash**, which made a stored value silently fail to
   match.
+- **Selecting a session added a ghost row** for the same project, gone a second later. Armada's
+  own `claude` probes register as sessions on 2.1.269, and the list took them for real ones.
+  Registries whose process is Armada's child are now skipped.
 
 ### Internal
 

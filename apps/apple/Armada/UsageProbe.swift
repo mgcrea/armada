@@ -22,10 +22,10 @@ import Foundation
 ///
 /// **It costs nothing.** A control request is not a prompt: measured on 2026-09-12
 /// against both folders, `total_cost_usd: 0`, `total_api_duration_ms: 0`, and no
-/// session registry file or transcript is written — so the spawned process does not
-/// appear in Armada's own session list. What it costs is a process and about a
-/// second, which is why it runs on a slow timer and on the popover opening rather
-/// than on the 30-second file poll.
+/// transcript is written. It does register as a session while it runs — see
+/// `SessionRegistry.isArmadaProbe` for why that no longer reaches the list. What it
+/// costs is a process and about a second, which is why it runs on a slow timer and on
+/// the popover opening rather than on the 30-second file poll.
 ///
 /// `nonisolated` and never called from the main actor: this blocks on a subprocess.
 nonisolated enum UsageProbe {

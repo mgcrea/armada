@@ -82,6 +82,12 @@ One file per live session, named by PID:
 - `name` is derived from the project directory plus a short suffix (`bastion-ae`). It is
   not the human title.
 - A session resumed in VS Code gets a **new** `sessionId` and a new registry row.
+- **A headless `claude` answering one control request registers too.** Measured 2026-09-14
+  on 2.1.269: `claude --input-format stream-json --output-format stream-json --verbose` writes
+  a normal file (`"kind": "interactive"`, `"entrypoint": "sdk-cli"`, its own cwd) for the
+  second or so it lives, then deletes it. The registry pid is the spawned process itself, so
+  an app that probes has to drop registries whose parent is its own pid. The `sdk-cli`
+  entrypoint is not enough on its own: Agent SDK apps write it too.
 
 ## Transcripts
 

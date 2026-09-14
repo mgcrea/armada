@@ -85,6 +85,27 @@ struct SessionRegistry: Decodable, Identifiable, Sendable, Hashable {
   }
 
   var isAlive: Bool { Self.isAlive(pid: pid) }
+
+  /// Whether this file was written by one of Armada's own `claude` probes rather than
+  /// by a session.
+  ///
+  /// **A probe registers itself.** `ClaudeControl` spawns a headless `claude` for each
+  /// control request, and on 2.1.269 that process writes `sessions/<pid>.json` like any
+  /// other — `"kind": "interactive"`, `"entrypoint": "sdk-cli"`, the cwd it was run in
+  /// (measured 2026-09-14). `ContextProbe` runs in the selected session's cwd, so
+  /// selecting a row put a second row for the same project beside it for the second or
+  /// so the probe lived, and the usage probe did the same from the home directory.
+  ///
+  /// **The parent, not the entrypoint.** `sdk-cli` is also what every Agent SDK app
+  /// writes, and those are sessions someone wants to see. Nothing in Armada but
+  /// `ClaudeControl` spawns a process — New Session hands a `.command` file to the
+  /// terminal, which becomes the parent — and the registry pid is the spawned process
+  /// itself, not a child of it (checked the same day). So a registry whose process is
+  /// Armada's own child is a probe, exactly, with no pid list to keep in step with the
+  /// spawns and no window between a spawn and its file appearing.
+  var isArmadaProbe: Bool {
+    ProcessAncestry.parent(of: pid) == getpid()
+  }
 }
 
 extension SessionRegistry {
@@ -111,6 +132,6 @@ extension SessionRegistry {
         else { return nil }
         return registry
       }
-      .filter(\.isAlive)
+      .filter { $0.isAlive && !$0.isArmadaProbe }
   }
 }

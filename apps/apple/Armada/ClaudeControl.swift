@@ -7,9 +7,13 @@ import Foundation
 /// duplicated the environment rules, the `PATH` search and the deadline handling —
 /// each of which is a trap someone already paid for once.
 ///
-/// **A control request is not a prompt.** Measured on 2026-09-12: `total_cost_usd: 0`,
-/// no session registry file and no transcript, so a probe does not appear in Armada's
-/// own session list. What it costs is a process and about a second.
+/// **A control request is not a prompt.** Measured on 2026-09-12: `total_cost_usd: 0`
+/// and no transcript. What it costs is a process and about a second.
+///
+/// **It does write a session registry file**, which the 2026-09-12 measurement said it
+/// did not: on 2.1.269 a probe registers as `"entrypoint": "sdk-cli"` for as long as it
+/// runs (re-measured 2026-09-14). `SessionRegistry.isArmadaProbe` is what keeps it out
+/// of Armada's own session list.
 ///
 /// **It is deliberately not kept alive between calls.** One process does answer
 /// repeated requests — verified — but an idle one measured **128MB RSS, a 206MB
