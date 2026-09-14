@@ -14,9 +14,17 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
 # builds. It does not identify one — that is what GIT_COMMIT is for.
 GIT_COUNT  := $(shell git rev-list --count HEAD 2>/dev/null)
 
+# The marketing version is the newest `app-v*` tag, as in bastion and cupertino.
+# Before the first tag there is none, and the pbxproj's MARKETING_VERSION stands.
+APP_VERSION := $(shell git describe --tags --match 'app-v*' --abbrev=0 2>/dev/null | sed 's/^app-v//')
+
+# Each applied only when XCARGS does not already name it: CI's release job passes
+# both explicitly from the tag, and a second copy on the command line would leave
+# which one wins to xcodebuild's argument order.
 XCARGS ?=
-BUILD_ARGS = ARMADA_GIT_COMMIT=$(GIT_COMMIT) \
-	$(if $(GIT_COUNT),CURRENT_PROJECT_VERSION=$(GIT_COUNT),) $(XCARGS)
+VERSION_ARGS := $(if $(findstring MARKETING_VERSION,$(XCARGS)),,$(if $(APP_VERSION),MARKETING_VERSION=$(APP_VERSION)))
+VERSION_ARGS += $(if $(findstring CURRENT_PROJECT_VERSION,$(XCARGS)),,$(if $(GIT_COUNT),CURRENT_PROJECT_VERSION=$(GIT_COUNT)))
+BUILD_ARGS = ARMADA_GIT_COMMIT=$(GIT_COMMIT) $(VERSION_ARGS) $(XCARGS)
 
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/Debug/$(APP_NAME).app
 
@@ -74,14 +82,16 @@ $(SPARKLE_STAMP):
 	@touch $(SPARKLE_STAMP)
 	@echo "  Sparkle $(SPARKLE_VERSION) in $(SPARKLE_FRAMEWORK), tools in $(SPARKLE_TOOLS)"
 
-build: sparkle ## Build the app in Debug
-	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) \
-		-configuration Debug -destination '$(DESTINATION)' \
-		-derivedDataPath $(DERIVED_DATA) $(BUILD_ARGS)
+# Debug unless told otherwise. There is no `build-release` here any more: that name
+# means "signed, notarized and shippable" in all three direct-distribution repos,
+# and it lives in the root Makefile, which calls `build CONFIG=Release` with signing
+# switched off and signs the result itself. A bare unsigned Release build under the
+# same name was one shared runbook away from being shipped.
+CONFIG ?= Debug
 
-build-release: ## Build the app in Release
+build: sparkle ## Build the app (CONFIG=Debug by default; the root's build-release ships)
 	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) \
-		-configuration Release -destination '$(DESTINATION)' \
+		-configuration $(CONFIG) -destination '$(DESTINATION)' \
 		-derivedDataPath $(DERIVED_DATA) $(BUILD_ARGS)
 
 # `-f` matches this recipe's own shell as well as the app, which is why the match is
@@ -105,7 +115,7 @@ run: build quit ## Build and launch the app
 clean: ## Remove build products
 	rm -rf $(DERIVED_DATA)
 
-.PHONY: help sparkle build build-release run quit clean \
+.PHONY: help sparkle build run quit clean \
 	format-swift format-swift-check swift-format-version blame-setup
 
 # ── Formatting ────────────────────────────────────────────────────────────────
