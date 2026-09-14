@@ -21,3 +21,35 @@ xcuserdata/
 
 # SwiftPM
 .swiftpm/
+
+# Direct distribution. Vendor/ is fetched and checksummed by `make sparkle` rather
+# than committed. The rest is key material, and this repo is public: a Developer ID
+# certificate, an App Store Connect key, or the Sparkle private key exported for CI
+# is one `git add -A` away from being published to everyone.
+apps/apple/Vendor/
+sparkle_key.pem
+*.p8
+*.p12
+
+# The licence signing key lives in the root .env, and the Worker's secrets are
+# staged in apps/api/.<env>.vars before `pnpm secrets:prod` pushes them. Their
+# .example templates are tracked; the files themselves never are.
+#
+# Globbed rather than listed, which is bastion's lesson: its list named .dev.vars
+# and .prod.vars and missed .test.vars, which carries the signing key too — the one
+# secret that cannot be rotated without refusing every key ever issued.
+.env
+.env.*
+!.env.example
+*.vars
+!*.vars.example
+.mcp.json
+
+# Node
+node_modules/
+dist/
+.astro/
+*.tsbuildinfo
+
+# Wrangler's local state, including the miniflare D1 the Worker tests run against.
+.wrangler/

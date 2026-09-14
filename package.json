@@ -1,0 +1,30 @@
+{
+  "name": "@mgcrea/armada",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A macOS menu bar app for running many Claude Code and Codex sessions: state, context and plan limits at a glance",
+  "license": "MIT",
+  "author": "Olivier Louvignes <olivier@mgcrea.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mgcrea/armada.git"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check ."
+  },
+  "devDependencies": {
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.13.1"
+}
