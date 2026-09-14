@@ -135,5 +135,6 @@ keeps the network half of that honest.
 
 ## Supported versions
 
-There is no released build yet: the first, 1.0.0, is being cut. Report against `main`; there is
-nothing older to back-port to.
+Only the newest release is supported. Fixes ship in the next release rather than being back-ported,
+and the update check offers that release to every earlier build. Report against the newest release
+or `main`.

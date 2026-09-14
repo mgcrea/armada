@@ -4,13 +4,11 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-Nothing has been released yet. There is no `app-v` tag and no signed build: the first release,
-1.0.0, is being prepared, and until it is tagged the app is built from source with `make build`.
-Releases are tagged `app-v<version>` the way the sibling repos are, and both the GitHub release
-notes and the Sparkle update dialog are rendered from this file, which is the curated summary.
-`### Internal` sections are left out of both.
+Releases are tagged `app-v<version>` the way the sibling repos are,
+with `app-v1.0.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.0.0] - 2026-09-14
 
 The app went from nothing to a working menu bar app between 2026-09-11 and 2026-09-13. Entries
 below are grouped by what they do rather than replayed commit by commit.
@@ -70,35 +68,9 @@ below are grouped by what they do rather than replayed commit by commit.
   session which of the others need you, what any of them is doing or last said, and how much plan
   is left. Five tools, none of which can change a session, start one or write anywhere. The session
   runs on your own plan, and its connection details never touch your Claude configuration.
-
-### Changed
-
-- **The network claim names the one socket Armada listens on.** The supervisor's MCP endpoint
-  binds 127.0.0.1 and nothing else, and `make audit` checks that in the listener's source beside
-  Sparkle's allowance.
-- **The network claim names its one exception.** `SECURITY.md` and `make audit` now say Armada
-  reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle
-  exactly the capability it was measured to use.
-- **The scope line "v1 watches; it doesn't launch agents" was reopened**, deliberately, when
-  New Session landed. Armada still never owns an agent process and still holds no credentials;
-  what changed is that it can ask a terminal to start one.
-- **The menu bar halo is three assets** rather than a composed overlay, drawn as two arcs
-  offset from each sail.
-
-### Fixed
-
-- **Codex plan limits lagged** behind what was on disk: the newest figures usually live in a
-  rollout the session scan has no reason to open. The scan now always tails the newest rollout
-  in the tree.
-- **A Codex writer lock spans a session, not a turn** — confirmed, which is what makes
-  "waiting for input" reachable.
-- **A session adopted mid-flight showed the wrong age**, because `lastWrite` was not seeded
-  from disk.
-- **`CLAUDE_CONFIG_DIR` carried a trailing slash**, which made a stored value silently fail to
-  match.
-- **Selecting a session added a ghost row** for the same project, gone a second later. Armada's
-  own `claude` probes register as sessions on 2.1.269, and the list took them for real ones.
-  Registries whose process is Armada's child are now skipped.
+- **A network claim you can check.** Armada reaches no network on its own apart from the opt-in
+  update check, and listens on one socket, the supervisor's MCP endpoint, on 127.0.0.1 only.
+  `SECURITY.md` says so, and `make audit` asserts it against the built app.
 
 ### Internal
 

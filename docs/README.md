@@ -42,8 +42,8 @@ The dashboard half of the design shipped ahead of sections 3–5 being written, 
 sections are now partly answered by working code — read
 [implementation.md](implementation.md) before writing them up.
 
-1. Cut the first release, 1.0.0, following [releasing.md](releasing.md). The site, the payment
-   link and the licence Worker are live; the signed build is what is missing.
+1. Exercise the update path on the second release: Sparkle installing it over 1.0.0 is the one
+   part of [releasing.md](releasing.md) the first release could not test.
 2. Review design section 2 (message flow) — the one v1 feature with nothing built.
 3. Write sections 3–5: dashboard data, error handling, testing.
 4. Run the tests listed in [design.md](design.md#tests-to-run-before-building).

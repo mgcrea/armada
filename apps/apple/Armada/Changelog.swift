@@ -203,24 +203,19 @@ nonisolated enum Changelog {
 
   // <generated:changelog> generated from CHANGELOG.md by `make changelog` — do not edit by hand
 
-  /// The most recent 0 releases, newest first.
+  /// The most recent 1 releases, newest first.
   ///
   /// Split into one `let` per release rather than a single nested literal.
   /// Swift's expression type-checker is superlinear in the depth of an array
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = []
+  static let releases: [Release] = [v1_0_0]
 
-  /// Work that is written down but not shipped.
-  ///
-  /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
-  /// tag's version, so there is no `[Unreleased]` left to emit by then. The
-  /// pane shows it in debug builds only, where it is true of what is running.
   // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
+  private static let v1_0_0: Release = Release(
+    version: "1.0.0",
+    date: "2026-09-14",
     sections: [
       Section(
         name: "Added",
@@ -322,74 +317,20 @@ nonisolated enum Changelog {
             body: [
               "Settings ▸ Supervisor runs a read-only MCP server on 127.0.0.1 and starts a Claude Code session with it attached, so you can ask one session which of the others need you, what any of them is doing or last said, and how much plan is left. Five tools, none of which can change a session, start one or write anywhere. The session runs on your own plan, and its connection details never touch your Claude configuration.",
             ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
           Entry(
             ordinal: 16,
-            headline: "The network claim names the one socket Armada listens on.",
+            headline: "A network claim you can check.",
             body: [
-              "The supervisor's MCP endpoint binds 127.0.0.1 and nothing else, and `make audit` checks that in the listener's source beside Sparkle's allowance.",
-            ]),
-          Entry(
-            ordinal: 17,
-            headline: "The network claim names its one exception.",
-            body: [
-              "`SECURITY.md` and `make audit` now say Armada reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle exactly the capability it was measured to use.",
-            ]),
-          Entry(
-            ordinal: 18,
-            headline: "The scope line \"v1 watches; it doesn't launch agents\" was reopened",
-            body: [
-              ", deliberately, when New Session landed. Armada still never owns an agent process and still holds no credentials; what changed is that it can ask a terminal to start one.",
-            ]),
-          Entry(
-            ordinal: 19,
-            headline: "The menu bar halo is three assets",
-            body: [
-              "rather than a composed overlay, drawn as two arcs offset from each sail.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 20,
-            headline: "Codex plan limits lagged",
-            body: [
-              "behind what was on disk: the newest figures usually live in a rollout the session scan has no reason to open. The scan now always tails the newest rollout in the tree.",
-            ]),
-          Entry(
-            ordinal: 21,
-            headline: "A Codex writer lock spans a session, not a turn",
-            body: [
-              "— confirmed, which is what makes \"waiting for input\" reachable.",
-            ]),
-          Entry(
-            ordinal: 22,
-            headline: "A session adopted mid-flight showed the wrong age",
-            body: [
-              ", because `lastWrite` was not seeded from disk.",
-            ]),
-          Entry(
-            ordinal: 23,
-            headline: "`CLAUDE_CONFIG_DIR` carried a trailing slash",
-            body: [
-              ", which made a stored value silently fail to match.",
-            ]),
-          Entry(
-            ordinal: 24,
-            headline: "Selecting a session added a ghost row",
-            body: [
-              "for the same project, gone a second later. Armada's own `claude` probes register as sessions on 2.1.269, and the list took them for real ones. Registries whose process is Armada's child are now skipped.",
+              "Armada reaches no network on its own apart from the opt-in update check, and listens on one socket, the supervisor's MCP endpoint, on 127.0.0.1 only. `SECURITY.md` says so, and `make audit` asserts it against the built app.",
             ]),
         ]),
     ])
 
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  /// Work that is written down but not shipped.
+  ///
+  /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
+  /// tag's version, so there is no `[Unreleased]` left to emit by then. The
+  /// pane shows it in debug builds only, where it is true of what is running.
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

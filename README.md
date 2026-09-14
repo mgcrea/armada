@@ -6,10 +6,9 @@ A macOS menu bar app for someone running many Claude Code and Codex sessions at 
 is doing, how full its context window is, and how much of each plan is left — read from what the
 agents already write to disk, plus one question asked of the user's own `claude`.
 
-> **On sale, not yet released.** [armada.mgcrea.io](https://armada.mgcrea.io) is live and sells a
-> licence, and the licence Worker that delivers keys is deployed, but the first release (1.0.0) is
-> still being cut: there is no `app-v` tag and no signed build yet, so for now build it from source
-> and run it. Status on 2026-09-14: the app covers two of v1's three features. The third, messaging,
+> **Released.** 1.0.0 is out, as a Developer ID signed and notarized download from
+> [armada.mgcrea.io](https://armada.mgcrea.io), which also sells the licence; the source still builds
+> with `make build`. Status on 2026-09-14: the app covers two of v1's three features. The third, messaging,
 > is designed and not started. [Status](#status) lists exactly what runs today,
 > [CHANGELOG.md](CHANGELOG.md) what has changed, and
 > [docs/implementation.md](docs/implementation.md) what it cost to get there.
@@ -286,7 +285,7 @@ threat model moves when messaging lands.
 The same split both siblings use, for the same reason turned around: Armada is pointed at every
 agent transcript you have. Nobody should grant that to software they cannot read, so the source
 stays readable, auditable and buildable by anyone. The reservation covers the signed build, whose
-licences are on sale and whose first release is being cut, under its own [EULA](apps/apple/EULA).
+licences are on sale and which has shipped since 1.0.0, under its own [EULA](apps/apple/EULA).
 
 ## Docs
 

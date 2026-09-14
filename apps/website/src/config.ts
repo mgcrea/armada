@@ -82,18 +82,17 @@ export const X_HANDLE = "@mgcrea";
 export const CF_ANALYTICS_TOKEN: string | null = null;
 
 /**
- * False until there is something to download.
+ * Whether there is something to download. True from 1.0.0, 2026-09-14.
  *
  * It gates every Download and Buy button, the version pill, and the JSON-LD
  * `downloadUrl`, `softwareVersion` and `offers`, so the site cannot half-announce
- * a release. The Buy buttons wait for it even though /buy is already live. It
- * does not gate every string: anything outside a SHIPPED branch has to be true on
- * its own.
+ * a release. It does not gate every string: anything outside a SHIPPED branch has
+ * to be true on its own.
  *
- * Flipping it needs a published release under REPO_URL (so /download resolves)
- * and REPO_PUBLIC true. Whether a licence can be bought is SELLING, not this.
+ * It needs a published release under REPO_URL (so /download resolves) and
+ * REPO_PUBLIC true. Whether a licence can be bought is SELLING, not this.
  */
-export const SHIPPED = false;
+export const SHIPPED = true;
 
 /**
  * Whether /buy resolves to a live payment link.
@@ -107,9 +106,9 @@ export const SHIPPED = false;
 export const SELLING = true;
 
 /**
- * The version the first release will carry, as a bare marketing version.
- * Shown only when SHIPPED: a version printed before there is a release names
- * something nobody can download.
+ * The newest release's version, as a bare marketing version. CI refuses an
+ * `app-v` tag this disagrees with. Shown only when SHIPPED: a version printed
+ * before there is a release names something nobody can download.
  */
 export const APP_VERSION = "1.0.0";
 
