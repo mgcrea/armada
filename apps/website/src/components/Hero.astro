@@ -67,7 +67,8 @@ const CLAIMS = [
 
       {/* Until SHIPPED the honest primary action is reading on. The price is
           stated now, because a price shown before launch is a promise the page
-          can keep, where a Buy button in front of a missing /buy is not. */}
+          can keep. /buy is live, but the Buy button waits for SHIPPED with
+          Download; see public/_redirects. */}
       <div class="flex flex-wrap items-center gap-3">
         {
           SHIPPED ? (

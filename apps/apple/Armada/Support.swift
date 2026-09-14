@@ -7,13 +7,10 @@ import SupportKitSettings
 /// One constant; the feedback URL, the support page, the prefilled issue and the
 /// mail draft are all derived from it.
 ///
-/// **`armada.mgcrea.io` does not resolve yet.** Checked on 2026-09-11: the host
-/// has no DNS, so the Help menu's Support and Feedback items are dead links until
-/// the marketing site ships. That is a deliberate, recorded placeholder rather
-/// than an oversight — the fleet convention is `<app>.mgcrea.io` and swapping it
-/// is this one line — but it is the thing to fix before anyone but the author
-/// runs this build. `https://mgcrea.io/support/` and `/feedback/` both answer 200
-/// today if an interim destination is wanted.
+/// `armada.mgcrea.io` has resolved since 2026-09-14, when the marketing site
+/// shipped, so the Help menu's Support and Feedback items land on real pages. Until
+/// then it was a recorded placeholder: the fleet convention is `<app>.mgcrea.io`,
+/// and this one line is where the host would move.
 ///
 /// `trackerURL` is the shared `mgcrea/support` tracker rather than a repo of
 /// Armada's own, matching the eight App Store apps: Armada has no public

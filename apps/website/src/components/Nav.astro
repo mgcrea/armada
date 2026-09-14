@@ -54,9 +54,10 @@ const links = [
     </nav>
 
     {/* The bar is the one element that survives a scroll, so it carries the
-        funnel. Until SHIPPED there is nothing to download or buy, and a button
-        pointing at a missing redirect would be a 404, so it says so instead. The
-        responsive hiding sits on a wrapper span; see Button.astro for why. */}
+        funnel. Until SHIPPED there is nothing to download, and a Download button
+        pointing at a release that does not exist would be a 404, so it says so
+        instead. /buy is live, but Buy waits with Download; see public/_redirects.
+        The responsive hiding sits on a wrapper span; see Button.astro for why. */}
     <div class="flex flex-none items-center gap-2">
       {
         SHIPPED ? (

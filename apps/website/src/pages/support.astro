@@ -20,7 +20,7 @@ import {
   FEEDBACK_URL,
   ISSUES_URL,
   PRICING,
-  SHIPPED,
+  SELLING,
   SITE_URL,
   SUPPORT_EMAIL,
   SUPPORT_EMAIL_HREF,
@@ -59,7 +59,7 @@ const strong = "font-medium text-fg";
       <strong class={strong}>does telling us what went wrong mean quoting your own work?</strong>
     </p>
     {
-      !SHIPPED && (
+      !SELLING && (
         <p class="mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.6] text-fg-muted text-pretty">
           {APP_NAME} is not released yet, so there are no licences to help with. Questions before
           launch are welcome through any of the routes below.

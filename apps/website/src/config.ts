@@ -82,18 +82,29 @@ export const X_HANDLE = "@mgcrea";
 export const CF_ANALYTICS_TOKEN: string | null = null;
 
 /**
- * False until there is something to download and something to buy.
+ * False until there is something to download.
  *
  * It gates every Download and Buy button, the version pill, and the JSON-LD
  * `downloadUrl`, `softwareVersion` and `offers`, so the site cannot half-announce
- * a release. It does not gate every string: anything outside a SHIPPED branch
- * has to be true on its own.
+ * a release. The Buy buttons wait for it even though /buy is already live. It
+ * does not gate every string: anything outside a SHIPPED branch has to be true on
+ * its own.
  *
- * Flipping it needs three things to already exist: a `/buy` line in
- * public/_redirects, a published release under REPO_URL (so /download resolves),
- * and REPO_PUBLIC true.
+ * Flipping it needs a published release under REPO_URL (so /download resolves)
+ * and REPO_PUBLIC true. Whether a licence can be bought is SELLING, not this.
  */
 export const SHIPPED = false;
+
+/**
+ * Whether /buy resolves to a live payment link.
+ *
+ * The website's mirror of `LicenseLinks.isSelling` in
+ * apps/apple/Armada/LicensePane.swift, true on both sides since 2026-09-14. It
+ * gates the prose that says whether anything is on sale, on /terms, /support and
+ * /privacy. SHIPPED used to, and so those pages said nothing was for sale while
+ * /buy was taking payments.
+ */
+export const SELLING = true;
 
 /**
  * The version the first release will carry, as a bare marketing version.
@@ -119,7 +130,8 @@ export const DOWNLOAD = {
 
 /**
  * The evaluation window. Started from a button, never armed on its own, and held
- * in memory rather than written to disk.
+ * in memory rather than written to disk. Repeated by hand in public/llms.txt; see
+ * PRICING.
  */
 export const TRIAL = { minutes: 30 } as const;
 
@@ -131,6 +143,10 @@ export const TRIAL = { minutes: 30 } as const;
  * The USD figure is quoted tax-exclusive and the EUR figure VAT-inclusive, the
  * ordinary convention on each side. The two numbers are not meant to be equal,
  * so `Pricing.astro` shows both rather than picking one.
+ *
+ * public/llms.txt repeats this and TRIAL by hand, as prose: it is a static file
+ * nothing renders from here. A price, a refund window or a trial length changed
+ * here is a second edit there.
  */
 export const PRICING = {
   /** Display form. `amount` is what the JSON-LD offer carries. */
@@ -139,7 +155,7 @@ export const PRICING = {
   currency: "USD",
   /** Shown alongside, VAT included, as EU buyers are quoted and charged. */
   eur: { price: "€14.99", amount: "14.99", currency: "EUR" },
-  /** The stable vanity URL. Not in public/_redirects yet; see the note there. */
+  /** The stable vanity URL: a 302 in public/_redirects to the live Stripe payment link. */
   buy: "/buy",
   /** Written as a fragment, so a call site capitalises it where a sentence starts. */
   covers: "every 1.x release, on every Mac you own",

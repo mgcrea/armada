@@ -24,7 +24,7 @@ import {
   FEEDBACK_API,
   FEEDBACK_URL,
   REPO_PUBLIC,
-  SHIPPED,
+  SELLING,
   SITE_URL,
   SUPPORT_EMAIL,
   SUPPORT_EMAIL_HREF,
@@ -55,7 +55,7 @@ const LEAVES = [
 const STAYS = [
   {
     what: "Your transcripts",
-    body: "Armada reads the session files Claude Code and Codex already write, where they already are, in <code>~/.claude*</code> and <code>~/.codex</code>, and opens them read only. It has no connection of its own to send them over.",
+    body: "Armada reads the session files Claude Code and Codex already write, where they already are, in <code>~/.claude*</code> and <code>~/.codex</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself.",
   },
   {
     what: "Your vendor accounts",
@@ -67,7 +67,7 @@ const STAYS = [
   },
   {
     what: "What Armada writes",
-    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session.",
+    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor.",
   },
 ] as const;
 
@@ -119,7 +119,8 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
         That is the whole list for Armada itself: no analytics, no telemetry, no crash reporter and no
         first-run ping. <code>make audit</code> checks it against every build. It sweeps every Mach-O
         in the built app for URL loading, DNS and TLS symbols, with one narrowly named exception for
-        Sparkle, the framework the update check uses.
+        Sparkle, the framework the update check uses, and checks that the supervisor's MCP endpoint
+        binds 127.0.0.1 and nothing else.
         {
           REPO_PUBLIC && (
             <>
@@ -174,13 +175,13 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
     <section class="mt-16">
       <h2 class={h2}>Buying a licence</h2>
       {
-        !SHIPPED && (
+        !SELLING && (
           <p class={lead}>
             Nothing is on sale yet. This is how a purchase will be handled once it is.
           </p>
         )
       }
-      <p class={SHIPPED ? lead : prose}>
+      <p class={SELLING ? lead : prose}>
         Apart from anything you choose to write to us, this is the one place personal data exists at
         all, and it exists because a licence has to be deliverable and a refund has to be traceable to
         a sale.

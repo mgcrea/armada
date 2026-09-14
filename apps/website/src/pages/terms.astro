@@ -13,7 +13,7 @@
  */
 import Footer from "../components/Footer.astro";
 import Nav from "../components/Nav.astro";
-import { APP_NAME, DOCS, REPO_PUBLIC, SHIPPED } from "../config";
+import { APP_NAME, DOCS, REPO_PUBLIC, SELLING } from "../config";
 import Layout from "../layouts/Layout.astro";
 
 import eula from "../../../apple/EULA?raw";
@@ -30,7 +30,7 @@ import eula from "../../../apple/EULA?raw";
       Licence terms
     </h1>
     {
-      !SHIPPED && (
+      !SELLING && (
         <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
           {APP_NAME} is not on sale yet. These are the terms its first release is planned to ship
           under, published early so they can be read before anything is sold.

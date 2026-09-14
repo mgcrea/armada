@@ -5,8 +5,10 @@
 > window is, and how much of each plan is left, read locally from what the agents already write
 > to disk.
 
-Not released yet. macOS 26 or later, and macOS only. The first release will be a Developer ID
-signed, notarized zip published on GitHub releases. Not affiliated with Anthropic or OpenAI.
+On sale, and not yet downloadable: a licence can be bought at https://armada.mgcrea.io/buy, and the
+first release, 1.0.0, is being prepared. macOS 26 or later, and macOS only. The first release will
+be a Developer ID signed, notarized zip published on GitHub releases. Not affiliated with Anthropic
+or OpenAI.
 
 ## What it shows
 
@@ -61,6 +63,7 @@ signed, notarized zip published on GitHub releases. Not affiliated with Anthropi
 ## Links
 
 - Site: https://armada.mgcrea.io
+- Buy: https://armada.mgcrea.io/buy
 - Support: https://armada.mgcrea.io/support/
 - Privacy: https://armada.mgcrea.io/privacy
 - Terms: https://armada.mgcrea.io/terms
