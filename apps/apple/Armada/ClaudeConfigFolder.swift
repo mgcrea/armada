@@ -37,10 +37,9 @@ nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
   /// inherit a shell's environment, so in practice this is the default folder
   /// unless Armada was started from a terminal that had the variable set.
   ///
-  /// Watching *several* folders at once is the real multi-account feature and is
-  /// not built: `docs/design.md` has it in v1 proper, and it needs an account
-  /// column in the sessions list and one `UsageTracker` per folder rather than a
-  /// second path here.
+  /// Not the list Armada watches. `discoverAll` below finds every folder on this Mac
+  /// and `Accounts` runs one `Account` per folder; this is only the one folder a
+  /// launch would pick on its own, which is what `ClaudeConfigFolder.default` holds.
   static func resolved(
     environment: [String: String] = ProcessInfo.processInfo.environment,
     home: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -123,8 +122,9 @@ nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
 
   /// The folder Claude Code uses when `CLAUDE_CONFIG_DIR` is **unset**.
   ///
-  /// Load-bearing for `UsageProbe`, which has to decide whether to set that variable
-  /// on the `claude` it spawns. Setting it to this folder's own path is not a no-op:
+  /// Load-bearing for `ClaudeControl`, which has to decide whether to set that
+  /// variable on every `claude` it spawns, for the usage probe and the context probe
+  /// alike. Setting it to this folder's own path is not a no-op:
   /// a custom folder keeps its account file *inside* it, so `CLAUDE_CONFIG_DIR` sends
   /// Claude Code looking for `~/.claude/.claude.json` — which does not exist, because
   /// the default folder's lives *beside* it. Measured 2026-09-12: the probe then

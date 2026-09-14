@@ -28,6 +28,9 @@ nonisolated enum ClaudeControl {
   /// one does not pin a background task for a minute. Warm responses land in ~1s.
   static let timeout: TimeInterval = 20
 
+  /// How long a process that ignored `terminate()` has before it is killed outright.
+  static let killGrace: TimeInterval = 2
+
   /// Run one control request and return its success payload, or nil.
   ///
   /// Nil on every failure — no binary, a timeout, a non-success response, a malformed
@@ -66,11 +69,17 @@ nonisolated enum ClaudeControl {
     // noise, and an unread pipe is a process that blocks once it fills one.
     process.standardError = FileHandle.nullDevice
 
+    // The last moment before a process exists. `Accounts.stop()` cancels the probe
+    // that led here when the entitlement is refused, and one already queued on the
+    // utility pool would otherwise start `claude` behind a locked panel.
+    guard !Task.isCancelled else { return nil }
     do { try process.run() } catch { return nil }
+    let watchdog = armWatchdog(for: process)
     defer {
-      // The CLI exits when stdin closes, but not instantly; the kill is what bounds
-      // this. Both are needed — closing alone leaves a process behind on a timeout,
-      // and killing alone can race a clean exit into a spurious error.
+      watchdog.cancel()
+      // The CLI exits when stdin closes, but not instantly, so one still running once
+      // the answer is in is terminated here. Both are needed — closing alone leaves a
+      // process behind, and killing alone can race a clean exit into a spurious error.
       try? input.fileHandleForWriting.close()
       if process.isRunning { process.terminate() }
     }
@@ -82,6 +91,31 @@ nonisolated enum ClaudeControl {
     else { return nil }
 
     return readResponse(from: output.fileHandleForReading)
+  }
+
+  /// The deadline, enforced on the process rather than on the read.
+  ///
+  /// `availableData` blocks until the pipe has something or reaches its end, so a
+  /// `claude` that goes silent without exiting parks `readResponse` for good: the
+  /// loop's own deadline check never gets another turn, and the `terminate()` in the
+  /// caller's `defer` only runs once the read has returned. Ending the process is what
+  /// unblocks it. Its end of the pipe closes, the read comes back empty, and
+  /// `readResponse` returns nil.
+  ///
+  /// `SIGTERM` first, so the CLI can take its MCP servers down with it, then `SIGKILL`
+  /// for one wedged past answering that. The `isRunning` check in front of the kill is
+  /// what keeps it from reaching a pid the system has already handed to someone else.
+  private static func armWatchdog(for process: Process) -> DispatchWorkItem {
+    let pid = process.processIdentifier
+    let watchdog = DispatchWorkItem {
+      guard process.isRunning else { return }
+      process.terminate()
+      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) {
+        if process.isRunning { kill(pid, SIGKILL) }
+      }
+    }
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
+    return watchdog
   }
 
   /// Read stream-json until the control response arrives or the deadline passes.
@@ -96,8 +130,8 @@ nonisolated enum ClaudeControl {
     while Date() < deadline {
       // `availableData` blocks until there is something, which is why the deadline
       // is checked around it rather than trusted to bound it: a silent process
-      // parks here until it writes or exits. The terminate in the caller's defer is
-      // the real backstop.
+      // parks here until it writes or exits. The watchdog `request` arms is what
+      // bounds that, by making sure it exits.
       let chunk = handle.availableData
       if chunk.isEmpty { return nil }  // EOF: the process gave up first.
       buffer.append(chunk)

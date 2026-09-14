@@ -53,6 +53,35 @@ final class NewSessionLauncher {
     if failure != nil { AppDelegate.shared?.showMain() }
   }
 
+  /// Start a Claude Code session with Armada's MCP server attached, which is all a
+  /// supervisor is. See `NewSession.Supervisor` and `SupervisorPane`.
+  ///
+  /// Refuses rather than starting a plain session when the server is off: a supervisor with
+  /// no server answers every question about the fleet with a connection error, which is a
+  /// worse way to learn the switch is off than this sentence.
+  func startSupervisor(on folder: ClaudeConfigFolder, in project: URL) {
+    let controller = MCPServerController.shared
+    guard let port = controller.runningPort else {
+      failure =
+        "Turn on the MCP server in Settings ▸ Supervisor first. The supervisor reads your sessions through it."
+      return
+    }
+    let token = controller.token
+    guard !token.isEmpty else {
+      failure =
+        "Armada could not read the MCP server's token from the keychain"
+        + (controller.tokenError.map { ": \($0)" } ?? ".")
+      return
+    }
+    if let message = NewSession.start(
+      .claude(folder), in: project, terminal: terminal,
+      supervisor: NewSession.Supervisor(port: port, token: token),
+      completion: { [weak self] message in self?.failure = message })
+    {
+      failure = message
+    }
+  }
+
   /// Pick a folder, then start there.
   ///
   /// `runModal` rather than a sheet: Armada's windows are hosted `NSWindow`s (see

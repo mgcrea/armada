@@ -5,8 +5,8 @@ features. [design.md](design.md) still describes v1 in full and remains the plan
 says what of it exists, what was deliberately left out, and the things a reader would
 otherwise have to rediscover.
 
-The app lives in `apps/apple`. `make run` builds and launches it; `make build` and
-`make format-swift-check` are what CI runs.
+The app lives in `apps/apple`. `make run` builds and launches it, and `make test` runs every
+suite; what CI gates on is listed in the [README](../README.md#working-on-it).
 
 ## What it does
 
@@ -24,6 +24,10 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
   `codex` running in that folder on that account: Armada writes a startup script and
   hands it to Terminal, never owns the process, and the new session arrives through the
   watchers like any other.
+- **Supervisor**, opt-in: a read-only MCP server on `127.0.0.1` (Settings ▸ Supervisor), and
+  a Start Supervisor Session button that opens an ordinary Claude Code session with that
+  server attached, its five tools pre-allowed, and a brief. The session is the chat: ask it
+  which sessions need you, what one is doing, or how much plan is left. Voice is not built.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -33,7 +37,8 @@ The app lives in `apps/apple`. `make run` builds and launches it; `make build` a
   the part most likely to want revisiting.
 
 Not built, and all of it deliberate: **messaging** (v1's third feature), hooks, `hubctl`,
-the Unix socket, the MCP surface, and anything that writes to a vendor's config. This app
+the Unix socket, the messaging MCP surface (`send_message`, `list_agents`), and anything that
+writes to a vendor's config. This app
 only ever reads `~/.claude*` and `~/.codex`.
 
 ## The shape
@@ -70,6 +75,10 @@ transcripts, separate rate limits.
 | `AccountOverview` / `CodexOverview` | the detail pane with nothing selected, per vendor |
 | `NewSessionSection` / `SessionTallySection` | the two halves both overviews are built from |
 | `RecentProject` | the folders an account has run in, for that menu |
+| `ArmadaMCP` (package) | the five tools, `FleetSource` and its snapshot types, the transcript condenser; `make -C apps/apple test` |
+| `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
+| `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
+| `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
 usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
@@ -237,6 +246,20 @@ Each of these cost time here, and none is visible from the code that depends on 
   `UsageSnapshot.Source.sessionLog` is the other half of the same point: those figures do
   not decay the way a cache does, so they get their age shown and no staleness warning —
   only a rolled-over window voids them.
+- **MCP tool calls run on the listener's connection threads, never the main actor.**
+  `FleetBridge` is the only door, and it hops once with `MainActor.run` and reads stored
+  properties. Two hops can straddle a rescan and pair one session's state with another rescan's
+  context; an `await` or a file read inside the hop runs MCP work on the thread drawing the
+  window. Transcript reads happen in the tool, after the hop, off the main actor.
+- **`FleetBridge` is a `nonisolated struct`, not a main-actor class.** Under
+  `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, a main-actor class conforming to `FleetSource`
+  gets an isolated conformance, and that cannot be handed to the listener's threads at all.
+- **The supervisor's token travels in a file, never an argument.** `--mcp-config` takes inline
+  JSON too, but a process's arguments are readable through `ps`. The file is created 0600 in
+  the launch's own temporary directory, and `prune` clears it with the script.
+- **The MCP token's Keychain item is per bundle identifier.** Debug and the installed build are
+  signed differently, so one shared item would prompt in whichever did not create it. Each build
+  has its own token, and the two collide on the port if both are switched on.
 
 ## Verifying it against reality
 
@@ -264,6 +287,11 @@ ls -A ~/.codex/thread-writer-locks/                        # live sessions, minu
                                                            # .coordination.lock
 tail -c 65536 <rollout>.jsonl | grep '"token_count"' | tail -1 \
   | jq .payload.rate_limits                                # the figures the header shows
+
+# The MCP endpoint, with Settings ▸ Supervisor switched on:
+curl -s -H "Authorization: Bearer <token>" http://127.0.0.1:8790/health   # 200 and the versions
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8790/health    # 401 without the token
+log stream --predicate 'subsystem == "io.mgcrea.armada" && category == "mcp"'  # a line per call
 ```
 
 The `date -d` above is GNU; on a stock macOS `date` it is `-v-12H`.
@@ -283,9 +311,15 @@ shows an empty usage strip, and neither crashes.
 
 ## Known gaps
 
-- **`armada.mgcrea.io` does not resolve**, so the Help menu's Support and Feedback items are
-  dead links until the site ships. One line in `Support.swift`.
-- **No tests**, and so no `make test`. A target that ran nothing would be worse than none.
+- **The tests cover what fails silently, not the UI.** `make test` runs four suites:
+  `scripts/` under node:test (the CHANGELOG parse the appcast, the release body and the What's
+  New pane share; the licence key format; and the Sparkle signature check `make appcast` runs),
+  the licence Worker under vitest inside the Workers runtime against a local D1, the app's
+  pure files under `make unit` (the transcript parsers, forecasts, sort order and licence
+  refusals, compiled beside a check driver with `swiftc`), and the ArmadaMCP package under
+  `swift test` against a fake fleet. The app target has no test bundle.
+  `make license-check`, which runs a minted key through the real `License.swift`, needs the
+  signing key, so it is not part of `make test` and runs in CI only where that secret exists.
 - **Folder discovery is not watched**: a config folder created while Armada is running does
   not appear until relaunch.
 - **The prefix breakdown describes a comparable session, not the watched one.** The panel's

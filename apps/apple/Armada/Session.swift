@@ -101,6 +101,16 @@ final class Session: Identifiable {
   /// straight from the registry — see `SessionRegistry.waitingFor`.
   var waitingFor: String? { state == .waiting ? registry.waitingFor : nil }
 
+  /// Whether this session looks like it wants you: `.waiting`, plus `.runningTool`.
+  ///
+  /// **One definition, read in three places that must agree** — the menu bar halo's
+  /// count (`Accounts.blockedSessionCount`), the mouse button's "next waiting"
+  /// (`MouseCommand.waiting()`), and the MCP server's `armada_needs_attention`. A
+  /// supervisor that skipped a session the halo was lit for would read as broken, and
+  /// so would a button that did. See `Accounts.blockedSessionCount` for why the reported
+  /// state and the inferred one are counted together.
+  var wantsAttention: Bool { state == .waiting || state == .runningTool }
+
   /// The newest rate-limit refusal seen in this session's transcript, if any.
   ///
   /// **Kept once seen, never cleared by a later read.** A refusal is a thing that
@@ -149,6 +159,11 @@ final class Session: Identifiable {
   /// expensive full-scan fallback is paid for at most once per size.
   var titleScannedSize: UInt64 = 0
   var didFullScan = false
+
+  /// The transcript's size and modification date the last time its tail was asked
+  /// whether it ends on an unanswered `tool_use`, and the answer. Ignored by
+  /// observation: no view draws it. See `SessionWatcher.isAwaitingToolResult`.
+  @ObservationIgnored var toolResultCheck: (size: UInt64, modified: Date, awaiting: Bool)?
 
   var id: String { registry.sessionId }
 

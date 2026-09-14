@@ -70,7 +70,9 @@ is in the decision log.
 - **Research instrumentation** from Claude Code's OpenTelemetry export: tokens, cost,
   active time, time blocked on the user, per session, prompt and account.
 - **On-demand triage agent** that reads across all sessions ("which should I look at
-  first?"). A natural fit for swift-mcp-kit's in-app HTTP endpoint.
+  first?"). **Shipped 2026-09-14 as the supervisor**: a read-only loopback MCP endpoint in the
+  app, and a Claude Code session started with it attached. Next: an "allow actions" switch for
+  a focus tool, and voice as on-device speech around the same session.
 
 ## Security model (Drafted)
 
@@ -186,6 +188,9 @@ Script: [spike/runtime-cost/measure.sh](spike/runtime-cost/measure.sh).
   `ToolTable` built over a data-source protocol, tested against a fake).
 - **Not `MCPKitLoopback` for messaging.** One shared bearer token over HTTP can't tell which
   session is calling, and it would put that token in every agent's config.
+- **`MCPKitLoopback` for the supervisor.** The objection above is about messaging, where the
+  sender's identity decides delivery. The supervisor endpoint has one caller, the person who
+  started the session and holds the token, asking read-only questions. See the decision log.
 - **mcp-a2a** (`~/Projects/mgcrea/mgcrea-ai/mcp-a2a`, TypeScript, v0.1.0, unreleased, 87
   passing tests). Its **A2A peer** (daemon on `127.0.0.1:41241`, agent card, incoming A2A
   tasks) stays, **off by default**. Its stdio relay and its 12 `a2a_*` tools are superseded
@@ -401,4 +406,5 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-10 | Swift per session, Node only once | All Node by adapting mcp-a2a (about 750 MB at 16 sessions); all Swift (drops the A2A peer; no Swift A2A SDK) |
 | 2026-09-10 | mcp-a2a's A2A peer kept, off by default | Dropping working, tested code that the handoff stage needs |
 | 2026-09-10 | swift-mcp-kit's core used in the app; its HTTP listener not used for messaging | A shared bearer token can't identify sessions |
+| 2026-09-14 | The supervisor is a Claude Code session attached to a read-only loopback MCP endpoint in the app | Does not reverse the row above: that refused the listener for *messaging*, where one shared token cannot say which session is calling. The supervisor has one identity — the person, who starts the session and holds the token — and every tool reads. Rejected: a chat pane calling a model API (a second network exception, a stored credential, and per-token cost where the session already runs on the person's plan); a chat pane on Apple's on-device model (free and private, too small to reason over transcripts); a stdio server binary (a per-session process, and a transport the kit does not have); voice in the first cut (Claude's API takes no audio, so voice is on-device speech around this same text session, and can follow). |
 | 2026-09-10 | Deliver to Claude with an `asyncRewake` hook, not channels | Channels are interactive-only, a research preview, not configurable in VS Code, and their content was refused |

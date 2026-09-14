@@ -54,6 +54,9 @@ final class Accounts {
   private var timer: DispatchSourceTimer?
   private var probeTimer: DispatchSourceTimer?
   private var lastProbe: [String: Date] = [:]
+  /// The probe last started for each account, held so `stop()` can cancel one that
+  /// has not reached its `claude` yet.
+  private var probes: [String: Task<Void, Never>] = [:]
   private let queue = DispatchQueue(label: "io.mgcrea.armada.config")
 
   /// Every live session across every account, newest first — what the menu bar
@@ -85,7 +88,7 @@ final class Accounts {
   /// that lit for the guess but not for the certainty would be indefensible.
   var blockedSessionCount: Int {
     all.reduce(0) {
-      $0 + $1.sessions.sessions.count { $0.state == .waiting || $0.state == .runningTool }
+      $0 + $1.sessions.sessions.count(where: \.wantsAttention)
     }
   }
 
@@ -139,7 +142,9 @@ final class Accounts {
   ///
   /// Called by `EntitlementMonitor` when the entitlement is refused — a trial
   /// window closing, or a key removed — so an unlicensed Armada is not quietly
-  /// polling folders and spawning `claude` probes behind a locked panel.
+  /// polling folders and spawning `claude` probes behind a locked panel. That includes
+  /// a probe already started: its task is cancelled here, and `ClaudeControl` checks
+  /// for that immediately before it spawns anything.
   ///
   /// Streams before objects. Every FSEvents context here holds its watcher
   /// UNRETAINED, so each stream is stopped and invalidated before the list that
@@ -156,6 +161,8 @@ final class Accounts {
     timer = nil
     probeTimer?.cancel()
     probeTimer = nil
+    for probe in probes.values { probe.cancel() }
+    probes = [:]
     for account in all { account.sessions.stop() }
     all = []
     lastProbe = [:]
@@ -180,16 +187,27 @@ final class Accounts {
     for account in all
     where now.timeIntervalSince(lastProbe[account.id] ?? .distantPast) >= Self.probeThrottle {
       lastProbe[account.id] = now
-      Task { await account.probeUsage() }
+      probes[account.id] = Task { await account.probeUsage() }
     }
   }
 
-  /// Watch each usage file's *directory*, because an atomic rewrite replaces the
-  /// inode and a watch on the file itself would follow the one thrown away.
+  /// Watch each usage file's own path, not the directory it sits in.
+  ///
+  /// **The directory was `$HOME`.** The default folder's `.claude.json` sits beside
+  /// `~/.claude` rather than inside it, and FSEvents watches a directory recursively,
+  /// so this stream used to receive an event for every file touched anywhere under the
+  /// home folder, only for `handle` to throw nearly all of them away.
+  ///
+  /// The directory was chosen for fear that an atomic rewrite, which replaces the
+  /// inode, would leave a watch on the file following the one thrown away. FSEvents is
+  /// path based and does not. Measured on 2026-09-14 with a throwaway stream on a file
+  /// path: a temp file renamed over it, Foundation's `atomically: true` write, an
+  /// in-place append, a delete and recreate, and the file first appearing after the
+  /// stream started were all reported, and a write to a sibling in the same directory
+  /// was not.
   private func startWatchingConfigFiles() {
-    let directories = Set(
-      all.map { $0.folder.usageJSON.deletingLastPathComponent().path(percentEncoded: false) })
-    guard !directories.isEmpty, stream == nil else { return }
+    let files = Set(all.map { $0.folder.usageJSON.path(percentEncoded: false) })
+    guard !files.isEmpty, stream == nil else { return }
 
     var context = FSEventStreamContext(
       version: 0,
@@ -203,7 +221,7 @@ final class Accounts {
         | kFSEventStreamCreateFlagNoDefer)
     guard
       let created = FSEventStreamCreate(
-        kCFAllocatorDefault, configEventCallback, &context, Array(directories) as CFArray,
+        kCFAllocatorDefault, configEventCallback, &context, Array(files) as CFArray,
         FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 1.0, flags)
     else { return }
     FSEventStreamSetDispatchQueue(created, queue)
@@ -211,10 +229,9 @@ final class Accounts {
     stream = created
   }
 
-  /// The home directory is one of the watched directories — `~/.claude.json` lives
-  /// there — so this sees an event for everything the user touches in `~`. Match
-  /// on the exact usage paths rather than a prefix, or Armada re-parses a 153KB
-  /// document every time anything at all changes in the home folder.
+  /// Matched on the exact usage paths. Every folder's file arrives on this one
+  /// stream, and an event should re-parse the 153KB document it names, not all of
+  /// them.
   fileprivate func handle(paths: [String]) {
     for account in all
     where paths.contains(account.folder.usageJSON.path(percentEncoded: false)) {

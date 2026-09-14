@@ -74,7 +74,7 @@ enum MouseCommand {
     var rows: [(session: Session, account: Account)] = []
     for account in Accounts.shared.all {
       for session in account.sessions.sessions
-      where session.state == .waiting || session.state == .runningTool {
+      where session.wantsAttention {
         rows.append((session, account))
       }
     }

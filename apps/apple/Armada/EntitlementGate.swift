@@ -41,6 +41,9 @@ final class EntitlementMonitor {
       CodexAccounts.shared.stop()
     }
     MouseTap.shared.sync()
+    // After the watchers, for the same reason as the tap: an unlicensed Armada holds no
+    // sessions, so the MCP server stops with them rather than answering with an empty fleet.
+    MCPServerController.shared.sync()
   }
 
   func startTrial() {

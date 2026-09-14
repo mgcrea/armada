@@ -16,15 +16,23 @@
 # commit. That day is this file: Sparkle is the one exception, allowed exactly the
 # symbols it was measured to use, and the claim now says so.
 #
+# The second allowance is the supervisor's MCP endpoint, and it is a listening
+# socket rather than a connection: swift-mcp-kit's loopback listener, never
+# constructed until Settings ▸ Supervisor switches it on, bound to 127.0.0.1 and
+# nothing else. It uses the POSIX socket calls, which the symbol sweep cannot deny
+# because local IPC shares them, so its allowance is asserted where the socket is
+# made instead: see "Loopback" below.
+#
 # Cupertino's script is the model, and the Sparkle rules below are its rules.
-# Bastion's cannot be — it binds a loopback socket on purpose and so cannot make
-# the claim at all.
+# Bastion's cannot be — its loopback gateway is always on and is the product, where
+# Armada's one listener is opt-in and read-only — so it cannot make the claim at all.
 #
 # What it does NOT assert, deliberately:
 #
-#   * `socket`, `bind`, `connect`. Armada opens no socket of its own, but those
-#     syscalls are shared with local IPC, so they could never be the test.
-#     AF_INET is the test, and it is asserted at the source level below.
+#   * `socket`, `bind`, `connect`. Those syscalls are shared with local IPC, so they
+#     could never be the test. The address family is: none in Armada's own
+#     sources, and in swift-mcp-kit's listener only the loopback address. Both are
+#     asserted at the source level below.
 #   * What the `claude` process Armada spawns then does. It talks to Anthropic —
 #     that is its job, on the user's own sign-in. This audits Armada, not the
 #     program it asks a question of. See SECURITY.md.
@@ -194,7 +202,7 @@ fi
 # names an internet address family is not one.
 echo ""
 echo "  Sources — an internet address family appears nowhere"
-SOURCES=(apps/apple/Armada)
+SOURCES=(apps/apple/Armada apps/apple/Packages)
 # Vendor/ is not our source. Sparkle's own test harness contains a `sockaddr_in`
 # web server; what constrains the framework is the symbol sweep above.
 PRUNE=(--exclude-dir=.build --exclude-dir=Vendor)
@@ -215,6 +223,45 @@ if [ -n "$inet" ]; then
   status=1
 else
   printf '  ok    %-46s no internet address family\n' "sockets"
+fi
+
+# ---------------------------------------------------------------------------
+# The second allowance: the supervisor's MCP endpoint. The sweep above covers
+# Armada's own sources, and the one internet socket in the bundle is not in them —
+# it is swift-mcp-kit's loopback listener, linked in through Packages/ArmadaMCP. So
+# the pardon is checked where the socket is made: the checkout the bundle was built
+# from must bind the loopback literal it was measured to use, and must never name a
+# wildcard or IPv6 address. Comment lines are skipped, because the kit's own
+# documentation explains why 0.0.0.0 is refused, and grep cannot tell prose from code.
+#
+# A missing checkout is a failure rather than a skip. An allowance that could not be
+# inspected has not been checked, and "ok" would say it had.
+# ---------------------------------------------------------------------------
+echo ""
+echo "  Loopback — the MCP endpoint binds 127.0.0.1 and nothing else"
+KIT_LISTENER=apps/apple/.build/SourcePackages/checkouts/swift-mcp-kit/Sources/MCPKitLoopback
+KIT_VERSION=$(grep -A6 '"identity" : "swift-mcp-kit"' \
+  apps/apple/Armada.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved 2>/dev/null |
+  sed -n 's/.*"version" : "\(.*\)".*/\1/p' || true)
+if [ ! -d "$KIT_LISTENER" ]; then
+  printf '  FAIL  %-46s no checkout at %s — run `make build` first\n' "MCPKitLoopback" "$KIT_LISTENER"
+  status=1
+else
+  code=$(grep -rnE --include='*.swift' 'AF_INET|INADDR_|0\.0\.0\.0|in6addr|s_addr' "$KIT_LISTENER" |
+    grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+  wildcard=$(printf '%s\n' "$code" | grep -E 'INADDR_ANY|0\.0\.0\.0|in6addr|AF_INET6' || true)
+  elsewhere=$(printf '%s\n' "$code" | grep 's_addr' | grep -v '0x7F00_0001' || true)
+  loopback=$(printf '%s\n' "$code" | grep -c '0x7F00_0001' || true)
+  if [ -n "$wildcard" ] || [ -n "$elsewhere" ]; then
+    printf '  FAIL  %-46s binds something other than loopback:\n' "MCPKitLoopback"
+    printf '%s\n%s\n' "$wildcard" "$elsewhere" | grep -v '^$' | sed 's/^/          /'
+    status=1
+  elif [ "$loopback" -lt 1 ]; then
+    printf '  FAIL  %-46s no longer names the loopback literal it was measured to bind\n' "MCPKitLoopback"
+    status=1
+  else
+    printf '  ok    %-46s binds 127.0.0.1 only (swift-mcp-kit %s)\n' "MCPKitLoopback" "${KIT_VERSION:-unpinned}"
+  fi
 fi
 
 # Armada ships no entitlements file at all, and that is a property rather than an
@@ -277,10 +324,13 @@ if [ "$status" -eq 0 ]; then
   echo "  Audited $checked Mach-O file(s)."
   if [ "$saw_sparkle" -eq 1 ]; then
     echo "  Armada opens exactly one connection of its own: the update check, to"
-    echo "  armada.mgcrea.io, and only once you turn it on. Nothing it reads leaves this Mac."
+    echo "  armada.mgcrea.io, and only once you turn it on. It listens on one socket: the"
+    echo "  MCP endpoint, on 127.0.0.1 only, and only while Settings ▸ Supervisor has it on."
   else
-    echo "  Armada opens no socket of its own. Nothing it reads leaves this Mac."
+    echo "  Armada opens no connection of its own. It listens on one socket: the MCP"
+    echo "  endpoint, on 127.0.0.1 only, and only while Settings ▸ Supervisor has it on."
   fi
+  echo "  Nothing it reads leaves this Mac unless you point an agent at that endpoint."
   echo "  This says nothing about the \`claude\` it spawns, which talks to Anthropic"
   echo "  on your own sign-in — see SECURITY.md."
 else

@@ -22,7 +22,7 @@ import Foundation
 /// absent: they take a command as an argument (`-e`) rather than as a document, which
 /// is a second launch mechanism, and inventing one per terminal without a copy to test
 /// against is how you ship a button that does nothing. Adding one is a row here plus a
-/// branch in `NewSession.launch`, once somebody can run it.
+/// branch in `NewSession.start`, once somebody can run it.
 ///
 /// Only installed terminals are ever offered, so an unverified row costs nothing on a
 /// Mac that does not have it.

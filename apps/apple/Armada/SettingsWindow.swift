@@ -23,6 +23,7 @@ import SwiftUI
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case mouse
+  case supervisor
   case usage
   case about
   case whatsNew
@@ -34,6 +35,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "General"
     case .mouse: "Mouse"
+    case .supervisor: "Supervisor"
     case .usage: "Usage"
     case .about: "About"
     case .whatsNew: "What's New"
@@ -47,6 +49,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "gearshape"
     case .mouse: "computermouse"
+    case .supervisor: "binoculars"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
@@ -82,6 +85,7 @@ struct SettingsWindowView: View {
       switch pane {
       case .general: GeneralPane()
       case .mouse: MousePane()
+      case .supervisor: SupervisorPane()
       case .usage: UsageSettingsPane()
       case .about:
         // `includesSupport: false` — the support rows have their own pane now,
@@ -158,7 +162,7 @@ struct GeneralPane: View {
         // reason is not in the icon, it is in what the vendors do and do not
         // record. The sails fill on their own and are not part of this choice.
         Text(
-          "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex session that is merely open counts as waiting on you."
+          "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex session that is merely open counts as waiting on you. To keep one limit's figure beside the icon, star it in Usage or above an account's sessions."
         )
       }
 

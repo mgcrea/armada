@@ -74,6 +74,7 @@ struct NewSessionSection: View {
   let projects: [RecentProject]
 
   @State private var launcher = NewSessionLauncher.shared
+  @State private var mcp = MCPServerController.shared
 
   var body: some View {
     Section {
@@ -108,6 +109,20 @@ struct NewSessionSection: View {
       }
       Button("Choose Folder…") {
         launcher.chooseFolder(for: agent, near: projects.first?.url)
+      }
+      // Claude only: the supervisor is a Claude Code session, and the home folder because it
+      // belongs to no one project. Settings ▸ Supervisor offers a folder picker.
+      if case .claude(let folder) = agent {
+        Button("Start Supervisor Session") {
+          launcher.startSupervisor(
+            on: folder, in: FileManager.default.homeDirectoryForCurrentUser)
+        }
+        .disabled(mcp.runningPort == nil)
+        .help(
+          mcp.runningPort == nil
+            ? "Turn on the MCP server in Settings ▸ Supervisor to start a session that can see every session on this Mac."
+            : "Start claude in your home folder, connected to Armada, to ask about every session at once."
+        )
       }
     } header: {
       Text("New session")

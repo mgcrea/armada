@@ -26,15 +26,45 @@ Three properties, each of which is checkable rather than asserted:
   classes it was measured to use and nothing more; the shipped Info.plist asserted to keep
   checks off and to point at that one feed; the sources swept for an internet address
   family; and no entitlements, in the project or in the signature.
+
+  The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
+  in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
+  configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
+  and all five of its tools are read-only. `make audit` checks the listener's source for the
+  loopback address and refuses a wildcard.
+
 - **It never writes to a vendor's configuration.** `~/.claude*` and `~/.codex` are opened
   read-only. Armada installs no hook, writes no `settings.json`, and adds no MCP server entry.
   The only things it writes anywhere are its own preferences, its usage history in Application
-  Support, and a session startup script in its own temporary directory.
+  Support, and a session startup script in its own temporary directory — beside which a
+  supervisor session's MCP configuration is written, readable by you alone. That session is told
+  about Armada on its own command line; nothing is added to the account's configuration.
 - **It holds no vendor credentials.** There is no "sign in with Claude", nothing reads or
   stores an OAuth token, and `auth.json` is never opened — a Codex plan name arrives inside
   the rate limits as `plan_type`, so no credential file is touched at all. The reasoning, and
   the three alternatives that were weighed and declined, are in
   [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md).
+
+## What it reads
+
+Read-only is not the same as narrow, so the whole read surface is listed here rather than left
+to "`~/.claude*` and `~/.codex`":
+
+- **Each account's own folders:** `~/.claude`, every `~/.claude-*` beside it, `CLAUDE_CONFIG_DIR`,
+  `~/.codex` and `CODEX_HOME`, for session registries, transcripts, session logs and cached
+  usage. Finding the `~/.claude-*` folders means listing the top of your home folder.
+- **`~/.claude.json`**, watched for changes, for the plan usage Claude Code caches there.
+- **`~/.vscode/extensions`**, listed to find a `codex` binary bundled with the Codex extension.
+- **`.git`, up to four folders above each session's working folder**, checked for existence
+  only, to name the window that session belongs to.
+- **The process table**, walked from a session's process up through its parents, to find the
+  application hosting it.
+- **Your project's configuration, through `claude`.** The context breakdown spawns your own
+  `claude` inside a session's working folder, so that process reads what any `claude` started
+  there reads, including the project's `CLAUDE.md` and its settings.
+
+None of it leaves the Mac through Armada. The only request Armada makes is the opt-in update
+check, and the only thing it serves is the opt-in loopback MCP endpoint described above.
 
 ## In scope
 
@@ -52,6 +82,13 @@ attacker-influenced text meets something that acts on it:
   `NewSession.quoted` as a single-quoted shell word; anything that escapes that quoting, or
   that gets the script written somewhere another user can replace it before Terminal opens
   it, is in scope.
+- **The MCP endpoint.** Switched on, Armada serves five read-only tools on `127.0.0.1` to
+  whoever presents the token. Anything that reaches a tool without it, gets past the kit's
+  `Host` and `Origin` checks from a web page, binds another interface, adds a tool that writes,
+  or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
+  the token: it is created 0600 in the launch's own temporary directory and pruned with the
+  script, and anything that makes it readable by another user or puts the token on a command
+  line is in scope.
 - **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
   control request. Anything that changes _which_ binary is run, or that gets an argument or
   an environment variable in from data rather than from configuration, is in scope.
@@ -70,8 +107,11 @@ attacker-influenced text meets something that acts on it:
   sign-in — that is the program's job, and running it unmodified is the arrangement
   [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) is built around.
   Armada spawns it and reads one answer.
-- **What an agent itself decides to do.** Armada watches sessions; it does not supervise them
-  and has never claimed to.
+- **What an agent itself decides to do.** Armada watches sessions and answers questions about
+  them; it does not direct them. A supervisor session is an ordinary agent reading those
+  answers, and transcript text reaching it through `armada_read_transcript` is labelled as data
+  written by other agents. Whether a model then follows instructions inside it is that model's
+  behaviour, not Armada's.
 - **Other programs running as the same macOS user.** They can already read every transcript
   and rewrite every agent's config directly, so nothing in Armada changes their reach. This
   is stated as an explicit out-of-scope in [docs/design.md](docs/design.md#security-model-drafted)
@@ -89,9 +129,11 @@ The design answers that with a router that decides delivery rather than the send
 policy per pair of agents, labelling and an audit log — see
 [docs/design.md](docs/design.md#security-model-drafted) and
 [docs/reaching-agents.md](docs/reaching-agents.md). None of it exists yet. Until it does,
-Armada opens no socket beyond the opt-in update check, installs no hook and serves no MCP
-tools, and `make audit` is what keeps that honest.
+Armada installs no hook and delivers nothing to any agent. The only MCP tools it serves are the
+supervisor's read-only ones, on loopback, off until you turn them on, and `make audit` is what
+keeps the network half of that honest.
 
 ## Supported versions
 
-There is no released build. Report against `main`; there is nothing older to back-port to.
+There is no released build yet: the first, 1.0.0, is being cut. Report against `main`; there is
+nothing older to back-port to.

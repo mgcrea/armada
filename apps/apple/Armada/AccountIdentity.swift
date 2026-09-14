@@ -71,7 +71,7 @@ nonisolated struct AccountIdentity: Sendable, Hashable {
 ///
 /// The file is 153KB and both the usage cache and the account identity live in
 /// it, so parsing it once and handing the dictionary to each is worth the small
-/// indirection — `UsageTracker` re-reads on a 30s cadence and would otherwise pay
+/// indirection — `Account.refreshConfig` re-reads on a 30s cadence and would otherwise pay
 /// for the same parse twice every time.
 nonisolated enum ClaudeConfigDocument {
   static func read(_ url: URL) -> [String: Any]? {
