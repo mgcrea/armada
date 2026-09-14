@@ -3,10 +3,12 @@
 A native macOS app for running many coding agents at once: see every Claude Code and
 Codex session across your accounts, track plan limits, and let agents message each other.
 
-**Status on 2026-09-13: the app is built and runs**, covering two of v1's three features —
+**Status on 2026-09-14: the app is built and runs**, covering two of v1's three features —
 the session dashboard and plan limits, per Claude account and, as a spike, per Codex home —
 plus starting a session in a project on a chosen account, which the original scope had left
-out. Messaging is designed and not started. See [implementation.md](implementation.md).
+out. An opt-in supervisor also shipped: a Claude Code session that reads the fleet through a
+read-only MCP endpoint on loopback. Messaging is designed and not started. See
+[implementation.md](implementation.md).
 
 ## Start here
 
@@ -27,8 +29,10 @@ out. Messaging is designed and not started. See [implementation.md](implementati
 
 - `~/Projects/mgcrea/mgcrea-ai/mcp-a2a`: unreleased TypeScript A2A bridge. Its A2A peer is
   kept, off by default. Its relay and tools are superseded for v1 messaging.
-- `~/Developer/github/swift-mcp-kit`: the author's Swift MCP library. Armada's app uses its
-  protocol core (`MCPKit`).
+- `~/Developer/github/swift-mcp-kit`: the author's Swift MCP library. The app uses its
+  protocol core (`MCPKit`) and, for the supervisor, its loopback listener (`MCPKitLoopback`),
+  through `apps/apple/Packages/ArmadaMCP`. Messaging will still need a non-HTTP path added to
+  the core.
 - `~/Projects/apps/bastion`: Swift 6 menu-bar app by the same author. Source for the app
   shell, merging entries into client config files, and the embedded-Node pattern.
 

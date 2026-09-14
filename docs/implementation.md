@@ -292,7 +292,22 @@ tail -c 65536 <rollout>.jsonl | grep '"token_count"' | tail -1 \
 curl -s -H "Authorization: Bearer <token>" http://127.0.0.1:8790/health   # 200 and the versions
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8790/health    # 401 without the token
 log stream --predicate 'subsystem == "io.mgcrea.armada" && category == "mcp"'  # a line per call
+
+# A tools/list round trip. The 2026-07-28 revision wants the method in a header and the
+# version in the body's _meta as well; without them the listener refuses the frame.
+curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: tools/list' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
+       "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+       "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
+  | jq -r '.result.tools[].name'                          # the five armada_* tools
 ```
+
+To point a session in this repo at the endpoint rather than starting a supervisor, put the
+JSON snippet from Settings ▸ Supervisor in `.mcp.json` at the root. It carries the bearer
+token, which is why `.gitignore` lists it beside the secrets. Claude Code shows a project
+`.mcp.json` server as pending until it is approved, and connects to it only after that.
 
 The `date -d` above is GNU; on a stock macOS `date` it is `-v-12H`.
 
@@ -389,3 +404,29 @@ someone may want to make differently.
 - **`~/.codex/state_5.sqlite` is left alone.** It would give exact titles, archived state
   and git branches, at the cost of depending on a versioned private schema. That trade is
   worth revisiting only if the plain files stop being enough.
+
+### Where the supervisor is thin
+
+Shipped 2026-09-14. The package suite covers the tool table against a fake fleet, and the
+listener was driven over a real socket with that table; the rest is known and unmeasured.
+
+- **Never run end to end from the button.** Not yet observed: a session started by Start
+  Supervisor Session connecting, `--allowedTools mcp__armada` sparing it the permission
+  prompts, and `--name` reaching the registry so the row reads "Armada supervisor" before an
+  `ai-title` lands. The argument order was checked by having zsh split the generated line.
+- **Regenerating the token cuts off every client silently.** A running supervisor and any
+  `.mcp.json` holding the old token get a 401 on their next call. Nothing tells them why.
+- **Debug and installed builds keep separate tokens and share a default port.** Whichever
+  is switched on second shows the bind failure in the pane and serves nothing.
+- **Codex transcripts are condensed thinly.** `armada_read_transcript` keeps messages,
+  function calls and their outputs, and turn completions. Reasoning and the `event_msg`
+  copies are dropped, and the injected-context filter is a prefix match on the tags seen on
+  this Mac.
+- **Codex never needs attention.** `armada_needs_attention` leaves it out for the reason the
+  halo does: `awaitingInput` means open, not blocked. A supervisor asked about Codex has to
+  read `armada_get_fleet` and judge.
+- **A Claude context percentage can rest on a guess.** The limit comes from
+  `ContextWindow.resolve`, and `limitNote` carries its explanation. An agent that drops the
+  note reports an assumed 200k as fact.
+- **The supervisor is Claude-only.** Codex takes an MCP server through `-c mcp_servers`, so a
+  Codex supervisor is a launch-script change, not a server change.

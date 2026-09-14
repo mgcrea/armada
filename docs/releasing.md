@@ -111,7 +111,7 @@ grep -c "MARKETING_VERSION = $v;" apps/apple/Armada.xcodeproj/project.pbxproj   
 sed -n 's/^export const APP_VERSION = "\(.*\)";$/\1/p' apps/website/src/config.ts
 sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | head -1                        # X.Y.Z
 grep -q "\`app-v$v\` being the newest" CHANGELOG.md && echo intro-ok
-make changelog-check && make format-swift-check && pnpm test:scripts
+make changelog-check && make format-swift-check && pnpm test:scripts && make test
 node scripts/changelog-notes.mjs "$v" CHANGELOG.md >/dev/null && echo appcast-notes-ok
 node scripts/changelog-notes.mjs --markdown "$v" CHANGELOG.md                     # the release body
 ```

@@ -136,6 +136,15 @@ From a zero-dependency stdio board server ([spike/delivery/](spike/delivery/READ
   `~/.claude/settings.json`. Teams share a task list under `~/.claude/tasks/<team>/` and
   mailboxes under `~/.claude/teams/<team>/inboxes/`.
 
+**Open as of 2026-09-14: the supervisor as a sender.** The supervisor Armada starts is an
+ordinary interactive `claude`, so `ListAgents` and `SendMessage` should work from it, for the
+sessions in its own config folder only, the discovery boundary measured below. That would
+make it the one process Armada starts that can put text in front of another session, with no
+hook and no socket of Armada's. Not yet checked: that a session started with `--mcp-config`,
+`--allowedTools` and `--append-system-prompt` still has both tools, and whether acting on
+`armada_needs_attention` that way is something the supervisor should be allowed to do
+unprompted. Its brief currently only tells it to report.
+
 ## The transport underneath `SendMessage`
 
 Read out of the 2.1.267 binary on 2026-09-12, and checked against this Mac's 17 live

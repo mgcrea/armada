@@ -10,8 +10,8 @@ written spec, then an implementation plan.
 > two, the app is what happened and [implementation.md](implementation.md) describes it.
 > Section 3's Codex bullets in particular were written before anyone had read a rollout;
 > [codex-sessions.md](codex-sessions.md) now has the measurements. Everything in section 1's messaging
-> architecture (`hubctl`, the socket, hook installation, the MCP surface) is still design
-> only, and still the plan. This doc is not stale as a *plan*; it is just no longer the only
+> architecture (`hubctl`, the socket, hook installation, the messaging MCP surface) is still
+> design only, and still the plan. This doc is not stale as a *plan*; it is just no longer the only
 > place to look.
 
 Markers: **Decided** (agreed with the author), **Drafted** (proposed, not yet reviewed),
@@ -73,6 +73,22 @@ is in the decision log.
   first?"). **Shipped 2026-09-14 as the supervisor**: a read-only loopback MCP endpoint in the
   app, and a Claude Code session started with it attached. Next: an "allow actions" switch for
   a focus tool, and voice as on-device speech around the same session.
+- **Voice for the supervisor** (researched 2026-09-14, not built, nothing below measured
+  here). Speech in and out stays on the Mac, and the model sees text, for three reasons:
+  - **Neither route to Claude takes audio.** The Messages API accepts text and images only;
+    [an audio content type](https://github.com/anthropics/anthropic-sdk-python/issues/1198)
+    was requested on 2026-02-23 and is open. Claude Code's own voice mode is dictation into
+    the prompt. Codex CLI removed its push-to-talk in 0.118.0 and added realtime audio
+    conversations in 0.145.0, but only inside its own client.
+  - **Recognition.** macOS 26's `SpeechAnalyzer` needs no dependency and, in published
+    benchmarks, leads on clean speech in French, Spanish, German and Italian. Parakeet, run
+    as Core ML through FluidAudio, is reported faster and more accurate on English and on
+    disfluent speech, at the cost of a model download and a package. Start with Apple's.
+  - **Synthesis.** `AVSpeechSynthesizer` with a premium system voice reads the supervisor's
+    replies, taken from the transcript tail Armada already watches.
+
+  All three keep `make audit` true with no new allowance. A cloud voice on either side
+  would be a second network exception and belongs in the decision log first.
 
 ## Security model (Drafted)
 

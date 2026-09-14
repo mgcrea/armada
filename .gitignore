@@ -52,6 +52,7 @@ sparkle_key.pem
 !.env.example
 *.vars
 !*.vars.example
+# A project MCP config carries the bearer token of Armada's own endpoint.
 .mcp.json
 
 # Node
