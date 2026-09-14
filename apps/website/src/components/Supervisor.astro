@@ -1,0 +1,110 @@
+---
+/**
+ * The supervisor: a read-only MCP endpoint on loopback, and a Claude Code session
+ * started with it attached.
+ *
+ * The tool titles are the tools' own `title`s in
+ * apps/apple/Packages/ArmadaMCP/Sources/ArmadaMCP/Tools.swift, and the bodies are
+ * their descriptions, shortened. The port is `MCPServerController.defaultPort`;
+ * it can be changed in Settings, which is why the card says "by default" nowhere
+ * and the prose never names it. SECURITY.md is the authority on the rest.
+ */
+import SectionCopy from "./SectionCopy.astro";
+
+const PORT = 8790;
+
+const TOOLS = [
+  {
+    title: "What needs me",
+    body: "The Claude Code sessions that want you now, most urgent first, with what each is waiting for. The same rule that rings the menu bar icon.",
+  },
+  {
+    title: "Fleet overview",
+    body: "Every account and session Armada watches, across both vendors, with state, context and when each last moved.",
+  },
+  {
+    title: "One session",
+    body: "Everything known about one session: what it waits for, project, model, context occupancy, and the app hosting it.",
+  },
+  {
+    title: "What a session said",
+    body: "The latest turns of one transcript: what was asked, what was answered, which tools ran. A bounded tail, never the whole file.",
+  },
+  {
+    title: "Plan limits",
+    body: "Each account's 5-hour and 7-day windows, how much is used, when each resets, and how old the figure is.",
+  },
+] as const;
+---
+
+<section
+  id="supervisor"
+  class="relative scroll-mt-20 overflow-hidden bg-linear-to-b from-bg-2 to-bg py-[96px]"
+>
+  <div
+    class="pointer-events-none absolute inset-x-0 -bottom-[260px] h-[540px]"
+    style="background:radial-gradient(46% 58% at 50% 100%,rgba(246,161,119,.16),transparent 70%)"
+    aria-hidden="true"
+  >
+  </div>
+
+  <div class="wrap relative grid grid-cols-1 items-start gap-12 lg:grid-cols-2 lg:gap-16">
+    <SectionCopy eyebrow="The supervisor" heading="Ask an agent which of your agents needs you.">
+      <p class="m-0 text-[16px] leading-[1.6] text-pretty text-fg-dim">
+        Turn it on, and Armada serves a read-only MCP endpoint on your Mac. One button then opens an
+        ordinary Claude Code session with that endpoint attached, its tools pre-allowed and a brief
+        already written. The session is the interface: ask it what the fleet is doing, what a session
+        last said, or how much plan is left before you start another.
+      </p>
+      <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
+        Off by default, because it is the one part of the app that shows your fleet to a model. It
+        binds <code>127.0.0.1</code> only and answers a token kept in your Keychain. None of its tools
+        can start, stop, steer or write anything. The session runs on your own plan, and its connection
+        details never touch your Claude configuration.
+      </p>
+    </SectionCopy>
+
+    <div class="flex flex-col gap-3.5">
+      <div
+        class="reveal flex items-center justify-between gap-3 rounded-[12px] border border-accent/30 bg-bg-3 px-[18px] py-4"
+      >
+        <span class="flex flex-col gap-[3px]">
+          <span class="text-[13.5px] font-semibold">Settings ▸ Supervisor</span>
+          <span class="font-mono text-[11px] text-fg-muted">
+            127.0.0.1:{PORT} · token in the Keychain
+          </span>
+        </span>
+        <span
+          class="box-border flex h-[22px] w-[38px] flex-none justify-end rounded-full bg-ok p-0.5"
+          aria-hidden="true"
+        >
+          <span class="block size-[18px] rounded-full bg-fg"></span>
+        </span>
+      </div>
+
+      <div class="reveal flex flex-col overflow-hidden rounded-[12px] border border-rule bg-bg-2">
+        <span
+          class="border-b border-rule px-[18px] py-3.5 font-mono text-[11px] tracking-[.08em] text-fg-muted uppercase"
+        >
+          Five tools, all read-only
+        </span>
+        <ul class="m-0 list-none p-0">
+          {
+            TOOLS.map((t) => (
+              <li class="flex gap-3 border-b border-white/4 px-[18px] py-3.5 last:border-b-0">
+                <span
+                  class="mt-[7px] block size-1.5 flex-none rounded-full bg-accent"
+                  aria-hidden="true"
+                />
+                <span class="flex flex-col gap-[3px]">
+                  <span class="text-[13.5px] font-medium text-fg">{t.title}</span>
+                  <span class="text-[12.5px] leading-[1.55] text-pretty text-fg/50">{t.body}</span>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

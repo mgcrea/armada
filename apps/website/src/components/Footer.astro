@@ -4,9 +4,9 @@ import {
   DOWNLOAD,
   FEEDBACK_URL,
   ISSUES_URL,
+  PRICING,
   REPO_PUBLIC,
   REPO_URL,
-  SHIPPED,
   SIBLING_APPS,
 } from "../config";
 import Logo from "./Logo.astro";
@@ -23,26 +23,34 @@ const isExternal = (href: string) => href.startsWith("http");
 
 const columns: { title: string; links: FooterLink[] }[] = [
   {
+    title: "Read",
+    links: [
+      { label: "The window", href: "/#fleet" },
+      { label: "How it works", href: "/#how" },
+      { label: "The supervisor", href: "/#supervisor" },
+      { label: "The four rules", href: "/#rules" },
+      { label: "Known gaps", href: "/#status" },
+    ],
+  },
+  {
+    title: "Get it",
+    links: [
+      { label: "Download", href: DOWNLOAD.href },
+      { label: `Buy · ${PRICING.price}`, href: PRICING.buy },
+      { label: "Release notes", href: DOWNLOAD.releases },
+      { label: "Checksum", href: DOWNLOAD.checksum },
+      /** Only once there is something public to point at; see REPO_PUBLIC. */
+      ...(REPO_PUBLIC ? [{ label: "Source ↗", href: REPO_URL }] : []),
+    ],
+  },
+  {
     title: "Help",
     links: [
       { label: "Support", href: "/support/" },
       { label: "Feedback", href: FEEDBACK_URL },
       { label: "Public tracker ↗", href: ISSUES_URL },
-    ],
-  },
-  {
-    title: "Legal",
-    links: [
       { label: "Privacy", href: "/privacy" },
       { label: "Terms", href: "/terms" },
-    ],
-  },
-  /** Only once there is something public to point at; see REPO_PUBLIC. */
-  {
-    title: "Source",
-    links: [
-      ...(REPO_PUBLIC ? [{ label: "GitHub ↗", href: REPO_URL }] : []),
-      ...(SHIPPED ? [{ label: "Releases", href: DOWNLOAD.releases }] : []),
     ],
   },
   {
@@ -53,10 +61,10 @@ const columns: { title: string; links: FooterLink[] }[] = [
       title: app.blurb,
     })),
   },
-].filter((column) => column.links.length > 0);
+];
 ---
 
-<footer class="border-t border-rule py-12">
+<footer class="border-t border-rule bg-[#080909] py-12">
   <div class="wrap flex flex-wrap gap-x-16 gap-y-10">
     <div class="flex basis-full flex-col gap-3 sm:basis-auto sm:pr-8">
       <div class="flex items-center gap-2.5">
@@ -64,6 +72,7 @@ const columns: { title: string; links: FooterLink[] }[] = [
         <span class="font-display text-[14.5px] font-[590] tracking-[-0.02em] text-fg">Armada</span>
       </div>
       <p class="m-0 text-[12.5px] leading-[1.6] text-fg-muted">
+        Signed, notarized, {DOWNLOAD.requires}.<br />
         Not affiliated with Anthropic or OpenAI.<br />
         <code class="font-mono">{BUNDLE_ID}</code>
       </p>
@@ -73,7 +82,7 @@ const columns: { title: string; links: FooterLink[] }[] = [
         rel="noopener"
         class="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted transition-colors hover:text-accent-hi"
       >
-        <MagentaMark size={13} uid="footer" />Magenta Creations
+        <MagentaMark size={13} uid="footer" seam="#080909" />Magenta Creations
       </a>
     </div>
 

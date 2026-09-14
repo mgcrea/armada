@@ -15,7 +15,7 @@
 
    Dark is the base, and there is one theme, as on both siblings. Everything is
    still a token, so a light theme later is a second block and no component
-   edits. */
+   edits. The one light band, the four rules, uses the paper pair below. */
 :root {
   --color-bg: #0b0c0f;
   --color-bg-2: #131419;
@@ -36,14 +36,20 @@
   /* Plate top. Used only where the gradient itself is being quoted. */
   --color-plate-top: #ffd9a2;
 
-  /* Session states in the glance diagram. The fill/ink split is bastion's: a dot
-     wants a fill colour, a label wants the same hue lifted for text. */
+  /* Session states and limit bars in the drawings. The fill/ink split is
+     bastion's: a dot wants a fill colour, a label wants the same hue lifted for
+     text. `danger` is also the eyebrow on the paper band, where it reads 6.4:1. */
   --color-ok: #3e9e63;
   --color-ok-ink: #8fd9a9;
   --color-warn: #e0a63f;
+  --color-danger: #b3341f;
   --color-danger-ink: #e4805c;
 
-  /* The menu bar strip in the glance diagram. */
+  /* The menu bar and window chrome in the drawings. */
   --color-chrome: #1c1e23;
   --color-chrome-2: #24262c;
+
+  /* The light band. */
+  --color-paper: #f8f7f3;
+  --color-ink: #151617;
 }

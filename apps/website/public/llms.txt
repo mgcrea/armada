@@ -34,6 +34,25 @@ later, and macOS only. Not affiliated with Anthropic or OpenAI.
 - Middle and extra mouse buttons can cycle the session list or send a keystroke.
 - The menu bar glyph fills while a session is working and rings when one wants attention.
 
+## The supervisor
+
+- Off until you turn it on in Settings ▸ Supervisor. Armada then serves a read-only MCP endpoint on
+  127.0.0.1 (port 8790 unless changed), answering only a bearer token kept in the Keychain.
+- One button opens a Claude Code session with that endpoint attached, its tools pre-allowed and a
+  brief written, so you can ask one session which of the others need you, what any of them last
+  said, and how much plan is left.
+- Five tools, all read-only: what needs me, fleet overview, one session, what a session said, and
+  plan limits. None can start, stop, steer or write anything.
+- The session runs on your own plan, and its connection details never touch your Claude
+  configuration.
+
+## Not built yet
+
+- Messaging between agents across accounts and vendors: designed, not started.
+- Voice for the supervisor: researched, not started.
+- A config folder created while Armada is running appears only after a relaunch.
+- New Session needs a terminal that runs a script it is handed, such as Terminal or iTerm.
+
 ## Privacy and security
 
 - Armada reaches no network on its own. The one exception is the update check, off until you
@@ -47,7 +66,8 @@ later, and macOS only. Not affiliated with Anthropic or OpenAI.
   `~/Library/Application Support/io.mgcrea.armada` (kept 30 days, deletable from Settings), and a
   startup script in its own temporary folder when you start a session.
 - `make audit` checks the no-network claim against every build: every Mach-O swept for URL
-  loading, DNS and TLS symbols, with one narrowly named exception for Sparkle.
+  loading, DNS and TLS symbols, with two narrowly named allowances: Sparkle, and the supervisor's
+  listener, which must bind 127.0.0.1 and nothing else.
 - Not sandboxed, by design: it has to read other tools' folders.
 - The `claude` it asks for plan limits talks to Anthropic over your own sign-in. That is the
   program's job, not Armada's.

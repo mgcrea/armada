@@ -1,0 +1,157 @@
+---
+/**
+ * The hero's closing drawing: a Mac's menu bar with Armada's glyph ringing, the
+ * panel it opens, and a supervisor session asked the obvious question.
+ *
+ * A drawing, not a capture, and captioned as one. The panel follows the real
+ * one's structure in apps/apple/Armada/ArmadaApp.swift: a title and version, one
+ * block per account with its name and a count on one line, at most three session
+ * rows then "and N more", the account's meters, and Open Armada, a gear and Quit
+ * along the bottom. It hangs on the right, under the glyph, as the real one does.
+ *
+ * The supervisor's answer says "probably" about the running tool because the
+ * tool's own description does: an unanswered tool call is as often a long
+ * command as a prompt nobody answered.
+ */
+import { APP_VERSION } from "../config";
+import { accountOf, at, LIMITS, SESSIONS, sessionsOf, STATE } from "../data/fleet";
+
+const VISIBLE = 3;
+const blocks = ["~/.claude", "~/.codex"].map((name) => {
+  const account = accountOf(name);
+  const rows = sessionsOf(name).slice(0, VISIBLE);
+  const waiting = sessionsOf(name).filter((s) => s.state === "waiting").length;
+  return {
+    name,
+    summary: `${account.sessions} sessions${waiting ? `, ${waiting} waiting` : ""}`,
+    rows,
+    more: account.sessions - rows.length,
+    limits: LIMITS.find((l) => l.account === name),
+  };
+});
+
+const waiting = at(SESSIONS, 0);
+const tool = at(SESSIONS, 1);
+const others = SESSIONS.length - 2;
+---
+
+<figure class="m-0">
+  <div
+    class="relative mx-auto max-w-[1160px] overflow-hidden rounded-t-[16px] border border-b-0 border-rule-2 bg-linear-to-b from-chrome to-[#101114]"
+  >
+    <div
+      class="flex h-[27px] items-center justify-between border-b border-white/7 bg-white/8 px-3.5"
+      aria-hidden="true"
+    >
+      <div class="flex items-center gap-4 text-[11.5px] text-fg/75">
+        <span class="font-semibold">Code</span>
+        <span class="hidden sm:inline">File</span>
+        <span class="hidden sm:inline">Edit</span>
+        <span class="hidden sm:inline">View</span>
+        <span class="hidden md:inline">Terminal</span>
+      </div>
+      <div class="flex items-center gap-3.5">
+        <span class="flex rounded-[5px] bg-accent/20 px-[7px] py-0.5">
+          <img
+            src="/menubar-glyph-halo.svg"
+            alt=""
+            width="15"
+            height="15"
+            class="template-glyph block size-[15px]"
+          />
+        </span>
+        <span class="text-[11.5px] text-fg/65">Thu 09:41</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 items-end gap-5 px-3.5 pt-2.5 md:grid-cols-[1fr_320px]">
+      <div
+        class="order-2 flex flex-col gap-3.5 rounded-t-[12px] border border-b-0 border-white/9 bg-[rgb(19_20_23/94%)] px-5 py-5 md:order-1 md:px-[22px]"
+      >
+        <span class="font-mono text-[11px] text-fg-muted">
+          Supervisor session · Claude Code, with Armada's read-only tools attached
+        </span>
+        <div class="flex flex-col gap-2">
+          <div
+            class="self-end rounded-[9px] border border-accent/20 bg-accent/9 px-3 py-2.5 text-[12.5px] leading-[1.5] text-accent-hi"
+          >
+            Which sessions need me right now?
+          </div>
+          <div class="flex items-center gap-2 font-mono text-[10.5px] text-fg-muted">
+            <span class="block size-1.5 rounded-full bg-ok" aria-hidden="true"></span>
+            armada · What needs me <span class="text-fg/35">read-only</span>
+          </div>
+          <div
+            class="rounded-[9px] border border-white/8 bg-white/4 px-3 py-2.5 text-[12.5px] leading-[1.6] text-pretty text-fg/70"
+          >
+            Two, one of them probably. <span class="text-fg">{waiting.title}</span> on {
+              waiting.account
+            } has been stopped at a {waiting.waitingFor} for {waiting.age}.{" "}
+            <span class="text-fg">{tool.title}</span> has had a tool call unanswered for {tool.age},
+            which is either a long command or a prompt nobody has seen. The other {others} are working
+            or idle.
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="order-1 mb-3.5 w-full overflow-hidden rounded-[11px] border border-white/12 bg-[rgb(28_30_35/97%)] shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)] md:order-2"
+      >
+        <div class="flex items-baseline justify-between px-3 pt-3 pb-2.5">
+          <span class="text-[13px] font-semibold">Armada</span>
+          <span class="text-[10.5px] text-fg/50">{APP_VERSION}</span>
+        </div>
+        {
+          blocks.map((b) => (
+            <div class="flex flex-col gap-1.5 border-t border-white/9 px-3 py-2.5">
+              <div class="flex items-baseline gap-1.5">
+                <span class="font-mono text-[11.5px] font-medium text-fg">{b.name}</span>
+                <span class="truncate text-[10.5px] text-fg/50">• {b.summary}</span>
+              </div>
+              {b.rows.map((s) => (
+                <div class="flex items-center gap-2">
+                  <span
+                    class:list={["block size-1.5 flex-none rounded-full", STATE[s.state].dot]}
+                    aria-hidden="true"
+                  />
+                  <span class="min-w-0 flex-1 truncate text-[11.5px] text-fg/85">{s.title}</span>
+                  <span class:list={["flex-none text-[10px]", STATE[s.state].ink]}>
+                    {STATE[s.state].label}
+                  </span>
+                </div>
+              ))}
+              {b.more > 0 && <span class="text-[10.5px] text-fg/45">and {b.more} more</span>}
+              {b.limits && (
+                <div class="mt-1 grid grid-cols-2 gap-3">
+                  {b.limits.windows.map((w) => (
+                    <div class="flex flex-col gap-1">
+                      <div class="flex justify-between text-[10px] text-fg/55">
+                        <span>{w.label.replace(" window", "")}</span>
+                        <span>{w.used}%</span>
+                      </div>
+                      <div class="h-1 overflow-hidden rounded-full bg-white/8">
+                        <div class="bar bg-ok" style={`width:${w.used}%`} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        }
+        <div
+          class="flex items-center gap-2 border-t border-white/9 px-3 py-2.5 text-[11px]"
+          aria-hidden="true"
+        >
+          <span class="rounded-full bg-accent/20 px-2.5 py-1 text-accent-hi">Open Armada</span>
+          <span class="flex-1"></span>
+          <span class="text-fg/55">⚙</span>
+          <span class="rounded-full bg-white/8 px-2.5 py-1 text-fg/70">Quit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <figcaption class="mt-3 font-mono text-[11px] text-fg-muted">
+    A drawing, not a capture · sessions, accounts and figures are examples
+  </figcaption>
+</figure>

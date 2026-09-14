@@ -1,0 +1,160 @@
+---
+/**
+ * The main window, drawn: accounts in the sidebar, the selected account's sessions
+ * in the list, and the actions a row offers in the cards below.
+ *
+ * The list is one account's sessions, not every session on the Mac, because that is
+ * what the window shows: the account is the unit, and selecting one lists what it
+ * is running (see the root README's "What it shows"). Everything in the actions row
+ * is in CHANGELOG.md's 1.0.0 section.
+ */
+import { ACCOUNTS, sessionsOf, STATE } from "../data/fleet";
+import SectionCopy from "./SectionCopy.astro";
+
+const selected = "~/.claude";
+const rows = sessionsOf(selected);
+const groups = ["Claude Code", "Codex"].map((vendor) => ({
+  vendor,
+  accounts: ACCOUNTS.filter((a) => a.vendor === vendor),
+}));
+
+const ACTIONS = [
+  {
+    title: "Focus",
+    body: "Brings forward the app a session runs in, VS Code or a terminal, and its own window where Accessibility allows.",
+  },
+  {
+    title: "Fork",
+    body: "A copy of a session from where it stands, through the vendor's own fork command. The original is left alone.",
+  },
+  {
+    title: "New session",
+    body: "Starts <code>claude</code> or <code>codex</code> in a folder you pick, on the account you pick, in your own terminal.",
+  },
+  {
+    title: "The menu bar",
+    body: "A glyph that fills while anything works and rings when a session wants you. Star a plan limit to keep it beside the glyph.",
+  },
+] as const;
+---
+
+<section id="fleet" class="scroll-mt-20 bg-linear-to-b from-bg-2 to-bg py-[96px]">
+  <div class="wrap flex flex-col gap-12">
+    <div class="grid grid-cols-1 items-start gap-12 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
+      <SectionCopy
+        eyebrow="The window"
+        heading="Every account in the sidebar. Every session one click away."
+      >
+        <p class="m-0 text-[16px] leading-[1.6] text-pretty text-fg-dim">
+          The account, one config folder, is the unit everything hangs off, because it is the unit
+          the data is organised by. Two folders share nothing: separate sessions, separate
+          transcripts, separate rate limits. So the sidebar is accounts, and each one lists what it
+          is running, sorted by what needs you.
+        </p>
+        <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
+          Select a session and the detail pane shows its title, project, state and how full its
+          context window is, where it started and when it was last compacted. Select nothing and you
+          get the account itself: the folders it ran in last, one click each, and a tally of what its
+          sessions are doing.
+        </p>
+      </SectionCopy>
+
+      <figure class="reveal m-0 flex flex-col gap-3">
+        <div
+          class="overflow-hidden rounded-[12px] border border-rule-2 bg-chrome shadow-[0_30px_70px_-40px_rgba(0,0,0,.95)]"
+        >
+          <div
+            class="flex items-center gap-2 border-b border-white/7 bg-chrome-2 px-3.5 py-2.5"
+            aria-hidden="true"
+          >
+            <span class="block size-[11px] rounded-full bg-[#ff5f57]"></span>
+            <span class="block size-[11px] rounded-full bg-[#febc2e]"></span>
+            <span class="block size-[11px] rounded-full bg-[#28c840]"></span>
+            <span class="ml-2 text-[11.5px] text-fg/60">Armada</span>
+          </div>
+          <div class="grid min-h-[320px] grid-cols-1 sm:grid-cols-[150px_1fr]">
+            <div class="hidden flex-col gap-0.5 border-r border-white/7 bg-black/18 px-2 py-2.5 sm:flex">
+              {
+                groups.map((g, i) => (
+                  <>
+                    <span
+                      class:list={[
+                        "px-2 py-1.5 font-mono text-[9.5px] tracking-[.1em] text-fg-muted uppercase",
+                        i > 0 && "mt-2.5",
+                      ]}
+                    >
+                      {g.vendor}
+                    </span>
+                    {g.accounts.map((a) => (
+                      <div
+                        class:list={[
+                          "flex items-center justify-between gap-1.5 rounded-[6px] px-2 py-1.5",
+                          a.name === selected && "bg-accent/14",
+                        ]}
+                      >
+                        <span
+                          class:list={[
+                            "truncate font-mono text-[11px]",
+                            a.name === selected ? "text-accent-hi" : "text-fg/70",
+                          ]}
+                        >
+                          {a.name}
+                        </span>
+                        <span class="font-mono text-[10px] text-fg-muted">{a.sessions}</span>
+                      </div>
+                    ))}
+                  </>
+                ))
+              }
+            </div>
+            <ul class="m-0 flex list-none flex-col p-0">
+              {
+                rows.map((s, i) => (
+                  <li
+                    class:list={[
+                      "flex items-center gap-3 border-b border-white/5 px-4 py-3",
+                      i === 0 && "bg-accent/8",
+                    ]}
+                  >
+                    <span
+                      class:list={["block size-1.5 flex-none rounded-full", STATE[s.state].dot]}
+                      aria-hidden="true"
+                    />
+                    <span class="flex min-w-0 flex-1 flex-col gap-[3px]">
+                      <span class="truncate text-[12.5px] text-fg">{s.title}</span>
+                      <span class="truncate font-mono text-[10.5px] text-fg-muted">
+                        {s.project} · {s.age} · {s.host}
+                      </span>
+                    </span>
+                    <span class="flex flex-none flex-col items-end gap-[3px]">
+                      <span class:list={["font-mono text-[10.5px]", STATE[s.state].ink]}>
+                        {s.waitingFor ?? STATE[s.state].label}
+                      </span>
+                      <span class="font-mono text-[10px] text-fg/35">{s.context}</span>
+                    </span>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
+        </div>
+        <figcaption class="font-mono text-[11px] text-fg-muted">
+          A drawing, not a capture · a waiting session says what it wants, in Claude Code's own words
+        </figcaption>
+      </figure>
+    </div>
+
+    <ul
+      class="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-4 [&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-fg"
+    >
+      {
+        ACTIONS.map((a) => (
+          <li class="reveal flex flex-col gap-2 rounded-[12px] border border-rule bg-bg-2 p-5">
+            <span class="text-[14.5px] font-semibold tracking-[-0.01em]">{a.title}</span>
+            <span class="text-[13.5px] leading-[1.6] text-pretty text-fg-dim" set:html={a.body} />
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>

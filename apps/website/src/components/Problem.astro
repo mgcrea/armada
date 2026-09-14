@@ -1,0 +1,148 @@
+---
+/**
+ * The problem, as two diagrams: four hosts that each know only their own sessions,
+ * then one reader that sees all of them. The reference case is the root README's:
+ * sixteen or more Claude Code sessions in VS Code, Codex in another window, and a
+ * second account in its own config folder.
+ */
+import Logo from "./Logo.astro";
+import SectionCopy from "./SectionCopy.astro";
+
+const SILOS = [
+  { host: "VS Code", own: "its own panes", delay: "0s" },
+  { host: "Terminal", own: "its own windows", delay: ".15s" },
+  { host: "Codex app", own: "its own threads", delay: ".3s" },
+  { host: "Second account", own: "its own limits", delay: ".45s" },
+] as const;
+
+/** One curve per host, converging on the plate's centre. */
+const CURVES = [
+  "M0 16 C36 16 24 74 52 74",
+  "M0 54 C36 54 30 74 52 74",
+  "M0 94 C36 94 30 74 52 74",
+  "M0 132 C36 132 24 74 52 74",
+];
+
+const host =
+  "flex-none rounded-[9px] border border-white/8 bg-white/6 text-center text-[12px] font-medium sm:text-[12.5px]";
+---
+
+<section id="problem" class="scroll-mt-20 py-[96px]">
+  <div class="wrap grid grid-cols-1 items-start gap-12 lg:grid-cols-2 lg:gap-16">
+    <SectionCopy
+      eyebrow="The problem"
+      heading="Sixteen sessions, four accounts, and nothing that knows about all of them."
+    >
+      <p class="m-0 text-[16px] leading-[1.6] text-pretty text-fg-dim">
+        Sixteen Claude Code sessions in VS Code, Codex threads in another window, a second account in
+        its own config folder. Every one of them knows its own state. None of them knows about the
+        others, and neither does any window you can open.
+      </p>
+      <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
+        So the work becomes tab archaeology: click through sixteen panes to find the two waiting on
+        you, and check a rate limit by asking whichever account happens to be in front. The state is
+        already on disk. It just has nowhere to be read together.
+      </p>
+    </SectionCopy>
+
+    <div class="flex flex-col gap-5">
+      <div class="reveal flex flex-col gap-5 rounded-[12px] border border-white/9 bg-white/3 p-5 sm:p-8">
+        <div class="flex items-center gap-2.5">
+          <span class="text-[14.5px] font-semibold">Each host knows only its own</span>
+          <span class="rounded-[6px] bg-accent/13 px-2.5 py-1 font-mono text-[11px] text-accent-hi">
+            4 silos
+          </span>
+        </div>
+        <div class="flex flex-col gap-3">
+          {
+            SILOS.map((s) => (
+              <div class="flex items-center gap-3">
+                <span class:list={[host, "basis-[104px] py-2.5 sm:basis-[132px]"]}>{s.host}</span>
+                <svg
+                  viewBox="0 0 80 12"
+                  class="h-3 w-12 flex-none sm:w-20"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 6 H64"
+                    class="dash stroke-accent"
+                    stroke-width="2"
+                    stroke-dasharray="6 5"
+                    style={`animation-delay:${s.delay}`}
+                  />
+                  <path d="M62 2 L72 6 L62 10 Z" class="fill-accent" />
+                </svg>
+                <span class="min-w-0 flex-1 truncate rounded-[9px] border border-accent/20 bg-accent/9 px-3.5 py-2.5 font-mono text-[12px] font-semibold text-accent-hi">
+                  {s.own}
+                </span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      <div
+        class="reveal flex flex-col gap-5 rounded-[12px] border border-ok/25 bg-linear-to-b from-ok/8 to-white/3 p-5 sm:p-8"
+      >
+        <div class="flex items-center gap-2.5">
+          <span class="text-[14.5px] font-semibold">One reader sees all of them</span>
+          <span class="rounded-[6px] bg-ok/16 px-2.5 py-1 font-mono text-[11px] text-ok-ink">
+            1 window
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex flex-none flex-col gap-2">
+            {
+              SILOS.map((s) => (
+                <span class:list={[host, "w-[104px] py-2 sm:w-[132px] sm:text-[12px]"]}>{s.host}</span>
+              ))
+            }
+          </div>
+          <svg
+            viewBox="0 0 60 148"
+            class="h-[148px] w-10 flex-none sm:w-[54px]"
+            preserveAspectRatio="none"
+            fill="none"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            {
+              CURVES.map((d, i) => (
+                <path
+                  d={d}
+                  class="dash stroke-fg/30"
+                  stroke-dasharray="6 5"
+                  style={`animation-delay:${i * 0.12}s`}
+                />
+              ))
+            }
+          </svg>
+          <div
+            class="flex flex-none flex-col items-center gap-2 rounded-[16px] border border-accent/30 bg-linear-to-b from-plate-top/14 to-accent/8 px-4 py-4"
+          >
+            <Logo size={38} />
+            <span class="text-[11.5px] font-semibold text-accent-hi">Armada</span>
+          </div>
+          <svg
+            viewBox="0 0 48 12"
+            class="hidden h-3 w-11 flex-none sm:block"
+            aria-hidden="true"
+          >
+            <path d="M0 6 H36" class="stroke-ok" stroke-width="2.5" />
+            <path d="M34 1.5 L44 6 L34 10.5 Z" class="fill-ok" />
+          </svg>
+          <span
+            class="hidden min-w-0 flex-1 rounded-[9px] border border-ok/25 bg-ok/11 px-3.5 py-3 text-[12px] leading-[1.4] font-semibold text-ok-ink sm:block"
+          >
+            one list<br />read only
+          </span>
+        </div>
+        <p class="m-0 text-[13px] leading-[1.6] text-pretty text-fg/50">
+          Nothing is proxied and no agent process is owned. Armada reads what the agents already write
+          down.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

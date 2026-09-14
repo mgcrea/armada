@@ -1,0 +1,90 @@
+---
+/**
+ * The privacy and security claims, as four rules on the page's one light band.
+ * Replaces the six-claim "Private by construction" section; nothing it said was
+ * dropped, only regrouped.
+ *
+ * Every rule is something the code or CI can be held to, in SECURITY.md's words:
+ * the update check is the single named exception to the no-network claim, the
+ * supervisor's endpoint is the one socket Armada listens on, and
+ * `scripts/audit-network.sh` (`make audit`) refuses a build that breaks either. If
+ * that script is ever relaxed, this section changes in the same commit.
+ *
+ * The footnote is not optional. The `claude` Armada asks for plan limits does use
+ * the network, on the user's own sign-in, and a privacy section that left it out
+ * would be the most misleading thing on the page.
+ */
+import { DOCS, DOWNLOAD, REPO_PUBLIC } from "../config";
+import SectionCopy from "./SectionCopy.astro";
+
+const RULES = [
+  {
+    title: "It never holds a vendor credential",
+    body: "There is no sign in with Claude. Nothing reads, stores or refreshes a token, Codex's <code>auth.json</code> is never opened, and no account is ever authenticated by Armada. The vendor's own CLI speaks for it.",
+  },
+  {
+    title: "It never writes where your agents do",
+    body: "<code>~/.claude*</code> and <code>~/.codex</code> are opened read only. No hook installed, no settings written, no MCP server entry added, nothing to clean up if you delete the app. What it writes is its own: preferences, 30 days of usage history, and a startup script when you start a session.",
+  },
+  {
+    title: "Nothing leaves the Mac",
+    body: `No telemetry, no sync, no licence server: the key is verified offline. The one request Armada makes is the update check, off until you turn it on, which reads <code>${DOWNLOAD.appcast}</code> and sends no identifier with it, not your key and not a machine id.`,
+  },
+  {
+    title: "The supervisor is off, loopback and read-only",
+    body: "The one path that shows your fleet to a model is a switch you turn on yourself. It binds <code>127.0.0.1</code>, answers only a token held in the Keychain, and serves five tools that can only read.",
+  },
+] as const;
+
+const link = "text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink";
+---
+
+<section id="rules" class="scroll-mt-20 bg-paper py-[96px] text-ink">
+  {/* The old section's anchor, kept for links that still point at it. */}
+  <span id="private" class="block scroll-mt-20"></span>
+  <div class="wrap grid grid-cols-1 items-start gap-12 lg:grid-cols-2 lg:gap-16">
+    <SectionCopy
+      paper
+      eyebrow="The four rules"
+      heading="What it will not do, in the order it matters."
+    >
+      <p class="m-0 text-[16px] leading-[1.6] text-pretty text-ink/62">
+        An app that can see every agent you run is an app worth being specific about. These are
+        constraints in the code, not intentions, and each one can be checked from outside.
+      </p>
+      <p class="m-0 text-[14px] leading-[1.6] text-pretty text-ink/55">
+        {
+          REPO_PUBLIC ? (
+            <a class={link} href={DOCS.audit}>
+              <code>make audit</code>
+            </a>
+          ) : (
+            <code>make audit</code>
+          )
+        } checks them against every build, sweeping each binary in the app for networking symbols with
+        two narrow allowances: the update framework and the supervisor's loopback listener. One program
+        Armada runs does use the network: the <code>claude</code> it asks for your plan limits talks to
+        Anthropic over your own sign-in, as it does whenever you use it. The full inventory is on the{" "}
+        <a class={link} href="/privacy">privacy page</a>.
+      </p>
+    </SectionCopy>
+
+    <ol
+      class="m-0 flex list-none flex-col p-0 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:break-words [&_code]:text-ink"
+    >
+      {
+        RULES.map((r, i) => (
+          <li class="flex gap-[18px] border-t border-ink/10 py-[22px]">
+            <span class="flex-none font-mono text-[12px] text-danger">
+              {String(i + 1).padStart(2, "0")}
+            </span>
+            <span class="flex flex-col gap-1.5">
+              <span class="text-[16px] font-semibold tracking-[-0.015em]">{r.title}</span>
+              <span class="text-[14px] leading-[1.62] text-pretty text-ink/60" set:html={r.body} />
+            </span>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>

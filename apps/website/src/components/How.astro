@@ -1,0 +1,62 @@
+---
+/**
+ * How it works, in four steps. Each is checkable in the tree: the folders are the
+ * README's "Multiple accounts" row, the per-folder FSEvents streams are
+ * SessionWatcher.swift's, the registry-first state is CHANGELOG.md's "State read
+ * rather than inferred", and the startup script is docs/design.md's 2026-09-13
+ * decision.
+ */
+import SectionHeader from "./SectionHeader.astro";
+
+const STEPS = [
+  {
+    title: "The account is the unit",
+    body: "One config folder is one account. Armada finds <code>~/.claude</code>, every <code>~/.claude-*</code> sibling, <code>CLAUDE_CONFIG_DIR</code>, <code>~/.codex</code> and <code>CODEX_HOME</code>, and hangs a watcher and a usage reading off each, because two folders share nothing.",
+    note: "one watcher per folder",
+  },
+  {
+    title: "FSEvents, not polling",
+    body: "Each Claude Code folder gets its own stream on its sessions and projects trees. A session appears in the list when the agent writes its registry entry, and changes state when the agent does.",
+    note: "no process attached, nothing injected",
+  },
+  {
+    title: "State is read, not guessed",
+    body: "Claude Code's registry says busy, waiting or idle, and names what a waiting session wants. Armada trusts that and shows the text as written. Only a tool call with no answer yet is inferred, and the app says so where it shows it.",
+    note: "registry first, transcript tail second",
+  },
+  {
+    title: "It starts sessions, never owns them",
+    body: "New Session writes a startup script with the account in it and hands it to your terminal. The session then arrives through the watchers like any other. Fork is the same, with the vendor's own fork flag.",
+    note: "no pipes, no wrapper, no proxy",
+  },
+] as const;
+---
+
+<section id="how" class="scroll-mt-20 bg-linear-to-b from-bg to-bg-2 py-[96px]">
+  <div class="wrap">
+    <SectionHeader
+      eyebrow="How it works"
+      heading="It watches the files your agents already write."
+      class="[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-fg"
+    >
+      No proxy, no wrapper, no shim in front of your agent. Armada reads <code>~/.claude*</code> and{" "}
+      <code>~/.codex</code>, watches them with FSEvents, and asks each account's own{" "}
+      <code>claude</code> for the one figure a file cannot give: how much of the plan is left.
+    </SectionHeader>
+
+    <ol
+      class="m-0 grid list-none grid-cols-1 gap-5 p-0 sm:grid-cols-2 lg:grid-cols-4 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-fg"
+    >
+      {
+        STEPS.map((s, i) => (
+          <li class="reveal flex flex-col gap-3 rounded-[12px] border border-rule bg-bg-2 p-6 sm:p-7">
+            <span class="font-mono text-[11px] text-accent">{String(i + 1).padStart(2, "0")}</span>
+            <span class="text-[16px] font-semibold tracking-[-0.01em]">{s.title}</span>
+            <p class="m-0 flex-1 text-[13.5px] leading-[1.62] text-pretty text-fg-dim" set:html={s.body} />
+            <span class="mt-1 font-mono text-[11px] text-fg-muted">{s.note}</span>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>

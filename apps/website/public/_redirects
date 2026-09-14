@@ -24,6 +24,4 @@
 # the app's licence pane links to /buy, and a Stripe URL compiled into a shipped
 # binary could never be repointed. Live since 2026-09-14, which is SELLING in
 # src/config.ts: the pages that say whether anything is on sale follow that flag.
-# The site's own Buy buttons still wait for SHIPPED, which waits for a release to
-# download.
 /buy          https://buy.stripe.com/7sY00j8086Oabl29tkdZ602  302

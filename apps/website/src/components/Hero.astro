@@ -1,20 +1,19 @@
 ---
-import { APP_VERSION, DOWNLOAD, PRICING, SHIPPED, TRIAL } from "../config";
+import { APP_VERSION, DOWNLOAD, PRICING, TRIAL } from "../config";
+import { ACCOUNTS, at, LIMITS, SESSIONS, STATE, TOTAL_SESSIONS } from "../data/fleet";
 import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
-import Glance from "./Glance.astro";
+import Desktop from "./Desktop.astro";
 import Logo from "./Logo.astro";
 
-/** Each one points at the section that backs it, so the strip is a table of contents. */
-const CLAIMS = [
-  { label: "claude code and codex", href: "#sessions" },
-  { label: "every account", href: "#limits" },
-  { label: "read locally", href: "#private" },
-  { label: "no vendor credentials", href: "#private" },
-] as const;
+/** The five rows the hero has room for, still in what-needs-you order. */
+const rows = [0, 1, 2, 6, 7].map((i) => at(SESSIONS, i));
+const vendors = new Set(ACCOUNTS.map((a) => a.vendor)).size;
+const strip = at(LIMITS, 0);
+const fiveHour = at(strip.windows, 0);
 ---
 
-<section class="relative overflow-hidden pt-[80px] pb-[72px]">
+<section class="relative overflow-hidden pt-[88px]">
   <!-- The icon's own plate colour, bled off the top edge. The only large use of
        the warm ramp on the page; everywhere else the accent is a single hue. -->
   <div
@@ -24,79 +23,103 @@ const CLAIMS = [
   >
   </div>
 
-  <div class="wrap relative grid grid-cols-1 items-center gap-14 lg:grid-cols-[1.05fr_1fr]">
+  <div class="wrap relative grid grid-cols-1 items-center gap-14 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
     <div class="flex flex-col gap-6">
-      <div class="flex items-center gap-4">
-        <Logo size={64} class="shadow-[0_18px_40px_-22px_rgba(246,161,119,.6)]" />
-        <div class="flex flex-col gap-1.5">
-          <span class="font-display text-[22px] leading-none font-semibold tracking-[-0.02em]"
-            >Armada</span
-          >
-          <span class="mono">
-            {SHIPPED ? `Version ${APP_VERSION}` : "Coming soon · not released yet"}
-          </span>
-        </div>
-      </div>
+      <a
+        href={DOWNLOAD.releases}
+        class="flex items-center gap-2 self-start rounded-full border border-rule-2 px-3.5 py-1.5 text-[11.5px] font-medium text-fg-dim transition-colors hover:border-fg-muted hover:text-fg"
+      >
+        <span class="block size-1.5 rounded-full bg-ok" aria-hidden="true"></span>
+        {APP_VERSION} is out · signed, notarized, sold direct
+      </a>
 
+      {/* "Nineteen" is TOTAL_SESSIONS, the example fleet drawn beside it. */}
       <h1
         class="m-0 font-display text-[clamp(38px,5.6vw,64px)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance"
       >
-        Every coding agent you have running, <span class="text-accent">on one screen.</span>
+        Nineteen agents running.<br /><span class="text-accent">One window that knows.</span>
       </h1>
 
       <p class="m-0 max-w-[52ch] text-[16.5px] leading-[1.62] text-pretty text-fg-dim">
-        Armada is a menu bar app for Macs running many Claude Code and Codex sessions at once. See
-        which session is waiting on you, which one is about to run out of context, and how much of
-        each plan is left, for every account you use.
+        Armada is a menu bar app that watches every Claude Code and Codex session on your Mac, across
+        accounts and across vendors: which one is waiting on you, how full its context is, and how
+        much of each plan is left.
       </p>
 
-      <ul class="m-0 flex list-none flex-wrap gap-x-2.5 gap-y-2 p-0">
-        {
-          CLAIMS.map((c) => (
-            <li>
-              <a
-                href={c.href}
-                class="mono block rounded-full border border-rule-2 px-3 py-[5px] transition-colors hover:border-fg-muted hover:!text-fg-dim"
-              >
-                {c.label}
-              </a>
-            </li>
-          ))
-        }
-      </ul>
-
-      {/* Until SHIPPED the honest primary action is reading on. The price is
-          stated now, because a price shown before launch is a promise the page
-          can keep. /buy is live, but the Buy button waits for SHIPPED with
-          Download; see public/_redirects. */}
-      <div class="flex flex-wrap items-center gap-3">
-        {
-          SHIPPED ? (
-            <>
-              <Button href={DOWNLOAD.href}>
-                <AppleGlyph size={16} />
-                Download for macOS
-              </Button>
-              <Button href={PRICING.buy} variant="secondary">
-                Buy a licence <span class="text-fg-dim">·</span> {PRICING.price}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button href="#sessions">See what it shows</Button>
-              <Button href="#pricing" variant="secondary">
-                {PRICING.price} once <span class="text-fg-dim">·</span> coming soon
-              </Button>
-            </>
-          )
-        }
+      <div class="flex flex-wrap items-center gap-3 pt-1">
+        <Button href={DOWNLOAD.href} size="lg">
+          <AppleGlyph size={16} />
+          Download for macOS
+        </Button>
+        <Button href={PRICING.buy} variant="secondary" size="lg">
+          Buy a licence <span class="text-fg-dim">·</span>
+          {PRICING.price}
+        </Button>
       </div>
 
-      <p class="mono m-0">
-        {DOWNLOAD.requires} · {TRIAL.minutes}-minute trial · {PRICING.refundDays}-day refund
+      <p class="m-0 text-[12.5px] text-fg-muted">
+        {DOWNLOAD.requires} · free {TRIAL.minutes}-minute trial · {PRICING.refundDays}-day refund ·
+        no account
       </p>
     </div>
 
-    <Glance />
+    <figure class="m-0 flex flex-col gap-3">
+      <div
+        class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)]"
+      >
+        <div
+          class="flex items-center justify-between gap-3 border-b border-white/8 bg-white/5 px-3.5 py-2.5"
+        >
+          <span class="font-mono text-[11px] text-fg-muted">
+            Fleet · {ACCOUNTS.length} accounts · {vendors} vendors
+          </span>
+          <span class="font-mono text-[10.5px] text-ok-ink">{TOTAL_SESSIONS} sessions</span>
+        </div>
+        <ul class="m-0 flex list-none flex-col p-0">
+          {
+            rows.map((s) => (
+              <li class="flex items-center gap-3 border-t border-white/5 px-3.5 py-[11px] first:border-t-0">
+                <span
+                  class:list={["block size-1.5 flex-none rounded-full", STATE[s.state].dot]}
+                  aria-hidden="true"
+                />
+                <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span class="truncate text-[12.5px] text-fg">{s.title}</span>
+                  <span class="truncate font-mono text-[10.5px] text-fg-muted">
+                    {s.project} · {s.account} · {s.age}
+                  </span>
+                </span>
+                <span class:list={["flex-none font-mono text-[10.5px]", STATE[s.state].ink]}>
+                  {STATE[s.state].label}
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+      <figcaption class="font-mono text-[11px] text-fg-muted">
+        Sorted by what needs you · sessions started anywhere, in any editor
+      </figcaption>
+
+      <span class="self-center text-[15px] text-fg/30" aria-hidden="true">↓</span>
+
+      <div
+        class="flex items-center gap-2.5 rounded-[11px] border border-accent/30 bg-bg-3 px-3.5 py-3 shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)]"
+      >
+        <Logo size={18} />
+        <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg">
+          {strip.account}
+          <span class="text-fg-muted">· 5-hour window, {fiveHour.used}% used</span>
+        </span>
+        <span class="flex-none font-mono text-[10.5px] text-warn">{fiveHour.reset}</span>
+      </div>
+      <span class="font-mono text-[11px] text-fg-muted">
+        Asked of the account · the cache on disk when it cannot answer
+      </span>
+    </figure>
+  </div>
+
+  <div class="wrap relative mt-[72px]">
+    <Desktop />
   </div>
 </section>

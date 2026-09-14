@@ -84,10 +84,10 @@ export const CF_ANALYTICS_TOKEN: string | null = null;
 /**
  * Whether there is something to download. True from 1.0.0, 2026-09-14.
  *
- * It gates every Download and Buy button, the version pill, and the JSON-LD
- * `downloadUrl`, `softwareVersion` and `offers`, so the site cannot half-announce
- * a release. It does not gate every string: anything outside a SHIPPED branch has
- * to be true on its own.
+ * It gates the JSON-LD `downloadUrl`, `softwareVersion` and `offers`. It used to
+ * gate every Download and Buy button and the version pill too, with a "coming
+ * soon" version of each; those branches were removed once 1.0.0 was out, so
+ * setting this back to false would no longer hide them.
  *
  * It needs a published release under REPO_URL (so /download resolves) and
  * REPO_PUBLIC true. Whether a licence can be bought is SELLING, not this.

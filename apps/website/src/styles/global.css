@@ -18,9 +18,12 @@
   --color-ok: var(--color-ok);
   --color-ok-ink: var(--color-ok-ink);
   --color-warn: var(--color-warn);
+  --color-danger: var(--color-danger);
   --color-danger-ink: var(--color-danger-ink);
   --color-chrome: var(--color-chrome);
   --color-chrome-2: var(--color-chrome-2);
+  --color-paper: var(--color-paper);
+  --color-ink: var(--color-ink);
 }
 
 @theme {
@@ -104,11 +107,34 @@ body {
   transform: none;
 }
 
-/* A bar in the glance diagram. The fill width is a per-element style attribute. */
+/* A meter's fill in the drawings. The width is a per-element style attribute. */
 .bar {
   height: 100%;
   border-radius: 999px;
   min-width: 3px;
+}
+
+/* The project strip under the hero: two identical runs, moved by half. */
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee {
+  animation: marquee 44s linear infinite;
+}
+
+/* The dashed flow lines in the problem diagrams. 44 is four dash periods of the
+   `6 5` pattern, so the loop has no visible jump. Delays are style attributes. */
+@keyframes dash {
+  to {
+    stroke-dashoffset: -44;
+  }
+}
+
+.dash {
+  animation: dash 1.7s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

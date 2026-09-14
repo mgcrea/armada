@@ -1,14 +1,15 @@
 ---
-import { APP_VERSION, DOWNLOAD, PRICING, SHIPPED } from "../config";
+import { APP_VERSION, DOWNLOAD, PRICING } from "../config";
 import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 /** Each one is a section on the homepage, so the bar is a table of contents. */
 const links = [
-  { href: "/#sessions", label: "Sessions" },
+  { href: "/#fleet", label: "The window" },
+  { href: "/#how", label: "How it works" },
   { href: "/#limits", label: "Limits" },
-  { href: "/#private", label: "Privacy" },
+  { href: "/#supervisor", label: "Supervisor" },
   { href: "/#pricing", label: "Price" },
 ];
 ---
@@ -26,19 +27,14 @@ const links = [
       </a>
 
       {/* The shipping version, beside the wordmark: an identifying detail, not a
-          call to action. Gated on SHIPPED, because before a release there is no
-          version to name. `hidden` is safe here: this is a plain anchor, not a
+          call to action. `hidden` is safe here: this is a plain anchor, not a
           Button. */}
-      {
-        SHIPPED && (
-          <a
-            href={DOWNLOAD.releases}
-            class="hidden rounded-full border border-rule px-2 py-[3px] font-mono text-[10.5px] leading-none font-medium text-fg-muted transition-colors hover:border-accent hover:text-accent-hi sm:block"
-          >
-            {APP_VERSION}
-          </a>
-        )
-      }
+      <a
+        href={DOWNLOAD.releases}
+        class="hidden rounded-full border border-rule px-2 py-[3px] font-mono text-[10.5px] leading-none font-medium text-fg-muted transition-colors hover:border-accent hover:text-accent-hi sm:block"
+      >
+        {APP_VERSION}
+      </a>
     </div>
 
     {/* `lg`, not `md`: at 768 the lockup, the links and two buttons do not all
@@ -54,30 +50,19 @@ const links = [
     </nav>
 
     {/* The bar is the one element that survives a scroll, so it carries the
-        funnel. Until SHIPPED there is nothing to download, and a Download button
-        pointing at a release that does not exist would be a 404, so it says so
-        instead. /buy is live, but Buy waits with Download; see public/_redirects.
-        The responsive hiding sits on a wrapper span; see Button.astro for why. */}
+        funnel, and Buy is its filled button. The responsive hiding sits on a
+        wrapper span; see Button.astro for why. */}
     <div class="flex flex-none items-center gap-2">
-      {
-        SHIPPED ? (
-          <>
-            <span class="hidden sm:block">
-              <Button href={DOWNLOAD.href} variant="secondary" size="sm">
-                <AppleGlyph size={13} />
-                Download
-              </Button>
-            </span>
-            <Button href={PRICING.buy} size="sm">
-              Buy <span class="opacity-70">·</span> {PRICING.price}
-            </Button>
-          </>
-        ) : (
-          <span class="rounded-lg border border-rule-2 px-[13px] py-[7px] text-[13px] text-fg-dim">
-            Coming soon
-          </span>
-        )
-      }
+      <span class="hidden sm:block">
+        <Button href={DOWNLOAD.href} variant="secondary" size="sm">
+          <AppleGlyph size={13} />
+          Download
+        </Button>
+      </span>
+      <Button href={PRICING.buy} size="sm">
+        Buy <span class="opacity-70">·</span>
+        {PRICING.price}
+      </Button>
     </div>
   </div>
 </header>

@@ -1,0 +1,37 @@
+---
+/**
+ * A strip of project names, each with its session's state dot, scrolling under the
+ * hero. Decoration, so it is hidden from assistive technology. Two identical runs
+ * side by side, translated by half, make the loop seamless; reduced motion stops it
+ * through the global rule in global.css.
+ */
+const ITEMS = [
+  { label: "armada", dot: "bg-ok" },
+  { label: "api-gateway", dot: "bg-warn" },
+  { label: "swift-mcp-kit", dot: "bg-ok" },
+  { label: "bastion", dot: "bg-fg-muted" },
+  { label: "cupertino", dot: "bg-ok" },
+  { label: "feedback-worker", dot: "bg-warn" },
+  { label: "armada-site", dot: "bg-ok" },
+  { label: "support-kit", dot: "bg-ok" },
+  { label: "r2-explorer", dot: "bg-fg-muted" },
+  { label: "dev-pulse", dot: "bg-ok" },
+] as const;
+---
+
+<div class="overflow-hidden border-y border-rule bg-bg py-3.5" aria-hidden="true">
+  <div class="marquee flex w-max">
+    {
+      [0, 1].map(() => (
+        <div class="flex gap-9 pr-9">
+          {ITEMS.map((item) => (
+            <span class="flex items-center gap-2 font-mono text-[11.5px] whitespace-nowrap text-fg-muted">
+              <span class:list={["block size-[5px] rounded-full", item.dot]} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      ))
+    }
+  </div>
+</div>

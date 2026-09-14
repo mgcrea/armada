@@ -1,12 +1,19 @@
 ---
 import Cta from "../components/Cta.astro";
-import Features from "../components/Features.astro";
 import Footer from "../components/Footer.astro";
+import Gaps from "../components/Gaps.astro";
 import Hero from "../components/Hero.astro";
+import How from "../components/How.astro";
+import Limits from "../components/Limits.astro";
+import Marquee from "../components/Marquee.astro";
 import Nav from "../components/Nav.astro";
 import Pricing from "../components/Pricing.astro";
-import Private from "../components/Private.astro";
+import Problem from "../components/Problem.astro";
+import Rules from "../components/Rules.astro";
 import SiblingApps from "../components/SiblingApps.astro";
+import Supervisor from "../components/Supervisor.astro";
+import Vendors from "../components/Vendors.astro";
+import Window from "../components/Window.astro";
 import {
   APP_NAME,
   APP_VERSION,
@@ -56,7 +63,7 @@ const schema = {
   softwareRequirements: DOWNLOAD.requires,
   url: SITE_URL,
   description:
-    "A macOS menu bar app for running many Claude Code and Codex sessions at once: session state, context window occupancy, and 5-hour and 7-day plan limits with a pace forecast, read locally.",
+    "A macOS menu bar app for running many Claude Code and Codex sessions at once: session state, context window occupancy, 5-hour and 7-day plan limits with a pace forecast, and an opt-in read-only supervisor you can ask about the fleet. Read locally.",
   author: { "@type": "Person", name: "Olivier Louvignes" },
   publisher: { "@id": `${SITE_URL}/#organization` },
   ...(REPO_PUBLIC ? { license: DOCS.sourceLicense } : {}),
@@ -76,12 +83,25 @@ const schema = {
 };
 ---
 
+{/*
+  The order is the argument: what it looks like, why it exists, how it works,
+  what it adds, what it will not do, what it does not do yet, and only then the
+  price. Known gaps sit before Pricing on purpose, so nobody learns them after
+  paying.
+*/}
 <Layout schema={[organizationSchema, websiteSchema, schema]}>
   <Nav />
   <main id="main" tabindex="-1">
     <Hero />
-    <Features />
-    <Private />
+    <Marquee />
+    <Window />
+    <Problem />
+    <How />
+    <Limits />
+    <Supervisor />
+    <Rules />
+    <Vendors />
+    <Gaps />
     <Pricing />
     <SiblingApps />
     <Cta />
