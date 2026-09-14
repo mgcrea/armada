@@ -16,7 +16,8 @@ APPLE := apps/apple
 # forwardable from here without touching this file.
 #
 # Deliberately NOT copied from its .PHONY list: that list is maintained by hand and drifts.
-# `help` is dropped because the root has its own.
+# `help` and `test` are dropped because the root has its own of each. The root's `test`
+# runs every suite in the repo, and reaches the Swift one through `$(MAKE) -C apps/apple test`.
 #
 # The `##` is spelled through a variable, not written inline. GNU make 3.81 — the
 # /usr/bin/make on macOS, and so on every CI runner — reads a literal `#` inside a
@@ -25,7 +26,7 @@ APPLE := apps/apple
 # developer's PATH does not, which is how this passed locally and failed the first
 # push CI ever saw.
 HASH := \#
-APPLE_TARGETS := $(filter-out help,\
+APPLE_TARGETS := $(filter-out help test,\
 	$(shell sed -n 's/^\([a-zA-Z0-9_-]*\):.*$(HASH)$(HASH).*/\1/p' $(APPLE)/Makefile))
 
 .DEFAULT_GOAL := help
@@ -56,8 +57,8 @@ $(APPLE_TARGETS):
 # are the only geometry anybody edits; everything below is derived.
 
 ICON_MARK   := design/armada-mark.svg
-# `#` starts a comment in a makefile, so the hex colours are built from a variable.
-HASH        := \#
+# `#` starts a comment in a makefile, so the hex colours are built from HASH, defined
+# once at the top of this file for the same reason.
 ICON_PLATE   = $(HASH)FFD9A2,$(HASH)F6A177
 ICON_RADIUS := 230
 ICON_BUNDLE := apps/apple/Armada/Armada.icon
@@ -170,6 +171,28 @@ changelog-check: ## Fail if Changelog.swift is stale against CHANGELOG.md
 	@node scripts/generate-changelog.mjs --check
 
 .PHONY: changelog changelog-check
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+#
+# Every suite, in the three runtimes they need: node:test for scripts/ (the
+# CHANGELOG parse the appcast, the release body and the What's New pane share,
+# the licence key format, and the Sparkle signature check `appcast` runs), vitest
+# inside the Workers runtime for the licence Worker, and Swift twice over: the
+# app's pure files compiled beside a check driver (`unit`), and SwiftPM for the
+# ArmadaMCP package (`test`). Root-level because two of the four are not
+# apps/apple's, which is also why `test` is filtered out of APPLE_TARGETS:
+# forwarded, it would run only the package suite under a name that promises all
+# of them.
+#
+# Cheapest first, and it stops at the first failure. `license-check` is not here:
+# it needs the real signing key, which a clone does not have.
+test: ## Run every test suite: scripts, the licence Worker, the app's unit checks, the Swift package
+	@pnpm test:scripts
+	@pnpm -C apps/api test
+	@$(MAKE) --no-print-directory -C $(APPLE) unit
+	@$(MAKE) --no-print-directory -C $(APPLE) test
+
+.PHONY: test
 
 # ── Release ───────────────────────────────────────────────────────────────────
 #
@@ -295,6 +318,16 @@ build-release: ## Build, sign and notarize a shippable Armada.app
 # well-formed feed every installed updater refuses, forever. The length is `wc -c`
 # rather than `stat`, whose flags differ between BSD and the GNU coreutils this
 # Mac puts first on PATH.
+#
+# And checked against the key the app trusts, which nothing else in the pipeline
+# does. `sign` and scripts/audit-network.sh only assert that SUPublicEDKey is
+# shaped like a key, and sign_update signs with whichever private key it is
+# handed: the keychain's here, SPARKLE_ED_PRIVATE_KEY in CI. A mismatch is a
+# well-formed feed with a valid signature that every installed copy refuses, and
+# the fix could only reach them as the update they are refusing. So the extracted
+# value has to be exactly one signature, and scripts/verify-ed-signature.mjs has
+# to accept it over the zip for the key read out of the built Info.plist, before
+# the feed is written.
 appcast: ## Sign the stapled zip and write a one-item appcast
 	@test -f "$(RELEASE_ZIP)" || { echo "no $(RELEASE_ZIP) — run 'make build-release' first" >&2; exit 1; }
 	@$(MAKE) --no-print-directory -C apps/apple sparkle
@@ -313,6 +346,15 @@ appcast: ## Sign the stapled zip and write a one-item appcast
 	signature=$$(printf '%s' "$$raw" | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
 	test -n "$$signature" && [ "$$signature" != "$$raw" ] \
 		|| { echo "  !! sign_update produced no edSignature; not shipping a feed" >&2; exit 1; }; \
+	: "# sed works a line at a time, so output of more than one line leaves the other"; \
+	: "# lines in the value, and two signature lines leave two. One line holding one"; \
+	: "# 64-byte signature in base64, or no feed."; \
+	[ "$$(printf '%s\n' "$$signature" | wc -l | tr -d ' ')" = 1 ] \
+		&& printf '%s\n' "$$signature" | grep -Eq '^[A-Za-z0-9+/]{86}==$$' \
+		|| { echo "  !! sign_update's output is not exactly one ed25519 signature; not shipping a feed" >&2; exit 1; }; \
+	edkey=$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist"); \
+	node scripts/verify-ed-signature.mjs "$(RELEASE_ZIP)" "$$signature" "$$edkey" \
+		|| { echo "  !! the signature does not verify against the app's SUPublicEDKey; every installed copy would refuse this update" >&2; exit 1; }; \
 	version=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$(RELEASE_APP)/Contents/Info.plist"); \
 	build=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$(RELEASE_APP)/Contents/Info.plist"); \
 	length=$$(wc -c < "$(RELEASE_ZIP)" | tr -d ' '); \
@@ -373,12 +415,24 @@ install-release: ## Install the notarized Release build into /Applications
 # app that reads every agent transcript on their Mac. It belongs in the keychain
 # and in one repository secret, never in an org-wide one and never anywhere a
 # pull_request workflow can read it.
-sparkle-keys: ## Print the shared EdDSA public key, and how to export the private one for CI
+sparkle-keys: ## Assert the keychain's EdDSA key is the one the app ships, and how to export it for CI
 	@$(MAKE) --no-print-directory -C apps/apple sparkle
 	@security find-generic-password -s "https://sparkle-project.org" >/dev/null 2>&1 \
 		|| { echo "  no Sparkle key in this login keychain — generating one would NOT match the siblings'" >&2; exit 1; }
-	@echo "  public key (must equal SUPublicEDKey in apps/apple/Armada-Info.plist):"
-	@$(SPARKLE_TOOLS)/generate_keys -p
+	@# Asserted, not printed for someone to compare by eye. The export below is how
+	@# CI gets its signing key, and a key that is not SUPublicEDKey's other half signs
+	@# updates no installed copy will accept. `make appcast` checks the same thing
+	@# again over the real zip; this is the moment before the secret is set.
+	@want=$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' apps/apple/Armada-Info.plist); \
+	got=$$($(SPARKLE_TOOLS)/generate_keys -p | grep -Eo '[A-Za-z0-9+/]{43}=' | tail -n 1); \
+	if [ -n "$$got" ] && [ "$$got" = "$$want" ]; then \
+		echo "  ok    the keychain's public key is SUPublicEDKey in apps/apple/Armada-Info.plist"; \
+		echo "        $$got"; \
+	else \
+		echo "  FAIL  the keychain's public key is $${got:-unreadable}, but apps/apple/Armada-Info.plist trusts $$want" >&2; \
+		echo "        do not export this key for CI: nothing it signs would install" >&2; \
+		exit 1; \
+	fi
 	@echo ""
 	@echo "  To give CI the private key:"
 	@echo "    $(SPARKLE_TOOLS)/generate_keys -x sparkle_key.pem   # -x EXPORTS; without it you get a NEW key"
@@ -430,10 +484,12 @@ license-check: ## Prove a minted licence key verifies in the app's own verifier
 # ships nothing, which is why the package script is called `release` fleet-wide —
 # and `run` makes the call a script even if pnpm ever grows a `release` of its own.
 # The curl is the part that proves a deploy happened rather than that a command
-# returned.
+# returned, and `--max-time` is api-deploy's: a host that accepts the connection
+# and never answers would otherwise hold the recipe, and a CI job, until the job's
+# own timeout.
 site-deploy: ## Build and deploy armada.mgcrea.io, then check it answers
 	@pnpm -C apps/website run release
-	@curl -fsS -o /dev/null https://armada.mgcrea.io && echo "  armada.mgcrea.io answers"
+	@curl -fsS --max-time 20 -o /dev/null https://armada.mgcrea.io && echo "  armada.mgcrea.io answers"
 
 .PHONY: site-deploy
 
