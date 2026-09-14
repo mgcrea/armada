@@ -5,13 +5,16 @@
 // `event.data.object` off an unchecked cast throws a TypeError when the shape
 // surprises us, which becomes a 500, which becomes Stripe retrying every few
 // hours for three days with nothing in the log saying what was wrong. A named
-// validation error costs the same line count and says it.
+// validation error costs the same line count, says which field moved, and is
+// answered 200 with that sentence in the body, because no retry will ever make
+// the field appear.
 //
 // The envelope is separate from the session ON PURPOSE. Stripe delivers every
 // event type this endpoint is subscribed to, and a single schema over the whole
 // payload would reject `payment_intent.succeeded` and friends as malformed —
-// turning "an event we do not care about" into the same retry loop. So: parse
-// the envelope, decide whether it is ours, and only then insist on a shape.
+// filing "an event we do not care about" in the error log beside a payload
+// that really is broken. So: parse the envelope, decide whether it is ours, and
+// only then insist on a shape.
 
 import { z } from "zod";
 
@@ -29,6 +32,9 @@ export const eventEnvelope = z.object({
   data: z.object({ object: z.unknown() }),
 });
 
+/** A verified, routable event: what every handler in src/index.ts is given. */
+export type StripeEvent = z.infer<typeof eventEnvelope>;
+
 /**
  * The fields fulfilment actually reads. Everything is nullish because Stripe
  * omits rather than nulls, and because a missing currency should cost a default
@@ -44,8 +50,8 @@ export const checkoutSession = z.object({
    * Required, unlike its neighbours. Everything else here fails soft because
    * a missing currency should cost a default; a missing payment status would
    * cost a licence, since the only safe reading of "unknown" is "not paid" and
-   * a session Stripe sends without one is not a shape this knows. 400 says
-   * which field moved, and stops the retries.
+   * a session Stripe sends without one is not a shape this knows. The answer
+   * says which field moved, and nothing is minted.
    */
   payment_status: z.string(),
   customer_details: z.object({ email: z.string().nullish() }).nullish(),
@@ -107,5 +113,3 @@ export const isFullyRefunded = (paid: Charge): boolean => {
   const total = paid.amount ?? 0;
   return total > 0 && (paid.amount_refunded ?? 0) >= total;
 };
-
-export type CheckoutSession = z.infer<typeof checkoutSession>;

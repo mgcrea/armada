@@ -37,10 +37,11 @@
     // so a missing or misspelt value fails closed rather than open.
     "ENVIRONMENT": "production",
     // The price this Worker is allowed to fulfil, and the whole of the product
-    // guard. EMPTY until the Stripe price exists: fill it in with the `price_…`
-    // id, then `pnpm types` and `pnpm release`. While it is empty this Worker
-    // refuses every sale, because every app on the Stripe account delivers its
-    // checkouts to every Worker. See `handleWebhook` in src/index.ts.
+    // guard: Armada's live price. A new price means changing it here, then
+    // `pnpm types` (the generated Env pins this literal) and `pnpm release`.
+    // Emptied, this Worker refuses every sale, because every app on the Stripe
+    // account delivers its checkouts to every Worker. See `handleWebhook` in
+    // src/index.ts.
     "EXPECTED_PRICE_ID": "price_1UFZiiFQJry8F0HMZCEwkkYf",
     "LICENSE_FROM_EMAIL": "licences@mgcrea.io",
     "SITE_URL": "https://armada.mgcrea.io"
@@ -64,6 +65,11 @@
   "env": {
     "test": {
       "name": "armada-api-test",
+      // No `database_id` yet, because the database does not exist: on
+      // 2026-09-14 `wrangler d1 list` on this account had no
+      // armada-licenses-test. Create it with `wrangler d1 create
+      // armada-licenses-test` and paste the id it prints in here before the
+      // first `wrangler deploy --env test`. .test.vars.example has the steps.
       "d1_databases": [
         {
           "binding": "DB",

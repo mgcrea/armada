@@ -7,8 +7,16 @@
 # environment unless told otherwise, and the default here is the Worker taking
 # real money at api.armada.mgcrea.io. A test-mode webhook secret pushed there
 # refuses every genuine payment as an invalid signature, and nothing says why
-# until a buyer writes in. The `test` environment is declared in wrangler.jsonc;
-# deploy it once with `wrangler deploy --env test`.
+# until a buyer writes in. The `test` environment is declared in wrangler.jsonc,
+# but its database is not created yet, so the first rehearsal starts with:
+#
+#   pnpm exec wrangler d1 create armada-licenses-test
+#     (paste the database_id it prints into the `test` environment's
+#     d1_databases entry in wrangler.jsonc)
+#   pnpm exec wrangler d1 migrations apply armada-licenses-test --env test --remote
+#   pnpm exec wrangler deploy --env test
+#
+# and only then the secret push above.
 #
 # The same three keys as `.prod.vars`, from the test-mode side of the Stripe
 # dashboard. The licence signing key is the SAME value as production: a key

@@ -82,11 +82,32 @@ will be sorted out by hand.</p>`,
   );
 
 /**
+ * A licence that was refunded or lost to a dispute, at the URL that showed it.
+ *
+ * No key, and no address either. The page answers anyone holding the session
+ * id, and what it owes them is that the licence has ended and where to ask.
+ * Checked before the one-week window, so a revoked licence never gets the
+ * "Already sent" page, whose last line invites asking for the dead key again.
+ */
+export const revokedPage = (): string =>
+  shell(
+    "Your Armada licence",
+    `<h1>This licence has been revoked.</h1>
+<p>The payment for it was refunded or disputed, so the key is no longer valid and
+is not shown here.</p>
+<p>If you have any questions, reply to your Stripe receipt.</p>`,
+  );
+
+/**
  * `site` comes from the SITE_URL binding, so a move of the marketing site is a
  * change to wrangler.jsonc rather than a hunt through the page templates.
+ *
+ * Escaped although it is configuration rather than input. It is still text put
+ * into markup, inside an attribute where a stray quote ends the `href`, and
+ * escaping it costs nothing next to finding out which value someone typed.
  */
 export const notFoundPage = (site = "https://armada.mgcrea.io"): string =>
   shell(
     "Not found",
-    `<h1>Not found.</h1><p><a href="${site}">${site.replace(/^https?:\/\//, "")}</a></p>`,
+    `<h1>Not found.</h1><p><a href="${escapeHtml(site)}">${escapeHtml(site.replace(/^https?:\/\//, ""))}</a></p>`,
   );

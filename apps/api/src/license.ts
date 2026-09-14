@@ -43,6 +43,20 @@ export const ulid = (now: number = Date.now()): string => {
   return time + random;
 };
 
+/**
+ * The signing key would not load.
+ *
+ * Its own class so `fulfil` can tell a secret that is wrong, which setting it
+ * again fixes, from anything else that might throw. The message names the
+ * secret and the kind of failure, and never quotes the value.
+ */
+export class SigningKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SigningKeyError";
+  }
+}
+
 export interface Minted {
   id: string;
   issuedAt: string;
@@ -62,13 +76,25 @@ export const mint = async (options: {
   const payload = toBase64Url(
     encoder.encode(JSON.stringify({ id, email: options.email, major: options.major, issuedAt })),
   );
-  const signingKey = await crypto.subtle.importKey(
-    "pkcs8",
-    fromBase64(options.privateKey),
-    { name: "Ed25519" },
-    false,
-    ["sign"],
-  );
+  let signingKey: CryptoKey;
+  try {
+    signingKey = await crypto.subtle.importKey(
+      "pkcs8",
+      fromBase64(options.privateKey),
+      { name: "Ed25519" },
+      false,
+      ["sign"],
+    );
+  } catch (error) {
+    // `atob` throws on text that is not base64, and `importKey` on bytes that
+    // are not a PKCS#8 Ed25519 key. Both mean the secret, not the sale, and
+    // left to propagate they became a bare 500 that named neither. Only the
+    // DOMException's name is kept: its message is harmless today, but this
+    // string goes into a response body.
+    const kind = error instanceof Error ? error.name : "unknown error";
+    const what = options.privateKey ? "is not a base64 PKCS#8 Ed25519 private key" : "is empty";
+    throw new SigningKeyError(`LICENSE_SIGNING_KEY ${what} (${kind})`);
+  }
   const signature = await crypto.subtle.sign("Ed25519", signingKey, encoder.encode(payload));
   return {
     id,

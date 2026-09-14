@@ -5,27 +5,14 @@
 // written rather than taken from the Stripe SDK, which means the usual comfort
 // of "the library handles it" does not apply and each rule needs its own row.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { verifySignature } from "../src/stripe";
+import { priceIdFor, verifySignature } from "../src/stripe";
+import { hmacHex } from "./hmac";
 
 const SECRET = "whsec_test_0123456789";
 const BODY = JSON.stringify({ id: "evt_1", type: "checkout.session.completed" });
 const NOW = 1_800_000_000_000;
-
-/** WebCrypto rather than node:crypto, so this file needs no Node type roots. */
-const hmacHex = async (secret: string, message: string): Promise<string> => {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return [...new Uint8Array(mac)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-};
 
 const sign = async (body: string, secret: string, atMs: number): Promise<string> => {
   const t = Math.floor(atMs / 1000);
@@ -100,9 +87,54 @@ describe("verifySignature", () => {
     expect(result.ok === false && result.reason).toMatch(/tolerance is 300s/);
   });
 
+  // WebCrypto throws on a zero-length HMAC key. Unguarded, an unset secret
+  // escaped as an exception and the webhook answered a bare 500.
+  it("refuses rather than throws when no secret is configured", async () => {
+    const result = await verifySignature(BODY, await sign(BODY, SECRET, NOW), "", NOW);
+    expect(result).toEqual({ ok: false, reason: "no webhook secret configured" });
+  });
+
   it("refuses a body edited after signing", async () => {
     const header = await sign(BODY, SECRET, NOW);
     const tampered = BODY.replace("evt_1", "evt_2");
     expect((await verifySignature(tampered, header, SECRET, NOW)).ok).toBe(false);
+  });
+});
+
+describe("priceIdFor", () => {
+  // The fallback that decides whether a sale with no `price_id` metadata is
+  // Armada's. Every failure has to come back as "", which the guard reads as
+  // "not ours", rather than as a throw, which would be a bare 500 and a
+  // three-day retry loop over a network blip.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads the price of the session's first line item", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ data: [{ price: { id: "price_123" } }] }));
+    expect(await priceIdFor("cs_test_1", "sk_test_x")).toBe("price_123");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toBe(
+      "https://api.stripe.com/v1/checkout/sessions/cs_test_1/line_items?limit=1",
+    );
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer sk_test_x");
+  });
+
+  it("answers empty when Stripe answers anything but 2xx", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("no", { status: 401 }));
+    expect(await priceIdFor("cs_test_1", "sk_test_x")).toBe("");
+  });
+
+  it("answers empty when the call itself throws", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network is down"));
+    expect(await priceIdFor("cs_test_1", "sk_test_x")).toBe("");
+  });
+
+  it("answers empty when the session has no line items", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ data: [] }));
+    expect(await priceIdFor("cs_test_1", "sk_test_x")).toBe("");
   });
 });

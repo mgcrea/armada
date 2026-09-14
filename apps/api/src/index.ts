@@ -14,10 +14,10 @@
 // Adapted from the sibling app's Worker, with one deliberate divergence: an
 // unconfigured product guard fails closed. See `handleWebhook`.
 
-import { sendLicense } from "./email";
+import { sendLicense, type Sent } from "./email";
 import type { LicenseRow } from "./env";
-import { mint } from "./license";
-import { notFoundPage, pendingPage, sentPage, thanksPage } from "./pages";
+import { mint, SigningKeyError, type Minted } from "./license";
+import { notFoundPage, pendingPage, revokedPage, sentPage, thanksPage } from "./pages";
 import {
   charge,
   checkoutSession,
@@ -25,6 +25,7 @@ import {
   eventEnvelope,
   isFullyRefunded,
   resendRequest,
+  type StripeEvent,
 } from "./schema";
 import { priceIdFor, verifySignature } from "./stripe";
 
@@ -50,16 +51,6 @@ const FULFILMENT_EVENTS = new Set([
   "checkout.session.async_payment_succeeded",
 ]);
 
-/**
- * Whether this deployment may fulfil at all.
- *
- * Only the test environment may run without a price, and it has to say so by
- * name: a missing or misspelt ENVIRONMENT reads as production, so a mistake in
- * wrangler.jsonc closes the Worker rather than opening it.
- */
-const fulfilmentConfigured = (env: Env): boolean =>
-  env.ENVIRONMENT === "test" || Boolean(env.EXPECTED_PRICE_ID);
-
 /** Which field moved, in one line, for the log. */
 const explain = (error: { issues: { path: PropertyKey[]; message: string }[] }): string =>
   error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
@@ -84,8 +75,64 @@ const json = (body: unknown, status = 200): Response =>
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 
-const sentWithin = (at: string | null, window: number, now: number): boolean =>
-  at !== null && now - Date.parse(at) < window;
+/**
+ * A secret this Worker needs is missing or unusable.
+ *
+ * 500, so Stripe keeps retrying, and the retry that lands after the secret is
+ * fixed is the fulfilment. The body names the secret and never quotes it: it
+ * shows up beside the event in the Stripe dashboard, which is where someone
+ * looks first, and a bare 500 there used to say nothing at all.
+ */
+const misconfigured = (what: string): Response => {
+  console.error(`webhook: not configured, ${what}`);
+  return new Response(`not configured: ${what}`, { status: 500 });
+};
+
+/**
+ * A verified delivery this Worker will never be able to act on.
+ *
+ * 200, not 400. Stripe retries every non-2xx answer for three days whatever
+ * its code, so a 4xx does not say "stop", it says "later", and no number of
+ * retries makes a session grow the field it lacks. The body is what shows up
+ * next to the event in the Stripe dashboard and the log line is what shows up
+ * in Workers Logs; between them someone can see what arrived.
+ *
+ * A 200 is recorded in `stripe_events` like any other, so once the code is
+ * fixed a "Resend" from the dashboard answers "duplicate". Replaying one means
+ * deleting its row first or, for a sale, minting by hand with
+ * scripts/mint-license.mjs.
+ */
+const unprocessable = (what: string, event?: StripeEvent): Response => {
+  const which = event ? ` ${event.id} (${event.type})` : "";
+  console.error(`webhook: cannot handle${which}, ${what}`);
+  return new Response(`unprocessable: ${what}`, { status: 200 });
+};
+
+/**
+ * Why this deployment may not fulfil, as the answer to give Stripe, or `null`
+ * when it may. Two failures, answered differently on purpose.
+ *
+ * No price is a deployment that has not been told which sales are its own.
+ * Only the test environment may run without one, and it has to say so by
+ * name: a missing or misspelt ENVIRONMENT reads as production, so a mistake in
+ * wrangler.jsonc closes the Worker rather than opening it. That one answers
+ * 200; `handleWebhook` says why.
+ *
+ * No signing key is a deployment that cannot mint at all, and that one answers
+ * 500 through `misconfigured`, so the sale is fulfilled by Stripe's retry once
+ * the secret is set. Every app's checkouts reach this Worker, so theirs are
+ * retried too, and answer "not this product" when they come back. Only
+ * presence is checked here; a key that is set but will not import is found by
+ * `mint`, the first thing to read it, and answered the same way.
+ */
+const fulfilmentRefusal = (env: Env, event: StripeEvent): Response | null => {
+  if (env.ENVIRONMENT !== "test" && !env.EXPECTED_PRICE_ID) {
+    console.error(`webhook: not fulfilling ${event.id}, EXPECTED_PRICE_ID is empty`);
+    return new Response("fulfilment not configured: EXPECTED_PRICE_ID is empty", { status: 200 });
+  }
+  if (!env.LICENSE_SIGNING_KEY) return misconfigured("LICENSE_SIGNING_KEY is not set");
+  return null;
+};
 
 /**
  * Read a body, or give up once it exceeds `cap`. `null` means it did.
@@ -119,17 +166,21 @@ const readCapped = async (request: Request, cap: number): Promise<string | null>
   return new TextDecoder().decode(joined);
 };
 
+/** The connecting address, which Cloudflare sets and a client cannot. */
+const clientAddress = (request: Request): string =>
+  request.headers.get("cf-connecting-ip") ?? "unknown";
+
 /**
- * Whether this address has had its share of a public route for the minute.
+ * Whether `key` has had its share of a public route for the minute.
  *
- * Keyed on the connecting address, which Cloudflare sets and a client cannot.
+ * Keys are prefixed with what they count (`ip:`, `email:`), so two kinds of
+ * limit can share one binding without one's counter spilling into the other.
  * A missing binding (a wrangler that has not got one, a test that stubbed it
  * out) means no limit rather than a crash: a fulfilment must never fail on a
  * limiter.
  */
-const overLimit = async (limiter: RateLimit | undefined, request: Request): Promise<boolean> => {
+const overLimit = async (limiter: RateLimit | undefined, key: string): Promise<boolean> => {
   if (!limiter) return false;
-  const key = request.headers.get("cf-connecting-ip") ?? "unknown";
   try {
     const outcome = await limiter.limit({ key });
     return !outcome.success;
@@ -138,10 +189,57 @@ const overLimit = async (limiter: RateLimit | undefined, request: Request): Prom
   }
 };
 
-const markSent = async (env: Env, id: string): Promise<void> => {
-  await env.DB.prepare("UPDATE licenses SET last_sent_at = ? WHERE id = ?")
-    .bind(new Date().toISOString(), id)
+/**
+ * Take the right to mail this licence, or learn that it is not ours to take.
+ *
+ * One conditional UPDATE rather than read, decide, send, then write. That
+ * sequence let two deliveries arriving together (a Stripe retry crossing a
+ * dashboard "Resend", or `completed` crossing `async_payment_succeeded`) both
+ * read an old `last_sent_at`, both send, and both stamp it. D1 applies one
+ * statement at a time, so exactly one claim changes the row and the other is
+ * told the key has gone. ISO timestamps from `toISOString` sort as text.
+ *
+ * `revoked_at IS NULL` sits in the same statement for the same reason: a refund
+ * that lands between reading the row and sending must not let the dead key out.
+ *
+ * Returns the stamp it wrote, which `releaseSend` needs, or `null`.
+ */
+const claimSend = async (env: Env, id: string): Promise<string | null> => {
+  const now = Date.now();
+  const stamp = new Date(now).toISOString();
+  const cutoff = new Date(now - SEND_COOLDOWN_MS).toISOString();
+  const result = await env.DB.prepare(
+    "UPDATE licenses SET last_sent_at = ?" +
+      " WHERE id = ? AND revoked_at IS NULL AND (last_sent_at IS NULL OR last_sent_at < ?)",
+  )
+    .bind(stamp, id, cutoff)
     .run();
+  return (result.meta.changes ?? 0) === 1 ? stamp : null;
+};
+
+/**
+ * Hand a claim back after a send that failed, so the retry is not refused as
+ * "already sent" for the next five minutes. Only while the stamp is still the
+ * one this claim wrote: a later claim that has taken the row since keeps it.
+ */
+const releaseSend = async (
+  env: Env,
+  id: string,
+  stamp: string,
+  previous: string | null,
+): Promise<void> => {
+  await env.DB.prepare("UPDATE licenses SET last_sent_at = ? WHERE id = ? AND last_sent_at = ?")
+    .bind(previous, id, stamp)
+    .run();
+};
+
+/** Claim, send, and give the claim back if the send failed. `null` means not claimed. */
+const deliver = async (env: Env, row: LicenseRow): Promise<Sent | null> => {
+  const stamp = await claimSend(env, row.id);
+  if (!stamp) return null;
+  const sent = await sendLicense(env, row.email, row.key);
+  if (!sent.ok) await releaseSend(env, row.id, stamp, row.last_sent_at);
+  return sent;
 };
 
 const findBySession = (env: Env, sessionId: string): Promise<LicenseRow | null> =>
@@ -157,27 +255,27 @@ const findBySession = (env: Env, sessionId: string): Promise<LicenseRow | null> 
  *
  * Idempotent by way of the unique constraint on `stripe_session_id`, because
  * Stripe redelivers for days and a redelivery must not mean a second licence.
- * A failed email returns 500 on purpose: Stripe then retries, the insert is a
- * no-op the second time, and the send is attempted again, which is exactly the
- * behaviour wanted when the alternative is a customer who paid and got nothing.
+ * A failed email returns 500 on purpose: Stripe then retries, the row is found
+ * rather than inserted the second time, and the send is attempted again, which
+ * is exactly the behaviour wanted when the alternative is a customer who paid
+ * and got nothing.
  *
  * `handleWebhook` has already refused the event if no price is configured, but
  * the guard below does not rely on that: with an empty EXPECTED_PRICE_ID outside
  * the test environment, no session's price can match it, so nothing is minted.
  */
-const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Response> => {
-  const parsed = checkoutSession.safeParse(object);
+const fulfil = async (event: StripeEvent, env: Env): Promise<Response> => {
+  const parsed = checkoutSession.safeParse(event.data.object);
   if (!parsed.success) {
-    // 400, not 500: something that will never parse should stop being retried,
-    // and the message is what says which field Stripe moved.
-    return new Response(`session: ${explain(parsed.error)}`, { status: 400 });
+    // The message is what says which field Stripe moved.
+    return unprocessable(`session: ${explain(parsed.error)}`, event);
   }
   const session = parsed.data;
   if (session.payment_status !== "paid") {
     return new Response("not paid yet", { status: 200 });
   }
   const email = session.customer_details?.email?.trim().toLowerCase();
-  if (!email) return new Response("no email on the session", { status: 400 });
+  if (!email) return unprocessable("no email on the session, nothing minted", event);
 
   let row = await findBySession(env, session.id);
   if (!row) {
@@ -223,7 +321,16 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     }
 
     const major = Number(env.CURRENT_MAJOR) || 1;
-    const minted = await mint({ email, major, privateKey: env.LICENSE_SIGNING_KEY });
+    let minted: Minted;
+    try {
+      minted = await mint({ email, major, privateKey: env.LICENSE_SIGNING_KEY });
+    } catch (error) {
+      // Set, but not a key: `fulfilmentRefusal` can only see that it is set.
+      // Answered like a missing one, because fixing the secret is what
+      // fulfils this sale, and Stripe's retry is what brings it back.
+      if (error instanceof SigningKeyError) return misconfigured(error.message);
+      throw error;
+    }
     await env.DB.prepare(
       `INSERT INTO licenses
          (id, email, major, key, stripe_session_id, payment_intent, price_id, amount_paid,
@@ -242,7 +349,7 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
         session.amount_total ?? 0,
         session.currency ?? "eur",
         minted.issuedAt,
-        livemode ? 1 : 0,
+        event.livemode ? 1 : 0,
       )
       .run();
     // Re-read rather than trusting the insert: on a race the row that won is the
@@ -255,23 +362,20 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     return new Response("could not record the licence", { status: 500 });
   }
 
-  // A revoked licence is not re-sent, for the same reason `handleResend` will
-  // not send one: the money has been given back. Without this, a redelivery
+  // A revoked licence is not re-sent, for the same reason `resendTo` will not
+  // send one: the money has been given back. Without this, a redelivery
   // arriving after the cooldown, or a "Resend" click on the event in the Stripe
   // dashboard, would mail the dead key again under a covering note promising a
   // full refund.
   if (row.revoked_at) {
     return new Response("revoked, not re-sent", { status: 200 });
   }
-  if (sentWithin(row.last_sent_at, SEND_COOLDOWN_MS, Date.now())) {
-    return new Response("already sent", { status: 200 });
-  }
-  const sent = await sendLicense(env, row.email, row.key);
+  const sent = await deliver(env, row);
+  if (!sent) return new Response("already sent", { status: 200 });
   if (!sent.ok) {
     console.error(`fulfil: email failed for licence ${row.id}: ${sent.reason}`);
     return new Response(`email: ${sent.reason}`, { status: 500 });
   }
-  await markSent(env, row.id);
   return new Response("ok", { status: 200 });
 };
 
@@ -309,18 +413,18 @@ const revoke = async (env: Env, paymentIntent: string | null | undefined, why: s
  * back two euros of a fifteen euro licence is a goodwill gesture; treating it as
  * a revocation would take the product away from someone who still owns it.
  */
-const refunded = async (object: unknown, env: Env): Promise<Response> => {
-  const parsed = charge.safeParse(object);
-  if (!parsed.success) return new Response(`charge: ${explain(parsed.error)}`, { status: 400 });
+const refunded = async (event: StripeEvent, env: Env): Promise<Response> => {
+  const parsed = charge.safeParse(event.data.object);
+  if (!parsed.success) return unprocessable(`charge: ${explain(parsed.error)}`, event);
   if (!isFullyRefunded(parsed.data)) {
     return new Response("partial refund: licence left alone", { status: 200 });
   }
   return revoke(env, parsed.data.payment_intent, "refunded");
 };
 
-const disputed = async (object: unknown, env: Env): Promise<Response> => {
-  const parsed = dispute.safeParse(object);
-  if (!parsed.success) return new Response(`dispute: ${explain(parsed.error)}`, { status: 400 });
+const disputed = async (event: StripeEvent, env: Env): Promise<Response> => {
+  const parsed = dispute.safeParse(event.data.object);
+  if (!parsed.success) return unprocessable(`dispute: ${explain(parsed.error)}`, event);
   return revoke(env, parsed.data.payment_intent, "disputed");
 };
 
@@ -333,9 +437,9 @@ const disputed = async (object: unknown, env: Env): Promise<Response> => {
  * unless a release went out in the meantime the revocation was never baked into
  * a build to begin with.
  */
-const disputeClosed = async (object: unknown, env: Env): Promise<Response> => {
-  const parsed = dispute.safeParse(object);
-  if (!parsed.success) return new Response(`dispute: ${explain(parsed.error)}`, { status: 400 });
+const disputeClosed = async (event: StripeEvent, env: Env): Promise<Response> => {
+  const parsed = dispute.safeParse(event.data.object);
+  if (!parsed.success) return unprocessable(`dispute: ${explain(parsed.error)}`, event);
   const { payment_intent: paymentIntent, status } = parsed.data;
   if (status !== "won") {
     return new Response(`dispute ${status ?? "closed"}: licence stays revoked`, { status: 200 });
@@ -357,14 +461,25 @@ const disputeClosed = async (object: unknown, env: Env): Promise<Response> => {
   return new Response(`dispute won: restored ${result.meta.changes ?? 0}`, { status: 200 });
 };
 
+/** Give an event's claim back, so Stripe's next delivery of it is handled. */
+const releaseEvent = async (env: Env, id: string): Promise<void> => {
+  await env.DB.prepare("DELETE FROM stripe_events WHERE id = ?").bind(id).run();
+};
+
 /**
  * Verify, then route on the event type.
  *
  * Every subscribed event lands here, not just the ones handled. Deciding that
- * BEFORE insisting on a shape is what keeps an unrelated event type out of the
- * same retry loop a malformed one belongs in.
+ * BEFORE insisting on a shape is what keeps an unrelated event type from being
+ * reported as a malformed one.
  */
 const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
+  // Before the signature, because without the secret there is no signature to
+  // check: WebCrypto refuses a zero-length HMAC key by throwing, which used to
+  // surface as a bare 500 naming nothing. The name of a missing secret is no
+  // use to a stranger, and its value is not in reach of this line.
+  if (!env.STRIPE_WEBHOOK_SECRET) return misconfigured("STRIPE_WEBHOOK_SECRET is not set");
+
   const raw = await readCapped(request, MAX_WEBHOOK_BYTES);
   if (raw === null) return new Response("body too large", { status: 413 });
   const verified = await verifySignature(
@@ -373,17 +488,22 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
     env.STRIPE_WEBHOOK_SECRET,
   );
   if (!verified.ok) {
+    // The reason goes to the log and nowhere else. In the body it would tell
+    // whoever is forging deliveries which check they got past.
     console.error(`webhook: refused, ${verified.reason}`);
-    return new Response(`signature: ${verified.reason}`, { status: 400 });
+    return new Response("invalid signature", { status: 400 });
   }
 
+  // Past the signature these are Stripe's own bytes, so neither failure can be
+  // cured by retrying, and both answer 200 for the reason `unprocessable` gives.
+  // Neither is recorded as seen: without an envelope there is no event id.
   let envelope: ReturnType<typeof eventEnvelope.safeParse>;
   try {
     envelope = eventEnvelope.safeParse(JSON.parse(raw));
   } catch {
-    return new Response("body is not JSON", { status: 400 });
+    return unprocessable("body is not JSON");
   }
-  if (!envelope.success) return new Response("not a Stripe event", { status: 400 });
+  if (!envelope.success) return unprocessable(`not a Stripe event: ${explain(envelope.error)}`);
 
   const event = envelope.data;
 
@@ -398,47 +518,57 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   // environment, no price means no fulfilment.
   //
   // 200, so Stripe does not retry it for three days. Before the idempotency
-  // lookup, so an unconfigured Worker never touches D1. And NOT recorded in
+  // claim, so an unconfigured Worker never touches D1. And NOT recorded in
   // `stripe_events`, so once the price is set, a "Resend" from the Stripe
-  // dashboard still fulfils a sale that was genuinely Armada's.
-  if (FULFILMENT_EVENTS.has(event.type) && !fulfilmentConfigured(env)) {
-    console.error(`webhook: not fulfilling ${event.id}, EXPECTED_PRICE_ID is empty`);
-    return new Response("fulfilment not configured: EXPECTED_PRICE_ID is empty", { status: 200 });
+  // dashboard still fulfils a sale that was genuinely Armada's. A missing
+  // signing key is refused at the same point, with a 500 instead.
+  if (FULFILMENT_EVENTS.has(event.type)) {
+    const refusal = fulfilmentRefusal(env, event);
+    if (refusal) return refusal;
   }
 
-  // Before anything is acted on. The unique constraint on `stripe_session_id`
-  // stops a second licence, which is not the same as stopping a second email:
-  // past the send cooldown, a redelivery or a "Resend" from the dashboard would
-  // mail the key again.
-  const seen = await env.DB.prepare("SELECT id FROM stripe_events WHERE id = ?")
-    .bind(event.id)
-    .first();
-  if (seen) return new Response("duplicate", { status: 200 });
+  // The claim comes BEFORE anything is acted on, and it is the whole check. A
+  // SELECT here and an INSERT after handling left a window as long as a
+  // fulfilment in which a second delivery of the same event saw no row and
+  // handled it again. `ON CONFLICT DO NOTHING` is atomic, so exactly one
+  // delivery changes a row and every other one answers "duplicate".
+  //
+  // The unique constraint on `stripe_session_id` stops a second licence, which
+  // is not the same as stopping a second email: past the send cooldown, a
+  // redelivery or a "Resend" from the dashboard would mail the key again.
+  const claimed = await env.DB.prepare(
+    "INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)" +
+      " ON CONFLICT (id) DO NOTHING",
+  )
+    .bind(event.id, event.type, new Date().toISOString())
+    .run();
+  if ((claimed.meta.changes ?? 0) !== 1) return new Response("duplicate", { status: 200 });
 
-  const response = await dispatch(event.type, event.data.object, env, event.livemode);
-  // Recorded only once the event has actually been handled. A 500 must stay
+  // Given back unless the event was actually handled. A 500 must stay
   // retryable: that is what turns a failed send into a second attempt rather
-  // than a customer who paid and got nothing.
-  if (response.status < 300) {
-    await env.DB.prepare(
-      "INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)" +
-        " ON CONFLICT (id) DO NOTHING",
-    )
-      .bind(event.id, event.type, new Date().toISOString())
-      .run();
+  // than a customer who paid and got nothing. A throw gives it back too, then
+  // carries on into the runtime's own 500.
+  //
+  // Two things this cannot give back, both rare enough to leave to the log. A
+  // duplicate that arrives while the first delivery is still running answers
+  // 200 before that delivery's outcome is known. And a Worker killed mid-event
+  // leaves its claim behind, so the event answers "duplicate" until its row
+  // is deleted by hand.
+  let response: Response;
+  try {
+    response = await dispatch(event, env);
+  } catch (error) {
+    await releaseEvent(env, event.id);
+    throw error;
   }
+  if (response.status >= 300) await releaseEvent(env, event.id);
   return response;
 };
 
-const dispatch = async (
-  type: string,
-  object: unknown,
-  env: Env,
-  livemode: boolean,
-): Promise<Response> => {
-  switch (type) {
+const dispatch = async (event: StripeEvent, env: Env): Promise<Response> => {
+  switch (event.type) {
     case "checkout.session.completed":
-      return fulfil(object, env, livemode);
+      return fulfil(event, env);
     // A delayed-notification method (SEPA, Bancontact-to-SEPA, a bank transfer)
     // sends `completed` with `payment_status: "unpaid"` and settles later with
     // this. Unhandled, that second event would fall to `ignored`: the customer
@@ -446,16 +576,16 @@ const dispatch = async (
     // happened. The switch that enables such methods lives in the Stripe
     // dashboard, not in this repo, so it is handled before anyone flips it.
     case "checkout.session.async_payment_succeeded":
-      return fulfil(object, env, livemode);
+      return fulfil(event, env);
     case "checkout.session.async_payment_failed":
-      console.error("webhook: async payment failed for a session");
+      console.error(`webhook: async payment failed, event ${event.id}`);
       return new Response("async payment failed", { status: 200 });
     case "charge.refunded":
-      return refunded(object, env);
+      return refunded(event, env);
     case "charge.dispute.created":
-      return disputed(object, env);
+      return disputed(event, env);
     case "charge.dispute.closed":
-      return disputeClosed(object, env);
+      return disputeClosed(event, env);
     default:
       return new Response("ignored", { status: 200 });
   }
@@ -466,28 +596,58 @@ const handleThanks = async (request: Request, url: URL, env: Env): Promise<Respo
   if (!sessionId) return html(notFoundPage(env.SITE_URL), 404);
   // The pending page, not an error: to a browser that has just paid, a limit
   // and a slow webhook look the same and deserve the same sentence.
-  if (await overLimit(env.THANKS_LIMIT, request)) return html(pendingPage(), 429);
+  if (await overLimit(env.THANKS_LIMIT, `ip:${clientAddress(request)}`)) {
+    return html(pendingPage(), 429);
+  }
   const row = await findBySession(env, sessionId);
   // The redirect can outrun the webhook. That is a wait, not an error.
   if (!row) return html(pendingPage(), 202);
+  // Whatever its age. The key stopped being a licence when the money went back.
+  if (row.revoked_at) return html(revokedPage());
   if (Date.now() - Date.parse(row.issued_at) > THANKS_WINDOW_MS) return html(sentPage(row.email));
   return html(thanksPage(row.key, row.email));
 };
 
+/** The media type, without parameters, case-folded. */
+const isJson = (request: Request): boolean =>
+  (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ===
+  "application/json";
+
 /**
  * Re-send a key to the address that bought it.
  *
- * Answers identically whether or not the address is a customer. Anything else
- * makes this an oracle for "did this person buy Armada", which is a question
- * a stranger should not be able to ask a thousand times a second.
+ * A support and command-line route. Nothing in this repo calls it: the site has
+ * no form for it, and the email tells a customer to reply instead. It is for
+ * `curl` from a support session, where it beats minting a replacement by hand.
+ *
+ * No CORS, on purpose. It answers no OPTIONS request and sets no
+ * Access-Control-Allow-* header, and it refuses any body not labelled
+ * `application/json`, which a browser will not send to another origin without
+ * a preflight. That preflight lands on the 404 below, so a page elsewhere can
+ * neither read this route's answer nor make a visitor's browser call it. A
+ * plain form post, which skips the preflight, cannot carry that type and gets
+ * 415.
+ *
+ * Answers identically whether or not the address is a customer, in body AND in
+ * time. Anything else makes this an oracle for "did this person buy Armada",
+ * which is a question a stranger should not be able to ask a thousand times a
+ * second. The answer is settled before anything is looked up, and the lookup
+ * and send run in `waitUntil` after it has gone, so a customer's address
+ * costing a D1 read and an email does not make for a slower response.
  */
-const handleResend = async (request: Request, env: Env): Promise<Response> => {
+const handleResend = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> => {
+  if (!isJson(request)) return new Response("expected application/json", { status: 415 });
+
   const answer = json({ ok: true });
 
   // The limiter first, before the body is even read, and the same answer when
-  // it bites: the per-licence cooldown below only ever protects a customer's
-  // row, so an address that is not a customer would cost a D1 query per request.
-  if (await overLimit(env.RESEND_LIMIT, request)) return answer;
+  // it bites: the per-licence cooldown only ever protects a customer's row, so
+  // an address that is not a customer would cost a D1 query per request.
+  if (await overLimit(env.RESEND_LIMIT, `ip:${clientAddress(request)}`)) return answer;
 
   let email: string;
   try {
@@ -502,22 +662,42 @@ const handleResend = async (request: Request, env: Env): Promise<Response> => {
     return answer;
   }
 
-  const row = await env.DB.prepare(
-    `SELECT id, email, key, last_sent_at FROM licenses
-       WHERE email = ? AND revoked_at IS NULL
-       ORDER BY issued_at DESC LIMIT 1`,
-  )
-    .bind(email)
-    .first<LicenseRow>();
-  if (!row || sentWithin(row.last_sent_at, SEND_COOLDOWN_MS, Date.now())) return answer;
-
-  const sent = await sendLicense(env, row.email, row.key);
-  if (sent.ok) await markSent(env, row.id);
+  ctx.waitUntil(resendTo(env, email));
   return answer;
 };
 
+/**
+ * The part of a resend whose cost depends on who the address belongs to.
+ *
+ * The address gets its own count on the limiter, beside the connecting
+ * address's. The per-IP limit only bounds one IP, and the per-licence cooldown
+ * only protects a customer's row, so without it anyone spreading requests for
+ * one address across many IPs would cost a D1 query each.
+ *
+ * Nothing is waiting on this: the response has already gone. So it never
+ * throws, and the log is the only place a failure can land.
+ */
+const resendTo = async (env: Env, email: string): Promise<void> => {
+  try {
+    if (await overLimit(env.RESEND_LIMIT, `email:${email}`)) return;
+    const row = await env.DB.prepare(
+      `SELECT id, email, key, issued_at, last_sent_at, revoked_at, revoked_reason FROM licenses
+         WHERE email = ? AND revoked_at IS NULL
+         ORDER BY issued_at DESC LIMIT 1`,
+    )
+      .bind(email)
+      .first<LicenseRow>();
+    if (!row) return;
+    const sent = await deliver(env, row);
+    if (sent && !sent.ok)
+      console.error(`resend: email failed for licence ${row.id}: ${sent.reason}`);
+  } catch (error) {
+    console.error(`resend: ${String(error)}`);
+  }
+};
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const route = `${request.method} ${url.pathname}`;
     switch (route) {
@@ -526,7 +706,7 @@ export default {
       case "GET /thanks":
         return handleThanks(request, url, env);
       case "POST /license/resend":
-        return handleResend(request, env);
+        return handleResend(request, env, ctx);
       case "GET /health":
         return json({ ok: true });
       default:

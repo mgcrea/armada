@@ -25,13 +25,11 @@ export default defineConfig(async () => ({
                 STRIPE_WEBHOOK_SECRET: "whsec_test",
                 LICENSE_SIGNING_KEY: "",
                 // The product guard, pinned to the price the fixtures pay.
-                // wrangler.jsonc carries an EMPTY price until the Stripe price
-                // exists, and an empty price in production refuses every sale,
-                // so inheriting it would have every fulfilment test assert
-                // against a licence the Worker had just refused to mint. Set
-                // here rather than per test so the whole suite runs with the
-                // guard ON, and a session at another price, or no price, is the
-                // exception a test states explicitly.
+                // wrangler.jsonc carries Armada's live price id, and inheriting
+                // it would tie every fulfilment test to a value that changes
+                // whenever the price does. Set here rather than per test so the
+                // whole suite runs with the guard ON, and a session at another
+                // price, or no price, is the exception a test states explicitly.
                 EXPECTED_PRICE_ID: "price_test",
               },
             },

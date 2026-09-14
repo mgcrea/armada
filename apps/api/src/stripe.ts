@@ -53,6 +53,11 @@ export const verifySignature = async (
   secret: string,
   now: number = Date.now(),
 ): Promise<Verified> => {
+  // WebCrypto refuses a zero-length HMAC key by throwing, so an unset secret
+  // used to escape this function as an exception. `handleWebhook` checks for it
+  // first and answers with the secret's name; this keeps the function itself a
+  // verdict rather than something its callers have to wrap.
+  if (!secret) return { ok: false, reason: "no webhook secret configured" };
   if (!header) return { ok: false, reason: "no Stripe-Signature header" };
 
   let timestamp = "";

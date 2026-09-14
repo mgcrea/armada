@@ -19,7 +19,7 @@
     "migrate:local": "wrangler d1 migrations apply armada-licenses --local",
     "test": "vitest run",
     "test:watch": "vitest",
-    "types": "wrangler types",
+    "types": "wrangler types --env-file=.dev.vars.example",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

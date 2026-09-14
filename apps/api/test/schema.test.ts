@@ -2,10 +2,10 @@
 //
 // The subtle failure this guards is not a malformed payload — it is a perfectly
 // good one for an event type we do not handle. Validating the whole event with a
-// single schema would call `payment_intent.succeeded` malformed, answer 400, and
-// put Stripe into the same three-day retry loop that a genuinely broken payload
-// deserves. So the envelope must accept anything Stripe sends, and only the
-// session shape may be strict.
+// single schema would call `payment_intent.succeeded` malformed, and every one
+// of them would land in the error log as unprocessable, burying the payload that
+// really is broken. So the envelope must accept anything Stripe sends, and only
+// the session shape may be strict.
 
 import { describe, expect, it } from "vitest";
 
@@ -126,8 +126,9 @@ describe("charge and dispute", () => {
   });
 
   it("accepts a charge with no payment intent, so the handler can say so", () => {
-    // Refusing here would 400 and make Stripe retry something unfixable. The
-    // handler answers 200 with an explanation instead.
+    // Refusing here would report a malformed charge, which it is not. Accepted,
+    // the handler can say what actually happened: nothing to revoke, because
+    // the charge names no payment intent.
     expect(charge.safeParse({ id: "ch_1", amount: 1499 }).success).toBe(true);
   });
 

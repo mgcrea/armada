@@ -3,11 +3,12 @@
 // secrets — into worker-configuration.d.ts, where it is ambient and needs no
 // import. Hand-maintaining it meant a second place to forget a binding.
 //
-// One consequence worth knowing: because the secret names come from .dev.vars,
-// which is gitignored, regenerating on a machine without one silently drops them
-// from `Env` and typecheck then fails on every `env.LICENSE_SIGNING_KEY`. Copy
-// .dev.vars.example first. That is why the generated file is committed rather
-// than rebuilt on demand.
+// The secret NAMES come from a vars file, and a bare `wrangler types` reads the
+// gitignored .dev.vars: on a machine without one it silently drops them from
+// `Env`, and typecheck then fails on every `env.LICENSE_SIGNING_KEY`. So `pnpm
+// types` passes `--env-file=.dev.vars.example`, which names the same secrets and
+// is committed, and CI runs `wrangler types --check` against that same file, so
+// the committed worker-configuration.d.ts cannot drift from wrangler.jsonc.
 
 export interface LicenseRow {
   id: string;
