@@ -4,10 +4,11 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-Nothing has been released. There are no tags and no signed build; the app is built from source
-with `make build`. When a release path exists it will be tagged `app-v<version>` the way the
-sibling repos are, and GitHub release notes will be taken from this file, which is the curated
-summary.
+Nothing has been released yet. There is no `app-v` tag and no signed build: the first release,
+1.0.0, is being prepared, and until it is tagged the app is built from source with `make build`.
+Releases are tagged `app-v<version>` the way the sibling repos are, and both the GitHub release
+notes and the Sparkle update dialog are rendered from this file, which is the curated summary.
+`### Internal` sections are left out of both.
 
 ## [Unreleased]
 
@@ -53,6 +54,8 @@ below are grouped by what they do rather than replayed commit by commit.
   keystroke, through a `CGEventTap` whose mask is two event types wide.
 - **Menu bar.** An accessory app with a per-account popover, and a template glyph that fills
   while anything is working and rings when a session wants attention, on a configurable ladder.
+  Star one plan limit, in Usage or above an account's sessions, and its percentage sits beside
+  the glyph in small type.
 - **Settings** on `swift-support-kit`'s shared scaffold, with About and Help panes.
 - **What's New**, a Settings pane generated from this file, with a dot in the menu bar popover
   while a release is unread.
@@ -62,9 +65,17 @@ below are grouped by what they do rather than replayed commit by commit.
 - **A licence, and a 30-minute trial.** One key covers every 1.x release on every Mac you own and
   is verified offline, on the Mac. Without one Armada watches nothing and says so where the
   sessions would be; the trial runs everything, and is started by hand.
+- **A supervisor for the fleet, off until you turn it on.** Settings ▸ Supervisor runs a read-only
+  MCP server on 127.0.0.1 and starts a Claude Code session with it attached, so you can ask one
+  session which of the others need you, what any of them is doing or last said, and how much plan
+  is left. Five tools, none of which can change a session, start one or write anywhere. The session
+  runs on your own plan, and its connection details never touch your Claude configuration.
 
 ### Changed
 
+- **The network claim names the one socket Armada listens on.** The supervisor's MCP endpoint
+  binds 127.0.0.1 and nothing else, and `make audit` checks that in the listener's source beside
+  Sparkle's allowance.
 - **The network claim names its one exception.** `SECURITY.md` and `make audit` now say Armada
   reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle
   exactly the capability it was measured to use.
@@ -98,6 +109,8 @@ below are grouped by what they do rather than replayed commit by commit.
   bar imagesets are all generated from `design/armada-mark.svg` and the three authored glyphs,
   and `icon-check` fails on a generated copy that has drifted.
 - Licences: MIT at the root, and an Armada Source-Available License over `apps/apple/`.
+- `make test` runs the `ArmadaMCP` package's suite against a fake fleet, the repo's first Swift
+  tests, and CI runs it after the build.
 - The release path: `make build-release` signs inside out, notarizes and staples, `make appcast`
   signs a one-item feed over the stapled zip, and a `release-app` CI job runs both from an
   `app-v*` tag.

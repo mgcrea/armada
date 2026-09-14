@@ -6,8 +6,10 @@ A macOS menu bar app for someone running many Claude Code and Codex sessions at 
 is doing, how full its context window is, and how much of each plan is left — read from what the
 agents already write to disk, plus one question asked of the user's own `claude`.
 
-> **Not shipped.** No release, no site, no licence key — build it from source and run it. Status on
-> 2026-09-13: the app is built and runs, covering two of v1's three features. The third, messaging,
+> **On sale, not yet released.** [armada.mgcrea.io](https://armada.mgcrea.io) is live and sells a
+> licence, and the licence Worker that delivers keys is deployed, but the first release (1.0.0) is
+> still being cut: there is no `app-v` tag and no signed build yet, so for now build it from source
+> and run it. Status on 2026-09-14: the app covers two of v1's three features. The third, messaging,
 > is designed and not started. [Status](#status) lists exactly what runs today,
 > [CHANGELOG.md](CHANGELOG.md) what has changed, and
 > [docs/implementation.md](docs/implementation.md) what it cost to get there.
@@ -107,6 +109,21 @@ has the full list with what each fix would cost.
 The Codex pane also leads with how old its figures are, on purpose. Codex has no usage cache, so
 "recent" is the honest word for that list where the Claude one can say "live".
 
+## Supervise the fleet
+
+Settings ▸ Supervisor turns on an MCP server inside Armada and starts a Claude Code session with it
+attached. That session is the chat: ask it which sessions need you, what one of them is doing, what
+it last said, or how much of each plan is left, and it answers from what Armada already holds.
+
+The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
+the Keychain. All five tools read; none can change a session, start one or write anywhere. The
+supervisor itself is an ordinary `claude` on your own plan: its connection details go on its command
+line and in a file beside its startup script, nothing is added to your Claude configuration, and it
+shows up in the session list like any other. Any other MCP client can connect with the snippet the
+pane offers.
+
+Voice is not built. The plan is on-device speech in and out, around this same text session.
+
 ## Messaging is designed, not built
 
 v1's third feature is direct messages between agents, across vendors and across accounts — the gap
@@ -124,8 +141,9 @@ That measurement is also the security problem. **Claude acts on text delivered b
 refused the same request through a channel, so whatever delivers messages can steer every agent on
 the machine. The router decides delivery and never the sender, every pair is an explicit policy, and
 every delivered message is labelled and logged — see
-[docs/design.md](docs/design.md#security-model-drafted). None of it is written yet, and the app today
-opens no socket and installs no hook.
+[docs/design.md](docs/design.md#security-model-drafted). None of it is written yet: the app today
+installs no hook, and the one socket it opens is the opt-in, read-only supervisor endpoint on
+127.0.0.1.
 
 ## Working on it
 
@@ -137,13 +155,14 @@ same from either directory.
 make build          # build Armada.app (Debug)
 make run            # build, quit any running copy, and launch it
 make quit           # quit it and wait for the process to go
-make build-release  # build in Release
+make build-release  # build, sign, notarize and staple (needs AC_KEY_ID, AC_ISSUER_ID, AC_KEY_PATH)
 make clean          # remove .build
 
 make format-swift        # format the Swift with the toolchain's swift-format
 make format-swift-check  # fail on unformatted Swift — this is what CI gates on
 make blame-setup         # teach git blame to skip the formatting-only commits
 
+make test           # every suite: scripts, the licence Worker, unit checks, the Swift package
 make audit          # assert the built app reaches no network
 make icon           # rebuild the icon bundle and the web SVG from design/armada-mark.svg
 make icon-check     # fail if anything generated has drifted from its source
@@ -151,8 +170,16 @@ make icon-check     # fail if anything generated has drifted from its source
 
 `make` on its own lists every target, root and app.
 
-CI runs `make format-swift-check` then `make build` with signing off. The format gate goes first
-because it compiles nothing, which makes it the fastest real signal in the repo.
+CI runs the gates that compile nothing first: oxlint and oxfmt, `make format-swift-check`, the
+script tests, `make changelog-check`, `make icon-check`, the website's `astro check` and build, and
+the licence Worker's typecheck, generated-types drift check and test suite. The licence round trip
+(`make license-check`) runs only where the `LICENSE_SIGNING_KEY` secret exists, and the feedback
+form's wiring check warns rather than fails. Then it builds the app with signing off, runs the Swift
+package's tests against a fake fleet, and runs `make audit` against that build.
+
+A push to `main` then deploys the licence Worker, and the website once the Worker is live. An
+`app-v<version>` tag runs the release job instead, which signs, notarizes, verifies, writes the
+appcast and publishes the GitHub release. [docs/releasing.md](docs/releasing.md) is the sequence.
 
 Two things worth knowing before touching the build:
 
@@ -187,20 +214,26 @@ Built and running:
 | **New sessions**      | start `claude` or `codex` in a chosen folder on a chosen account, via a terminal                  |
 | **Fork**              | open a copy of a session from where it stands, through each vendor's own fork flag                |
 | **Mouse bindings**    | middle and extra buttons cycle the session list or send a keystroke, via an event tap             |
+| **Supervisor**        | a read-only MCP endpoint on 127.0.0.1, and a Claude Code session started with it attached         |
 | **Codex**             | sessions, plan limits and context per Codex home, as a spike                                      |
 | **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                              |
 | **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`     |
 
-Deliberately not built: messaging, hooks, `hubctl`, the Unix socket, the MCP surface, and anything
-that writes to a vendor's config. **`~/.claude*` and `~/.codex` are opened read-only** — the only
+Deliberately not built: messaging, hooks, `hubctl`, the Unix socket, the messaging MCP surface, and
+anything that writes to a vendor's config. **`~/.claude*` and `~/.codex` are opened read-only** — the only
 things Armada writes are its own: its preferences, its usage history, and the startup script it
 hands to a terminal.
 
 ### Known gaps
 
-- **`armada.mgcrea.io` does not resolve**, so the Help menu's Support and Feedback items are dead
-  links until the site ships. One line in `Support.swift`.
-- **No tests, and so no `make test`.** A target that ran nothing would be worse than none.
+- **The tests cover what fails silently, not the UI.** `make test` runs four suites: `scripts/`
+  under node:test (the CHANGELOG parse the appcast and the What's New pane share, the licence key
+  format, and the Sparkle signature check), the licence Worker under vitest in the Workers runtime,
+  the app's pure files under `make unit` (the transcript parsers, forecasts, sort order and
+  licence refusals, compiled beside a check driver), and the ArmadaMCP package under `swift test`
+  against a fake fleet. The app target has no test
+  bundle, and `make license-check`, which runs a minted key through the real `License.swift`, needs
+  the signing key and so is not part of it.
 - **Folder discovery is not watched**: a config folder created while Armada is running does not
   appear until relaunch.
 - **The prefix breakdown describes a comparable session, not the watched one.** The totals are exact
@@ -218,21 +251,24 @@ hands to a terminal.
 Armada reads every transcript on the machine, so the claim worth checking is that none of it
 leaves. It reaches **no network on its own, with one named exception**: the update check, which
 is off until you turn it on or press Check Now, reads one file from `armada.mgcrea.io`, and sends
-no identifier with it. No telemetry, no licence call. `make audit` asserts that against the built
-bundle rather than against the sources: every Mach-O swept for URL loading, DNS and TLS symbols,
+no identifier with it. No telemetry, no licence call. The one socket it listens on is the
+supervisor's MCP endpoint, off until you turn it on and bound to 127.0.0.1 only. `make audit`
+asserts all of that against the built bundle rather than against the sources: every Mach-O swept for URL loading, DNS and TLS symbols,
 the shipped Info.plist asserted to keep update checks off and to name that one feed, the sources
-swept for an internet address family, and no entitlements in the project or in the signature.
+swept for an internet address family, the MCP listener checked to bind loopback and nothing else,
+and no entitlements in the project or in the signature.
 
 ```bash
 make audit
 ```
 
-[`scripts/audit-network.sh`](scripts/audit-network.sh) has exactly one allowance, and it is
+[`scripts/audit-network.sh`](scripts/audit-network.sh) has two allowances. The first is
 Sparkle's: the three URL-loading classes it was measured to use, and nothing more. A Sparkle that
 grows a capability it did not have fails the gate, and so does a bundle that has lost Sparkle
-while the allowance is still there. Cupertino's version of the script pardons the same framework
-and an embedded node; bastion cannot make the claim at all, because it binds a loopback socket on
-purpose. Until the updater landed this file had no allowance table, and it said that the day one
+while the allowance is still there. The second is the supervisor endpoint's: swift-mcp-kit's
+listener must bind the loopback literal it was measured to use, and a checkout naming a wildcard
+address fails. Cupertino's version of the script pardons the same framework and an embedded node;
+bastion cannot make the claim at all, because its loopback gateway is always on and is the product. Until the updater landed this file had no allowance table, and it said that the day one
 arrived [SECURITY.md](SECURITY.md) would be reworded in the same commit. It was.
 
 What that does **not** cover is the `claude` Armada spawns, which talks to Anthropic over your
@@ -249,8 +285,8 @@ threat model moves when messaging lands.
 
 The same split both siblings use, for the same reason turned around: Armada is pointed at every
 agent transcript you have. Nobody should grant that to software they cannot read, so the source
-stays readable, auditable and buildable by anyone. No signed build is distributed today — the
-reservation is a position held open, not a product being described.
+stays readable, auditable and buildable by anyone. The reservation covers the signed build, whose
+licences are on sale and whose first release is being cut, under its own [EULA](apps/apple/EULA).
 
 ## Docs
 
