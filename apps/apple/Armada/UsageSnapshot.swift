@@ -167,11 +167,6 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
     return UsageWindow(utilization: 100, resetsAt: hit.resetsAt, rejectedAt: hit.at)
   }
 
-  static func read(from url: URL) -> UsageSnapshot? {
-    guard let root = ClaudeConfigDocument.read(url) else { return nil }
-    return decode(root: root)
-  }
-
   static func decode(root: [String: Any]) -> UsageSnapshot? {
     guard let cached = root["cachedUsageUtilization"] as? [String: Any] else { return nil }
     return decode(
@@ -232,25 +227,27 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
     )
   }
 
-  /// Parse a `resets_at`.
+  /// Parse a `resets_at`, or any other timestamp a vendor file carries.
   ///
-  /// **`.withFractionalSeconds` is load-bearing.** The real value is
-  /// `"2026-09-10T23:00:00.431496+00:00"` — six fractional digits and a numeric
-  /// offset — and a bare `ISO8601DateFormatter()` returns nil on it. Compiled and
-  /// run against the live string to confirm. The failure is silent: the percentage
-  /// still renders and the reset time simply never appears.
+  /// The real value is `"2026-09-10T23:00:00.431496+00:00"` — six fractional digits
+  /// and a numeric offset — and the failure mode is silent: the percentage still
+  /// renders and the reset time simply never appears. A bare `ISO8601DateFormatter()`
+  /// returned nil on exactly that string, which is why this used to pair one set to
+  /// `.withFractionalSeconds` with a plain one behind it.
   ///
-  /// The plain formatter is kept as a fallback in case a future release drops the
-  /// fractional part, which the first parser would then refuse.
+  /// **`Date.ISO8601FormatStyle` now, because it is a `Sendable` value and a shared
+  /// formatter instance is not.** Under Swift 6 a static `ISO8601DateFormatter` here is
+  /// a compile error, and every parser that reaches this runs in a background task.
+  /// Checked against the formatter pair on 2026-09-14: the live string above, a `Z`
+  /// suffix with and without a fraction, a numeric offset with and without its colon,
+  /// one to nine fractional digits, and malformed input all got the same answer to
+  /// the millisecond, the style keeping the digits past it that the formatter dropped.
+  /// Either style alone accepts both the fractional and the plain shapes; they are
+  /// still tried in the old order, which costs nothing when the first one answers.
   static func parseTimestamp(_ string: String) -> Date? {
-    withFractional.date(from: string) ?? plain.date(from: string)
+    (try? withFractional.parse(string)) ?? (try? plain.parse(string))
   }
 
-  private static let withFractional: ISO8601DateFormatter = {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter
-  }()
-
-  private static let plain = ISO8601DateFormatter()
+  private static let withFractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+  private static let plain = Date.ISO8601FormatStyle()
 }

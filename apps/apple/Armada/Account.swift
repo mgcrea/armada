@@ -124,17 +124,20 @@ final class Account: Identifiable {
   /// `Accounts`' slow timer and by the popover opening, never by the 30-second file
   /// poll. A failure is silent and changes nothing: `UsageProbe` returns nil for
   /// everything from a missing binary to a timeout, and the cached reading stands.
+  ///
+  /// **Cancellable, which a detached task was not.** `Accounts.stop()` cancels the task
+  /// that called this, and `probe` below runs as its child, so the cancellation reaches
+  /// `ClaudeControl`'s check before a process is spawned and this declines to adopt
+  /// whatever a probe already running brings back.
   func probeUsage() async {
-    let folder = self.folder
-    guard
-      let probed = await Task.detached(
-        priority: .utility,
-        operation: {
-          UsageProbe.run(folder: folder)
-        }
-      ).value
-    else { return }
+    guard let probed = await Self.probe(folder), !Task.isCancelled else { return }
     adopt(probed)
+  }
+
+  /// Off the main actor, as a child of the caller's task.
+  @concurrent
+  private nonisolated static func probe(_ folder: ClaudeConfigFolder) async -> UsageSnapshot? {
+    UsageProbe.run(folder: folder)
   }
 
   /// Take a new reading, unless it would be a step backwards.

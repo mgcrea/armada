@@ -16,6 +16,7 @@ import SwiftUI
 struct MousePane: View {
   @State private var mouse = MouseBindingsStore.shared
   @State private var trust = AccessibilityTrust.shared
+  @State private var tap = MouseTap.shared
 
   /// The binding currently waiting to be told which button it is, if any.
   @State private var capturing: UUID?
@@ -42,6 +43,14 @@ struct MousePane: View {
             Text("Until this is allowed, nothing below will fire.")
               .font(.caption)
               .foregroundStyle(.secondary)
+          } else if tap.bindingsWantTap, !tap.isRunning {
+            // The same failure with the grant in place: macOS can still refuse to
+            // create the tap, and without this line the pane would read as working.
+            Text(
+              "Accessibility is allowed, but macOS refused to let Armada listen for the buttons, so nothing below will fire. Quitting and reopening Armada makes it ask again."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
           }
         }
       } footer: {
@@ -69,7 +78,7 @@ struct MousePane: View {
           Text("Bindings")
         } footer: {
           Text(
-            "Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings — VS Code, Xcode, anything — and Armada will fire it from a button. macOS itself uses none of them, and the key arrives without the modifier you held, so bind F13 rather than a chord."
+            "Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings (VS Code, Xcode, anything) and Armada will fire it from a button. macOS itself uses none of them. The key arrives with the modifier you held on the button, so bind the chord the action shows, such as ⌥F13, rather than the bare key."
           )
         }
       }

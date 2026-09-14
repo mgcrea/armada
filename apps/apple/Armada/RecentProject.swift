@@ -73,6 +73,10 @@ nonisolated struct RecentProject: Identifiable, Hashable, Sendable {
   /// Deduplicated on the path: a home with six sessions in one repo should offer that
   /// repo once. Sessions arrive from `CodexWatcher` already parsed, so this is a walk
   /// over a handful of structs and is safe to recompute whenever the menu is drawn.
+  ///
+  /// Main-actor isolated where the rest of this type is not, because `CodexSession` is
+  /// the watcher's live main-actor object and this reads it.
+  @MainActor
   static func recent(in sessions: [CodexSession]) -> [RecentProject] {
     var seen: Set<String> = []
     let candidates =
