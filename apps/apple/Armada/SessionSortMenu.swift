@@ -49,12 +49,18 @@ struct SessionSortMenu: View {
       // one half of this choice the list cannot show you. Grouping needs no label
       // because a grouped list is visibly sections, with the folder written on each.
       //
-      // The sort's own glyph rather than a fixed `arrow.up.arrow.down`, so the icon
-      // carries meaning at a glance and matches the checkmarked row in the menu.
-      Label(sort.label, systemImage: sort.systemImage)
+      // **The glyph names the control, and it is always `arrow.up.arrow.down`.** This
+      // used to be the sort's own glyph, and beside "Last activity" a clock read as a
+      // timestamp — a fact about the list rather than a button that reorders it. The
+      // per-sort glyphs stay on the rows inside the menu, where they tell the choices
+      // apart.
+      Label(sort.label, systemImage: "arrow.up.arrow.down")
         .font(.caption)
     }
     .menuStyle(.button)
+    // The chevron is what says "this opens a menu". Without it the button is a label
+    // on a faint background, and nothing about it invites a click.
+    .menuIndicator(.visible)
     // `.accessoryBar` is the system's style for exactly this — a list's own options
     // control, as in Finder and Mail. It reads as pressable at rest, which
     // `.borderless` did not, without carrying the weight of a full push button.
