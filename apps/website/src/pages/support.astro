@@ -8,9 +8,10 @@
  *
  * It routes rather than explains. Three channels, and the only thing a reader has
  * to get right is which one their problem belongs in. The order differs from
- * cupertino's on purpose: Armada has no public repository of its own
- * (`preferIssueTracker` is false in apps/apple/Armada/Support.swift), so the
- * private form leads and the shared public tracker comes second.
+ * cupertino's on purpose: an Armada report usually has to quote a session title or
+ * a project path, which is why `preferIssueTracker` is false in
+ * apps/apple/Armada/Support.swift, so the private form leads and the shared public
+ * tracker comes second.
  */
 import Footer from "../components/Footer.astro";
 import Nav from "../components/Nav.astro";
@@ -54,7 +55,7 @@ const strong = "font-medium text-fg";
       Support
     </h1>
     <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
-      Three ways in, and which one to use comes down to a single question:
+      Three ways in, and which one to use comes down to a single question:{" "}
       <strong class={strong}>does telling us what went wrong mean quoting your own work?</strong>
     </p>
     {
@@ -100,7 +101,7 @@ const strong = "font-medium text-fg";
         look at one: quote the address you bought with rather than the key itself.
       </p>
       <p class={prose}>
-        What a key covers, and what the trial does, is set out in the
+        What a key covers, and what the trial does, is set out in the{" "}
         <a href="/terms" class={link}>licence terms</a>.
       </p>
     </section>

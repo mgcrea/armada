@@ -17,8 +17,16 @@ APPLE := apps/apple
 #
 # Deliberately NOT copied from its .PHONY list: that list is maintained by hand and drifts.
 # `help` is dropped because the root has its own.
+#
+# The `##` is spelled through a variable, not written inline. GNU make 3.81 — the
+# /usr/bin/make on macOS, and so on every CI runner — reads a literal `#` inside a
+# `$(shell ...)` in an assignment as the start of a comment, and aborts with
+# "unterminated call to function `filter-out'". The Homebrew make 4.x on a
+# developer's PATH does not, which is how this passed locally and failed the first
+# push CI ever saw.
+HASH := \#
 APPLE_TARGETS := $(filter-out help,\
-	$(shell sed -n 's/^\([a-zA-Z0-9_-]*\):.*##.*/\1/p' $(APPLE)/Makefile))
+	$(shell sed -n 's/^\([a-zA-Z0-9_-]*\):.*$(HASH)$(HASH).*/\1/p' $(APPLE)/Makefile))
 
 .DEFAULT_GOAL := help
 
