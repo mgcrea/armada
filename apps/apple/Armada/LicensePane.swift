@@ -16,7 +16,9 @@ enum LicenseLinks {
   /// move together, and this one is the slower half: the site can be redeployed
   /// in a minute, while a build that has shipped carries whatever it was compiled
   /// with until the next release. Every buy button in the app is gated on it.
-  static let isSelling = false
+  ///
+  /// True since 2026-09-14: /buy resolves to the live Stripe payment link.
+  static let isSelling = true
 }
 
 /// Entering a licence key, seeing what happened to it, and — when there is none —

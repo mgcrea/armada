@@ -54,9 +54,20 @@ below are grouped by what they do rather than replayed commit by commit.
 - **Menu bar.** An accessory app with a per-account popover, and a template glyph that fills
   while anything is working and rings when a session wants attention, on a configurable ladder.
 - **Settings** on `swift-support-kit`'s shared scaffold, with About and Help panes.
+- **What's New**, a Settings pane generated from this file, with a dot in the menu bar popover
+  while a release is unread.
+- **Updates, off until you say otherwise.** Sparkle reads one file, `armada.mgcrea.io/appcast.xml`,
+  only once automatic checks are on or Check Now is pressed, and sends no identifier with it. A
+  one-time card in the main window asks.
+- **A licence, and a 30-minute trial.** One key covers every 1.x release on every Mac you own and
+  is verified offline, on the Mac. Without one Armada watches nothing and says so where the
+  sessions would be; the trial runs everything, and is started by hand.
 
 ### Changed
 
+- **The network claim names its one exception.** `SECURITY.md` and `make audit` now say Armada
+  reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle
+  exactly the capability it was measured to use.
 - **The scope line "v1 watches; it doesn't launch agents" was reopened**, deliberately, when
   New Session landed. Armada still never owns an agent process and still holds no credentials;
   what changed is that it can ask a terminal to start one.
@@ -87,3 +98,9 @@ below are grouped by what they do rather than replayed commit by commit.
   bar imagesets are all generated from `design/armada-mark.svg` and the three authored glyphs,
   and `icon-check` fails on a generated copy that has drifted.
 - Licences: MIT at the root, and an Armada Source-Available License over `apps/apple/`.
+- The release path: `make build-release` signs inside out, notarizes and staples, `make appcast`
+  signs a one-item feed over the stapled zip, and a `release-app` CI job runs both from an
+  `app-v*` tag.
+- `armada.mgcrea.io` on Workers static assets, and the licence Worker at `api.armada.mgcrea.io`,
+  which mints and emails a key when Stripe reports a sale and refuses any sale that is not
+  Armada's.

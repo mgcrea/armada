@@ -294,19 +294,43 @@ enum Changelog {
             body: [
               "on `swift-support-kit`'s shared scaffold, with About and Help panes.",
             ]),
+          Entry(
+            ordinal: 12,
+            headline: "What's New",
+            body: [
+              ", a Settings pane generated from this file, with a dot in the menu bar popover while a release is unread.",
+            ]),
+          Entry(
+            ordinal: 13,
+            headline: "Updates, off until you say otherwise.",
+            body: [
+              "Sparkle reads one file, `armada.mgcrea.io/appcast.xml`, only once automatic checks are on or Check Now is pressed, and sends no identifier with it. A one-time card in the main window asks.",
+            ]),
+          Entry(
+            ordinal: 14,
+            headline: "A licence, and a 30-minute trial.",
+            body: [
+              "One key covers every 1.x release on every Mac you own and is verified offline, on the Mac. Without one Armada watches nothing and says so where the sessions would be; the trial runs everything, and is started by hand.",
+            ]),
         ]),
       Section(
         name: "Changed",
         lead: [],
         entries: [
           Entry(
-            ordinal: 12,
+            ordinal: 15,
+            headline: "The network claim names its one exception.",
+            body: [
+              "`SECURITY.md` and `make audit` now say Armada reaches no network on its own apart from the opt-in update check, and the audit allows Sparkle exactly the capability it was measured to use.",
+            ]),
+          Entry(
+            ordinal: 16,
             headline: "The scope line \"v1 watches; it doesn't launch agents\" was reopened",
             body: [
               ", deliberately, when New Session landed. Armada still never owns an agent process and still holds no credentials; what changed is that it can ask a terminal to start one.",
             ]),
           Entry(
-            ordinal: 13,
+            ordinal: 17,
             headline: "The menu bar halo is three assets",
             body: [
               "rather than a composed overlay, drawn as two arcs offset from each sail.",
@@ -317,31 +341,31 @@ enum Changelog {
         lead: [],
         entries: [
           Entry(
-            ordinal: 14,
+            ordinal: 18,
             headline: "Codex plan limits lagged",
             body: [
               "behind what was on disk: the newest figures usually live in a rollout the session scan has no reason to open. The scan now always tails the newest rollout in the tree.",
             ]),
           Entry(
-            ordinal: 15,
+            ordinal: 19,
             headline: "A Codex writer lock spans a session, not a turn",
             body: [
               "— confirmed, which is what makes \"waiting for input\" reachable.",
             ]),
           Entry(
-            ordinal: 16,
+            ordinal: 20,
             headline: "A session adopted mid-flight showed the wrong age",
             body: [
               ", because `lastWrite` was not seeded from disk.",
             ]),
           Entry(
-            ordinal: 17,
+            ordinal: 21,
             headline: "`CLAUDE_CONFIG_DIR` carried a trailing slash",
             body: [
               ", which made a stored value silently fail to match.",
             ]),
           Entry(
-            ordinal: 18,
+            ordinal: 22,
             headline: "Selecting a session added a ghost row",
             body: [
               "for the same project, gone a second later. Armada's own `claude` probes register as sessions on 2.1.269, and the list took them for real ones. Registries whose process is Armada's child are now skipped.",

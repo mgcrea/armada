@@ -20,10 +20,8 @@
 /checksum     https://github.com/mgcrea/armada/releases/latest/download/Armada.zip.sha256  302
 /releases     https://github.com/mgcrea/armada/releases  302
 
-# No /buy yet. It is added here when the Stripe payment link exists, as a 302 for
-# the same reason as the rest: the app's licence pane will link to /buy, and a
-# Stripe URL compiled into a shipped binary could never be repointed.
-#
-# Until that line exists, SHIPPED stays false in src/config.ts, and nothing on the
-# site links to /buy. Flip the two in the same commit: a Buy button in front of a
-# missing redirect is a 404 at the exact moment someone wanted to pay.
+# The payment link, behind a path this site owns for the same reason as the rest:
+# the app's licence pane links to /buy, and a Stripe URL compiled into a shipped
+# binary could never be repointed. Live since 2026-09-14. The site's own Buy buttons
+# still wait for SHIPPED in src/config.ts, which waits for a release to download.
+/buy          https://buy.stripe.com/7sY00j8086Oabl29tkdZ602  302

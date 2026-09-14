@@ -20,12 +20,11 @@ export const REPO_URL = "https://github.com/mgcrea/armada";
 /**
  * Whether REPO_URL answers for a visitor.
  *
- * It did not on 2026-09-14: `gh repo view mgcrea/armada` could not resolve it,
- * so every link to it would be a 404. Gated separately from SHIPPED because the
- * two need not flip together, but the release zip and appcast live under that
- * repo's releases, so it has to be public by the time SHIPPED is true.
+ * True from 2026-09-14, when mgcrea/armada was made public. Gated separately from
+ * SHIPPED because the two need not flip together, but the release zip and appcast
+ * live under that repo's releases, so it has to be public by the time SHIPPED is.
  */
-export const REPO_PUBLIC = false;
+export const REPO_PUBLIC = true;
 
 export const DOCS = {
   security: `${REPO_URL}/blob/main/SECURITY.md`,

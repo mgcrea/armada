@@ -41,7 +41,7 @@
     // id, then `pnpm types` and `pnpm release`. While it is empty this Worker
     // refuses every sale, because every app on the Stripe account delivers its
     // checkouts to every Worker. See `handleWebhook` in src/index.ts.
-    "EXPECTED_PRICE_ID": "",
+    "EXPECTED_PRICE_ID": "price_1UFZiiFQJry8F0HMZCEwkkYf",
     "LICENSE_FROM_EMAIL": "licences@mgcrea.io",
     "SITE_URL": "https://armada.mgcrea.io"
   },
