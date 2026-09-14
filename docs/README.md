@@ -21,6 +21,7 @@ out. Messaging is designed and not started. See [implementation.md](implementati
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
 | [landscape.md](landscape.md) | Competitors and standards (A2A) |
 | [spike/](spike/README.md) | Throwaway code the measurements came from |
+| [releasing.md](releasing.md) | Cutting a release: the secrets CI needs, the version copies it checks, and the push order |
 
 ## Related repos
 
@@ -37,8 +38,8 @@ The dashboard half of the design shipped ahead of sections 3–5 being written, 
 sections are now partly answered by working code — read
 [implementation.md](implementation.md) before writing them up.
 
-1. Ship a site at `armada.mgcrea.io`, or repoint `Support.swift`: the Help menu's links are
-   dead until one of those happens.
+1. Cut the first release, 1.0.0, following [releasing.md](releasing.md). The site, the payment
+   link and the licence Worker are live; the signed build is what is missing.
 2. Review design section 2 (message flow) — the one v1 feature with nothing built.
 3. Write sections 3–5: dashboard data, error handling, testing.
 4. Run the tests listed in [design.md](design.md#tests-to-run-before-building).
