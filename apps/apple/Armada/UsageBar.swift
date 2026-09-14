@@ -190,7 +190,7 @@ struct UsageResetLine: View {
             compact("clock.arrow.circlepath", Text("reset"), label: "already reset")
           }
         } else if style == .full {
-          Text("resets \(resetsAt, format: .relative(presentation: .named))")
+          Text("resets in \(Self.countdown(from: now, to: resetsAt))")
         } else {
           compact("clock", Text(resetsAt, format: Self.compactFormat), label: "resets")
         }
@@ -198,8 +198,9 @@ struct UsageResetLine: View {
       .font(.caption2)
       .foregroundStyle(.secondary)
       .lineLimit(1)
-      // The exact moment on hover. "in 3 days" is the right thing to read at a
-      // glance and the wrong thing to plan a Monday around.
+      // The exact moment on hover, spelled out in full. The countdown answers "can
+      // I finish this today"; the weekday and date answer "what do I move it to",
+      // and an abbreviated "20 Sep" made that a second piece of arithmetic.
       .help(help(rolled: rolled, resetsAt: resetsAt))
     }
   }
@@ -222,9 +223,31 @@ struct UsageResetLine: View {
 
   private func help(rolled: Bool, resetsAt: Date) -> String {
     if rolled { return Self.rolledHelp }
-    let moment = resetsAt.formatted(date: .abbreviated, time: .shortened)
+    let moment = "Resets \(resetsAt.formatted(date: .complete, time: .shortened))"
     guard let rejectedAt = window?.rejectedAt else { return moment }
     return "\(moment). " + UsageFigure.rejectionHelp(rejectedAt)
+  }
+
+  /// How long is left, to two units — "6 days, 23 hours", not "in 6 days".
+  ///
+  /// **The last day of a weekly window is the one worth planning around, and a
+  /// single unit rounds it away.** "in 6 days" covers everything from six days to
+  /// nearly seven, which is the difference between an allowance that turns over
+  /// before Monday's work and one that does not. Two units settle that; a third is
+  /// noise on a caption, so the fields narrow as the interval does — and a field
+  /// worth zero is dropped, so a window six days and four minutes out says "6 days"
+  /// rather than "6 days, 0 hours".
+  static func countdown(from now: Date, to resetsAt: Date) -> String {
+    let fields: Set<Date.ComponentsFormatStyle.Field> =
+      switch resetsAt.timeIntervalSince(now) {
+      case 86400...: [.day, .hour]
+      case 3600...: [.hour, .minute]
+      case 60...: [.minute]
+      default: [.second]
+      }
+    // Safe against a reset in the past only because the caller branches on
+    // `hasRolled` first: `now..<resetsAt` traps on a reversed range.
+    return (now..<resetsAt).formatted(.components(style: .wide, fields: fields))
   }
 
   /// Vendor-neutral on purpose: the same line now sits under Codex meters, where
