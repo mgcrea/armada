@@ -116,9 +116,12 @@ jobs:
       # is what worker-configuration.d.ts was generated from, so no real .dev.vars is
       # needed. A binding added to wrangler.jsonc without regenerating would
       # otherwise typecheck against the Env it no longer matches.
+      #
+      # The `--` is load-bearing: without it pnpm 11 takes `--env-file` as its own
+      # and hands it to node, which exits 9 on "node: .dev.vars.example: not found".
       - name: API tests 🧪
         run: |
-          pnpm -C apps/api exec wrangler types --check --env-file=.dev.vars.example
+          pnpm -C apps/api exec -- wrangler types --check --env-file=.dev.vars.example
           pnpm -C apps/api typecheck
           pnpm -C apps/api test
       # The cross-language check, and the one whose failure costs money. JavaScript
