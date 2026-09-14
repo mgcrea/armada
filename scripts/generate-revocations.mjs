@@ -110,7 +110,17 @@ const ids = rows
   .filter(Boolean)
   .toSorted();
 
-const header = readFileSync(TARGET, "utf8").split("\nenum Revocations")[0];
+// The hand-written doc comment is kept and the declaration regenerated. The
+// declaration is matched with or without `nonisolated`: a split on a bare
+// `\nenum Revocations` missed the committed spelling, kept the whole file as the
+// header, and appended a second declaration that does not compile.
+const current = readFileSync(TARGET, "utf8");
+const declaration = current.search(/^(?:nonisolated )?enum Revocations\b/m);
+if (declaration === -1) {
+  console.error("FATAL: no `enum Revocations` declaration in Revocations.swift to regenerate");
+  process.exit(1);
+}
+const header = current.slice(0, declaration);
 // `JSON.stringify`, not string interpolation — the same escaper
 // `generate-changelog.mjs` uses for every value it writes into Swift. These ids
 // come from a DATABASE, which makes this the one string in the release path
@@ -119,7 +129,7 @@ const header = readFileSync(TARGET, "utf8").split("\nenum Revocations")[0];
 const swiftString = (value) => JSON.stringify(value);
 const list =
   ids.length === 0 ? "[]" : `[\n${ids.map((id) => `    ${swiftString(id)},`).join("\n")}\n  ]`;
-const next = `${header}\nenum Revocations {\n  static let ids: Set<String> = ${list}\n}\n`;
+const next = `${header}nonisolated enum Revocations {\n  static let ids: Set<String> = ${list}\n}\n`;
 
 if (check) {
   if (readFileSync(TARGET, "utf8") === next) {
