@@ -51,6 +51,36 @@ if (check && !local && !process.env.CLOUDFLARE_API_TOKEN) {
   process.exit(0);
 }
 
+/**
+ * The result rows out of `wrangler d1 execute --json`.
+ *
+ * The whole of stdout first, since that is what `--json` promises. Some wrangler
+ * paths print a banner or a warning around the document, so failing that, try
+ * each `[` in turn up to the last `]`. Slicing at the FIRST `[` broke on a
+ * banner that contained one, such as a `[wrangler]` prefix. Whatever parses is
+ * then checked for the shape read below, so a stray bracketed fragment that
+ * happens to be valid JSON is refused rather than read as zero revocations.
+ */
+const resultsOf = (raw) => {
+  const candidates = [raw];
+  const end = raw.lastIndexOf("]");
+  for (let at = raw.indexOf("["); at !== -1 && at < end; at = raw.indexOf("[", at + 1)) {
+    candidates.push(raw.slice(at, end + 1));
+  }
+  for (const candidate of candidates) {
+    let document;
+    try {
+      document = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (Array.isArray(document) && Array.isArray(document[0]?.results)) {
+      return document[0].results;
+    }
+  }
+  throw new Error("no D1 result document in wrangler's output");
+};
+
 const query = "SELECT id FROM licenses WHERE revoked_at IS NOT NULL ORDER BY id";
 let rows;
 try {
@@ -69,10 +99,7 @@ try {
     ],
     { cwd: API, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
-  // wrangler prints a banner before the JSON on some paths, so find the array
-  // rather than assuming the whole of stdout is the document.
-  const start = raw.indexOf("[");
-  rows = JSON.parse(raw.slice(start))[0].results;
+  rows = resultsOf(raw);
 } catch (error) {
   console.error(`FATAL: could not read D1: ${String(error?.message ?? error)}`);
   process.exit(2);
