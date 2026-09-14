@@ -29,7 +29,7 @@ question that costs no tokens. See
 [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) for why that shape was
 chosen and what Anthropic's terms actually say.
 
-It will also *start* a session for you, which is the one line of the original scope that has
+It will also _start_ a session for you, which is the one line of the original scope that has
 been deliberately reopened — "v1 watches; it doesn't launch agents". It still owns no agent
 process: it writes a startup script, hands it to Terminal, and the new session arrives through
 the same watchers as every other. Forking a session you are looking at is the same mechanism
@@ -216,21 +216,24 @@ hands to a terminal.
 ## Security
 
 Armada reads every transcript on the machine, so the claim worth checking is that none of it
-leaves. It makes **no network connection of any kind** — no update check, no telemetry, no
-licence call — and `make audit` asserts that against the built bundle rather than against the
-sources: every Mach-O swept for URL loading, DNS and TLS symbols, the sources swept for an
-internet address family, and the project asserted to name no entitlements file.
+leaves. It reaches **no network on its own, with one named exception**: the update check, which
+is off until you turn it on or press Check Now, reads one file from `armada.mgcrea.io`, and sends
+no identifier with it. No telemetry, no licence call. `make audit` asserts that against the built
+bundle rather than against the sources: every Mach-O swept for URL loading, DNS and TLS symbols,
+the shipped Info.plist asserted to keep update checks off and to name that one feed, the sources
+swept for an internet address family, and no entitlements in the project or in the signature.
 
 ```bash
 make audit
 ```
 
-There is no allowance table in [`scripts/audit-network.sh`](scripts/audit-network.sh), and that
-is the difference from the siblings' versions of the same script. Cupertino's has to pardon
-Sparkle and an embedded node; bastion cannot make the claim at all, because it binds a loopback
-socket on purpose. Armada has no updater, no runtime and no listener, so any hit is a failure.
-If it ever grows one, the script grows a table and [SECURITY.md](SECURITY.md) gets reworded in
-the same commit.
+[`scripts/audit-network.sh`](scripts/audit-network.sh) has exactly one allowance, and it is
+Sparkle's: the three URL-loading classes it was measured to use, and nothing more. A Sparkle that
+grows a capability it did not have fails the gate, and so does a bundle that has lost Sparkle
+while the allowance is still there. Cupertino's version of the script pardons the same framework
+and an embedded node; bastion cannot make the claim at all, because it binds a loopback socket on
+purpose. Until the updater landed this file had no allowance table, and it said that the day one
+arrived [SECURITY.md](SECURITY.md) would be reworded in the same commit. It was.
 
 What that does **not** cover is the `claude` Armada spawns, which talks to Anthropic over your
 own sign-in — that is the program's job. [SECURITY.md](SECURITY.md) has the full scope: what is

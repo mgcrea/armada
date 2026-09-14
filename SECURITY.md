@@ -17,11 +17,15 @@ not needed and not wanted.
 
 Three properties, each of which is checkable rather than asserted:
 
-- **It makes no network connection of any kind.** No update check, no telemetry, no licence
-  call. `make audit` asserts this against the built bundle — every Mach-O swept for URL
-  loading, DNS and TLS symbols, the sources swept for an internet address family, and the
-  project asserted to name no entitlements file. Any hit is a failure; there is no allowance
-  table, because there is nothing to allow.
+- **It reaches no network on its own, with one named exception.** No telemetry, no licence
+  call. The exception is the update check, which is off until you turn it on or press Check
+  Now; it reads one file, `armada.mgcrea.io/appcast.xml`, and sends no identifier with it —
+  not your licence key, not a machine id. Until you opt in, the updater is never even
+  constructed. `make audit` asserts all of this against the built bundle: every Mach-O swept
+  for URL loading, DNS and TLS symbols, with Sparkle allowed exactly the three URL-loading
+  classes it was measured to use and nothing more; the shipped Info.plist asserted to keep
+  checks off and to point at that one feed; the sources swept for an internet address
+  family; and no entitlements, in the project or in the signature.
 - **It never writes to a vendor's configuration.** `~/.claude*` and `~/.codex` are opened
   read-only. Armada installs no hook, writes no `settings.json`, and adds no MCP server entry.
   The only things it writes anywhere are its own preferences, its usage history in Application
@@ -49,7 +53,7 @@ attacker-influenced text meets something that acts on it:
   that gets the script written somewhere another user can replace it before Terminal opens
   it, is in scope.
 - **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
-  control request. Anything that changes *which* binary is run, or that gets an argument or
+  control request. Anything that changes _which_ binary is run, or that gets an argument or
   an environment variable in from data rather than from configuration, is in scope.
 - **The mouse event tap.** Mouse bindings install a `CGEventTap` under the Accessibility grant
   Armada already holds for window focusing. Its mask is deliberately two event types wide —
@@ -85,8 +89,8 @@ The design answers that with a router that decides delivery rather than the send
 policy per pair of agents, labelling and an audit log — see
 [docs/design.md](docs/design.md#security-model-drafted) and
 [docs/reaching-agents.md](docs/reaching-agents.md). None of it exists yet. Until it does,
-Armada opens no socket, installs no hook and serves no MCP tools, and `make audit` is what
-keeps that honest.
+Armada opens no socket beyond the opt-in update check, installs no hook and serves no MCP
+tools, and `make audit` is what keeps that honest.
 
 ## Supported versions
 

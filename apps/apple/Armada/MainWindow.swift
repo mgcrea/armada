@@ -118,6 +118,11 @@ struct MainWindowView: View {
         }
       }
     }
+    // Asked once, across the top of the window, and gone for good once answered
+    // either way. A card rather than a dialog: see `UpdateConsentCard`.
+    .safeAreaInset(edge: .top, spacing: 0) {
+      UpdateConsentCard()
+    }
   }
 
   /// The stored selection if it still resolves, otherwise the first account.

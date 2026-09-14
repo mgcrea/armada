@@ -25,6 +25,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case usage
   case about
   case whatsNew
+  case updates
   case help
 
   var title: LocalizedStringKey {
@@ -34,6 +35,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .usage: "Usage"
     case .about: "About"
     case .whatsNew: "What's New"
+    case .updates: "Updates"
     case .help: "Help"
     }
   }
@@ -45,6 +47,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
+    case .updates: "arrow.down.circle"
     case .help: "questionmark.circle"
     }
   }
@@ -85,6 +88,7 @@ struct SettingsWindowView: View {
           includesSupport: false,
           preferIssueTracker: Support.preferIssueTracker)
       case .whatsNew: WhatsNewPane()
+      case .updates: UpdatesPane()
       case .help:
         HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
       }

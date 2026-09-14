@@ -139,6 +139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) { _ in
       MainActor.assumeIsolated { MouseTap.shared.sync() }
     }
+    // Constructs nothing unless the user has already opted in: an Armada nobody
+    // has said yes to has never resolved a name. See `UpdateController`.
+    UpdateController.shared.startIfConsented()
   }
 
   /// A click on the Dock icon, which exists only while a window is open.
