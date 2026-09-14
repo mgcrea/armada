@@ -10,6 +10,13 @@
 # in .idea/design/app-icon/ and is the provenance for design/armada-mark.svg.
 .claude
 
+# Except the canvas's uploads/: bastion's and cupertino's brand kits, dropped in
+# as reference while the icon was drawn. They are those apps' artwork rather than
+# this repo's, and this repo is public. The canvas itself, its support.js runtime
+# and its .thumbnail stay tracked, because it cannot open without them. Untracked
+# on 2026-09-14, not purged: the files are still in the history before that.
+.idea/design/app-icon/uploads/
+
 # Xcode
 apps/apple/.build/
 DerivedData/
@@ -19,8 +26,10 @@ xcuserdata/
 *.hmap
 *.dSYM
 
-# SwiftPM
+# SwiftPM. A local package's own build tree, from `make test`, sits beside its
+# manifest rather than under apps/apple/.build.
 .swiftpm/
+apps/apple/Packages/*/.build/
 
 # Direct distribution. Vendor/ is fetched and checksummed by `make sparkle` rather
 # than committed. The rest is key material, and this repo is public: a Developer ID
