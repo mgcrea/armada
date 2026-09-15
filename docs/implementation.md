@@ -28,8 +28,10 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   on the left, the selected project on the right. A project starts a session on its default
   account or any other, lists the live sessions whose folder is the
   project's or below it (the deepest saved project wins), and renames, moves or removes the
-  project in place. Saved to `projects.json` beside the usage history; nothing is written to
-  a vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
+  project in place. Saved to `projects.json` beside the usage history. Starting a Claude Code
+  session in a saved project marks its folder trusted in that account's `.claude.json`
+  (`ClaudeTrust`), so the session opens without the trust dialog; it is the one write to a
+  vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
   builds in the background over every transcript and rollout (`usage-index.sqlite`).
 - **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with six read
   tools and, behind its Allow writes switch, `armada_start_session`; and

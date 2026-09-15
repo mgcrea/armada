@@ -63,7 +63,7 @@ const STAYS = [
   },
   {
     what: "Your vendor accounts",
-    body: "Armada holds no vendor credentials. There is no sign-in, nothing reads or stores a token, and Codex's <code>auth.json</code> is never opened. It never writes to Claude Code's or Codex's configuration either: no hook, no settings file, no MCP server entry.",
+    body: "Armada holds no vendor credentials. There is no sign-in, nothing reads or stores a token, and Codex's <code>auth.json</code> is never opened. The one thing it writes to Claude Code's configuration is the flag its own \"Yes, I trust this folder\" sets, for a project you saved, when you start a session there. Nothing else: no hook, no settings file, no MCP server entry, and nothing in Codex's.",
   },
   {
     what: "Your licence key",
@@ -85,7 +85,7 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
 
 <Layout
   title={`Privacy · ${APP_NAME}`}
-  description="What leaves your Mac and what does not: one optional update check, no telemetry, no vendor credentials, and your agents' folders opened read only."
+  description="What leaves your Mac and what does not: one optional update check, no telemetry, no vendor credentials, and your agents' folders opened read only but for one trust flag."
   schema={schema}
 >
   <Nav />

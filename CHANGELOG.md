@@ -42,6 +42,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Changed
 
+- **Sessions in a saved project skip Claude Code's trust dialog.** Starting a Claude Code
+  session in a project you saved marks its folder trusted on that account, the flag "Yes, I
+  trust this folder" sets, so the session opens on its prompt. It is the one thing Armada writes
+  to Claude Code's configuration: one field in `.claude.json`, written under Claude Code's own
+  lock and edited in place, with the rest of the file left exactly as it was.
 - **Armada runs a `claude` of its own while you talk to it.** Voice starts your installed
   `claude` headless with no built-in tools and only Armada's six read tools, keeps it for
   follow-up questions, and closes it after five idle minutes. It is the one agent process

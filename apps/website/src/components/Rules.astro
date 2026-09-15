@@ -23,8 +23,8 @@ const RULES = [
     body: "There is no sign in with Claude. Nothing reads, stores or refreshes a token, Codex's <code>auth.json</code> is never opened, and no account is ever authenticated by Armada. The vendor's own CLI speaks for it.",
   },
   {
-    title: "It never writes where your agents do",
-    body: "<code>~/.claude*</code> and <code>~/.codex</code> are opened read only. No hook installed, no settings written, no MCP server entry added, nothing to clean up if you delete the app. What it writes is its own: preferences, 30 days of usage history, a startup script when you start a session, and a folder for voice's conversation when you use it.",
+    title: "One flag is all it writes where your agents do",
+    body: "<code>~/.claude*</code> and <code>~/.codex</code> are opened read only, with one exception: starting a session in a project you saved marks that folder trusted in Claude Code's config, the same flag its own \"Yes, I trust this folder\" sets. No hook installed, no settings written, no MCP server entry added. Everything else it writes is its own: preferences, 30 days of usage history, a startup script when you start a session, and a folder for voice's conversation when you use it.",
   },
   {
     title: "Nothing leaves the Mac",

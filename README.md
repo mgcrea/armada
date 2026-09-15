@@ -25,9 +25,10 @@ to run out of context**, and **how much of the plan is left** — and each answe
 different, per account, per vendor.
 
 Armada watches rather than runs, with one opt-in exception: voice runs a `claude` of its own
-while you talk to it. It holds no vendor credentials and writes nothing to a vendor's config: it
-reads `~/.claude*` and `~/.codex`, and asks the installed `claude` one question that costs no
-tokens. See
+while you talk to it. It holds no vendor credentials. It reads `~/.claude*` and `~/.codex`, asks
+the installed `claude` one question that costs no tokens, and writes one flag to a vendor's
+config: a saved project's folder trust, so a session started there skips Claude Code's trust
+dialog. See
 [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) for why that shape was
 chosen and what Anthropic's terms actually say.
 
@@ -244,9 +245,12 @@ Built and running:
 | **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`     |
 
 Deliberately not built: messaging, hooks, `hubctl`, the Unix socket, the messaging MCP surface, and
-anything that writes to a vendor's config. **`~/.claude*` and `~/.codex` are opened read-only** — the only
-things Armada writes are its own: its preferences, its usage history, its projects and token ledger,
-and the startup script it hands to a terminal.
+anything that writes to a vendor's config beyond one flag. **`~/.claude*` and `~/.codex` are opened
+read-only**, with one exception: starting a Claude Code session in a saved project sets
+`projects[<folder>].hasTrustDialogAccepted` in that account's `.claude.json`, under Claude Code's own
+lock and as an edit of those bytes alone (`ClaudeTrust`). Otherwise the only things Armada writes are
+its own: its preferences, its usage history, its projects and token ledger, and the startup script
+it hands to a terminal.
 
 ### Known gaps
 
