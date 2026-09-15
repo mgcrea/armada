@@ -10,9 +10,9 @@
  * `scripts/audit-network.sh` (`make audit`) refuses a build that breaks either. If
  * that script is ever relaxed, this section changes in the same commit.
  *
- * The footnote is not optional. The `claude` Armada asks for plan limits does use
- * the network, on the user's own sign-in, and a privacy section that left it out
- * would be the most misleading thing on the page.
+ * The footnote is not optional. The `claude` Armada asks for plan limits, and the one
+ * voice runs, use the network on the user's own sign-in, and a privacy section that
+ * left them out would be the most misleading thing on the page.
  */
 import { DOCS, DOWNLOAD, REPO_PUBLIC } from "../config";
 import SectionCopy from "./SectionCopy.astro";
@@ -24,7 +24,7 @@ const RULES = [
   },
   {
     title: "It never writes where your agents do",
-    body: "<code>~/.claude*</code> and <code>~/.codex</code> are opened read only. No hook installed, no settings written, no MCP server entry added, nothing to clean up if you delete the app. What it writes is its own: preferences, 30 days of usage history, and a startup script when you start a session.",
+    body: "<code>~/.claude*</code> and <code>~/.codex</code> are opened read only. No hook installed, no settings written, no MCP server entry added, nothing to clean up if you delete the app. What it writes is its own: preferences, 30 days of usage history, a startup script when you start a session, and a folder for voice's conversation when you use it.",
   },
   {
     title: "Nothing leaves the Mac",
@@ -62,9 +62,10 @@ const link = "text-ink underline decoration-ink/30 underline-offset-4 hover:deco
             <code>make audit</code>
           )
         } checks them against every build, sweeping each binary in the app for networking symbols with
-        two narrow allowances: the update framework and the supervisor's loopback listener. One program
-        Armada runs does use the network: the <code>claude</code> it asks for your plan limits talks to
-        Anthropic over your own sign-in, as it does whenever you use it. The full inventory is on the{" "}
+        two narrow allowances: the update framework and the supervisor's loopback listener. The programs
+        Armada runs do use the network: the <code>claude</code> it asks for your plan limits, and the one
+        that answers when you talk to it, talk to Anthropic over your own sign-in, as they do whenever
+        you use them. The full inventory is on the{" "}
         <a class={link} href="/privacy">privacy page</a>.
       </p>
     </SectionCopy>

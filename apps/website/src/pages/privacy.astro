@@ -58,6 +58,10 @@ const STAYS = [
     body: "Armada reads the session files Claude Code and Codex already write, where they already are, in <code>~/.claude*</code> and <code>~/.codex</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself.",
   },
   {
+    what: "Your voice",
+    body: "Only if you turn voice on. The microphone is on only while the card at the top of the screen says it is listening, your speech becomes text on your Mac, and the audio is never kept or sent. The question you asked goes on as text, through <code>claude</code>: see the programs it runs, below.",
+  },
+  {
     what: "Your vendor accounts",
     body: "Armada holds no vendor credentials. There is no sign-in, nothing reads or stores a token, and Codex's <code>auth.json</code> is never opened. It never writes to Claude Code's or Codex's configuration either: no hook, no settings file, no MCP server entry.",
   },
@@ -67,7 +71,7 @@ const STAYS = [
   },
   {
     what: "What Armada writes",
-    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor.",
+    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor. With voice on, it also keeps a folder per account where its <code>claude</code> records the conversation.",
   },
 ] as const;
 
@@ -120,7 +124,7 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
         first-run ping. <code>make audit</code> checks it against every build. It sweeps every Mach-O
         in the built app for URL loading, DNS and TLS symbols, with one narrowly named exception for
         Sparkle, the framework the update check uses, and checks that the supervisor's MCP endpoint
-        binds 127.0.0.1 and nothing else.
+        binds 127.0.0.1 and nothing else, and that the microphone is the app's only entitlement.
         {
           REPO_PUBLIC && (
             <>
@@ -148,6 +152,11 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
         terms, as it does whenever you use it. The same is true of a session you start or fork from
         Armada: it runs <code>claude</code> or <code>codex</code> in your terminal, and what that agent
         does is between you and its vendor.
+      </p>
+      <p class={prose}>
+        Voice, if you turn it on, is the one time Armada runs <code>claude</code> itself with a prompt:
+        the question you just spoke, as text, on the account you chose. That <code>claude</code> gets no
+        built-in tools and only Armada's read tools, and Armada closes it after five idle minutes.
       </p>
       <p class={prose}>
         Armada is not sandboxed. That is by design: it has to read other tools' folders, which a
