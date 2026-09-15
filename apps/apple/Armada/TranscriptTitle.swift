@@ -55,7 +55,17 @@ nonisolated enum TranscriptTitle {
   /// file-history entries. 256KB covered every one of them with room to spare.
   static let headBytes = 256 * 1024
 
-  /// The last `ai-title` in a buffer of newline-delimited JSON, or nil.
+  /// The session's title in a buffer of newline-delimited JSON, or nil: the newest
+  /// `custom-title` if there is one, otherwise the newest `ai-title`.
+  ///
+  /// **A custom title wins wherever it sits.** It is a name someone chose — `/rename`,
+  /// or a fork, which names itself "<original> (fork)" and carries no `ai-title` at all
+  /// — and Claude Code goes on writing `ai-title`s after it. Measured 2026-09-15: in 7 of
+  /// the 8 transcripts on this Mac holding both, an `ai-title` came after the last
+  /// `custom-title`, one of them "New session" under a session renamed "Competitive
+  /// brief for apps". Newest-of-either would undo every rename. It is re-appended as
+  /// often as the AI one, too: all 23 transcripts with a custom title had its newest copy
+  /// within 64KB of the end, which is what lets the tail read find it.
   ///
   /// **Keeps the LAST match, not the first.** Titles are rewritten throughout a
   /// session — up to 267 `ai-title` entries in one transcript, and 289 transcripts
@@ -64,16 +74,32 @@ nonisolated enum TranscriptTitle {
   /// every 15–25 lines; taking the first gets the draft. The spike's
   /// `SessionWatch.swift` has this bug, which is why it is called out here.
   static func newestTitle(inChunk chunk: Data, droppingFirstLine: Bool) -> String? {
+    // One search of the whole buffer decides whether the walk may stop at the first
+    // `ai-title` it meets. Without a `custom-title` anywhere, that one is the answer and
+    // this costs what it always did.
+    let customMarker = Data("custom-title".utf8)
+    let mayHaveCustom = chunk.range(of: customMarker) != nil
+    var newestAI: String?
     for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       // Cheap reject before paying for a JSON parse: most lines are not titles.
-      guard line.range(of: Data("ai-title".utf8)) != nil,
-        let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-        object["type"] as? String == "ai-title",
-        let title = object["aiTitle"] as? String, !title.isEmpty
+      let wanted =
+        (mayHaveCustom && line.range(of: customMarker) != nil)
+        || (newestAI == nil && line.range(of: Data("ai-title".utf8)) != nil)
+      guard wanted, let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
       else { continue }
-      return title
+      switch object["type"] as? String {
+      case "custom-title":
+        if let title = object["customTitle"] as? String, !title.isEmpty { return title }
+      case "ai-title":
+        if newestAI == nil, let title = object["aiTitle"] as? String, !title.isEmpty {
+          if !mayHaveCustom { return title }
+          newestAI = title
+        }
+      default:
+        continue
+      }
     }
-    return nil
+    return newestAI
   }
 
   /// Whether the newest entry is an assistant `tool_use` with no `tool_result`

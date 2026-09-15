@@ -208,6 +208,46 @@ struct UnitCheck {
       "a fragment is skipped, not parsed",
       TranscriptTitle.newestTitle(inChunk: broken, droppingFirstLine: true), "Whole")
 
+    // The shapes are real: Claude Code keeps writing AI titles after a rename.
+    let renamed = ndjson([
+      #"{"type":"ai-title","aiTitle":"Before the rename"}"#,
+      #"{"type":"custom-title","customTitle":"Competitive brief for apps"}"#,
+      #"{"type":"ai-title","aiTitle":"New session"}"#,
+    ])
+    expectEqual(
+      "a custom title outranks a newer AI one",
+      TranscriptTitle.newestTitle(inChunk: renamed, droppingFirstLine: false),
+      "Competitive brief for apps")
+    let renamedTwice = ndjson([
+      #"{"type":"custom-title","customTitle":"First name"}"#,
+      #"{"type":"ai-title","aiTitle":"Between"}"#,
+      #"{"type":"custom-title","customTitle":"Second name"}"#,
+    ])
+    expectEqual(
+      "the newest custom title wins",
+      TranscriptTitle.newestTitle(inChunk: renamedTwice, droppingFirstLine: false), "Second name")
+    let fork = ndjson([
+      #"{"type":"user","message":{"content":"hi"}}"#,
+      #"{"type":"custom-title","customTitle":"Fill PDF templates (fork)"}"#,
+    ])
+    expectEqual(
+      "a fork, which has no AI title",
+      TranscriptTitle.newestTitle(inChunk: fork, droppingFirstLine: false),
+      "Fill PDF templates (fork)")
+    let emptyCustom = ndjson([
+      #"{"type":"ai-title","aiTitle":"Kept"}"#, #"{"type":"custom-title","customTitle":""}"#,
+    ])
+    expectEqual(
+      "an empty custom title falls back to the AI one",
+      TranscriptTitle.newestTitle(inChunk: emptyCustom, droppingFirstLine: false), "Kept")
+    let mentioned = ndjson([
+      #"{"type":"ai-title","aiTitle":"Real"}"#,
+      #"{"type":"user","message":{"content":"what is a custom-title entry?"}}"#,
+    ])
+    expectEqual(
+      "a user line that mentions custom-title is not one",
+      TranscriptTitle.newestTitle(inChunk: mentioned, droppingFirstLine: false), "Real")
+
     let toolUse = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1"}]}}"#
     let toolResult =
       #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]}}"#

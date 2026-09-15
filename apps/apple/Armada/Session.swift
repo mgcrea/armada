@@ -89,7 +89,8 @@ final class Session: Identifiable {
   /// never been prompted, which has no transcript file at all.
   var transcript: URL?
 
-  /// The newest `ai-title`. Nil for never-prompted sessions, and for resumed ones:
+  /// The newest `custom-title`, or failing one the newest `ai-title` — see
+  /// `TranscriptTitle.newestTitle`. Nil for never-prompted sessions, and for resumed ones:
   /// resuming mints a new `sessionId` and a transcript with no `ai-title` and no
   /// link back to the original.
   var title: String?
