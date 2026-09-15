@@ -13,7 +13,7 @@ struct ProjectUsageSection: View {
   @State private var store = ProjectStore.shared
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
-  @AppStorage("armada.projectStatsWindow") private var storedWindow = StatsWindow.week.rawValue
+  @AppStorage(StatsWindow.defaultsKey) private var storedWindow = StatsWindow.week.rawValue
 
   private var window: StatsWindow { StatsWindow(rawValue: storedWindow) ?? .week }
 

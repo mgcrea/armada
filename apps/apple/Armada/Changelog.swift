@@ -344,7 +344,7 @@ nonisolated enum Changelog {
             ordinal: 0,
             headline: "Projects.",
             body: [
-              "Save the folders you work in to the sidebar and start a Claude Code or Codex session in one with a click, on the account the project remembers or on any other, even in a folder that has never had a session. A project's pane lists the live sessions inside it, subfolders and worktrees included, and \"Add to Projects\" is on every session row and recent folder.",
+              "A new pane under Usage lists the folders you work in, and starts a Claude Code or Codex session in one with a click, on the account the project remembers or on any other, even in a folder that has never had a session. Select a project to see the live sessions inside it, subfolders and worktrees included. Add several folders at once from the picker or by dropping them from Finder, and \"Add to Projects\" is on every session row and recent folder.",
             ]),
           Entry(
             ordinal: 1,

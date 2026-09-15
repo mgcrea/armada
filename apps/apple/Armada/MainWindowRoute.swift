@@ -45,6 +45,12 @@ final class MainWindowRoute {
     AppDelegate.shared?.showMain()
   }
 
+  /// Show the Projects pane with the project `id` selected. The row parked for that pane is
+  /// a project rather than a session, and it is taken the same way.
+  func open(project id: String) {
+    open(.projects, session: id)
+  }
+
   /// The session this route wants selected in `item`, if nobody has taken it yet.
   ///
   /// One-shot. A pane is rebuilt every time the sidebar moves to it, and a click

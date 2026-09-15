@@ -12,11 +12,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
-- **Projects.** Save the folders you work in to the sidebar and start a Claude Code or Codex
-  session in one with a click, on the account the project remembers or on any other, even in a
-  folder that has never had a session. A project's pane lists the live sessions inside it,
-  subfolders and worktrees included, and "Add to Projects" is on every session row and recent
-  folder.
+- **Projects.** A new pane under Usage lists the folders you work in, and starts a Claude Code
+  or Codex session in one with a click, on the account the project remembers or on any other,
+  even in a folder that has never had a session. Select a project to see the live sessions
+  inside it, subfolders and worktrees included. Add several folders at once from the picker or
+  by dropping them from Finder, and "Add to Projects" is on every session row and recent folder.
 - **Tokens spent, per project.** A project's pane shows the tokens used in it over 7 days, 30
   days and all time, split by model, account and subfolder. They are read in the background
   from every Claude Code transcript and Codex rollout on the Mac, each response counted once

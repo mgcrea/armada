@@ -2,6 +2,9 @@ import Foundation
 
 /// The spans a project's figures are shown over.
 nonisolated enum StatsWindow: String, CaseIterable, Hashable, Sendable {
+  /// One choice for the whole Projects pane: the list's figures and the form's picker read it.
+  static let defaultsKey = "armada.projectStatsWindow"
+
   case week = "7d"
   case month = "30d"
   case all

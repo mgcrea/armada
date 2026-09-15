@@ -15,8 +15,9 @@ enum SidebarItem: Hashable {
   case usage
   case account(String)
   case codex(String)
-  /// A saved project, by its minted id — never its path, which can move.
-  case project(String)
+  /// Every saved project, in one pane of its own. The project selected in it is that
+  /// pane's to keep, as a session is an account pane's.
+  case projects
 
   /// Where the window's selection is stored, and the one thing the menu bar panel
   /// has to write to steer the sidebar. The key keeps its original name so an
@@ -24,23 +25,23 @@ enum SidebarItem: Hashable {
   static let defaultsKey = "armada.selectedAccount"
 
   private static let usageToken = "usage"
+  private static let projectsToken = "projects"
   private static let codexPrefix = "codex:"
-  private static let projectPrefix = "project:"
 
   var stored: String {
     switch self {
     case .usage: Self.usageToken
     case .account(let id): id
     case .codex(let id): Self.codexPrefix + id
-    case .project(let id): Self.projectPrefix + id
+    case .projects: Self.projectsToken
     }
   }
 
   init?(stored: String) {
     if stored == Self.usageToken {
       self = .usage
-    } else if stored.hasPrefix(Self.projectPrefix) {
-      self = .project(String(stored.dropFirst(Self.projectPrefix.count)))
+    } else if stored == Self.projectsToken {
+      self = .projects
     } else if stored.hasPrefix(Self.codexPrefix) {
       self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
     } else if stored.hasPrefix("/") {
@@ -55,7 +56,6 @@ struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var monitor = EntitlementMonitor.shared
-  @State private var store = ProjectStore.shared
 
   /// What the sidebar had selected last time.
   ///
@@ -87,6 +87,11 @@ struct MainWindowView: View {
         Section("Overview") {
           Label("Usage", systemImage: "gauge.with.dots.needle.bottom.50percent")
             .tag(SidebarItem.usage)
+          // One row rather than a section listing every project: a project spans the
+          // accounts below, so it is not one more of them, and the list with its details
+          // beside it needs the pane's width, not the sidebar's.
+          Label("Projects", systemImage: "folder")
+            .tag(SidebarItem.projects)
         }
         Section("Claude Code") {
           ForEach(accounts.all) { account in
@@ -103,28 +108,6 @@ struct MainWindowView: View {
               CodexSidebarRow(account: account)
                 .tag(SidebarItem.codex(account.id))
             }
-          }
-        }
-        // A rule between what Armada finds (the accounts above) and what the person saves (the
-        // projects below): a project spans accounts, so it is not one more of them. Untagged, so
-        // it cannot be selected.
-        Divider()
-        Section {
-          ForEach(store.projects) { project in
-            ProjectSidebarRow(project: project)
-              .tag(SidebarItem.project(project.id))
-          }
-          if store.projects.isEmpty {
-            Button("Add Project…") { ProjectAdder.chooseFolder() }
-              .buttonStyle(.borderless)
-              .foregroundStyle(.secondary)
-              .disabled(store.defaultNewAgent == nil)
-          }
-        } header: {
-          HStack {
-            Text("Projects")
-            Spacer()
-            ProjectAddMenu()
           }
         }
       }
@@ -160,11 +143,8 @@ struct MainWindowView: View {
             CodexPaneView(account: account)
               .id(account.id)
           }
-        case .project(let id):
-          if let project = store.project(id: id) {
-            ProjectPaneView(project: project)
-              .id(project.id)
-          }
+        case .projects:
+          ProjectsPaneView()
         case nil:
           ContentUnavailableView {
             Label("No agents found", systemImage: "folder.badge.questionmark")
@@ -187,7 +167,7 @@ struct MainWindowView: View {
     case .usage: .usage
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
-    case .project(let id) where store.project(id: id) != nil: .project(id)
+    case .projects: .projects
     // A Codex home is a real fallback, not a consolation prize: someone may run
     // Codex and no Claude Code at all, and the window should open on their work.
     default: accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }

@@ -111,9 +111,9 @@ The Codex pane also leads with how old its figures are, on purpose. Codex has no
 
 ## Projects
 
-Save the folders you work in to the sidebar and a session is one click away in any of them, on the
-account the project remembers or any other, even where no session has run before. A project's pane
-lists what is live inside it, subfolders and worktrees included, and the tokens spent there over 7
+Save the folders you work in to the Projects pane and a session is one click away in any of them, on
+the account the project remembers or any other, even where no session has run before. Selecting a
+project shows what is live inside it, subfolders and worktrees included, and the tokens spent there over 7
 days, 30 days and all time, split by model, account and folder.
 
 Those figures are read in the background from every transcript and Codex session log on the Mac,
