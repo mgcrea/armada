@@ -156,6 +156,9 @@ struct AccountPaneView: View {
                     target.agent, in: target.project, start: target.start)
                 }
               }
+              Divider()
+              ProjectContextButton(
+                path: session.registry.cwd, agent: .claude(accountID: account.id))
             }
           }
           .onChange(of: scrollTarget) { _, target in

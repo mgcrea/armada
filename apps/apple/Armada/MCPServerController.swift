@@ -14,8 +14,10 @@ import os
 ///
 /// **Off by default, and never constructed until switched on.** An Armada nobody has pointed
 /// at this has no listener object at all, the same property the updater has. The listener
-/// binds 127.0.0.1 and nothing else — the kit makes the interface unconfigurable — and every
-/// tool behind it is read-only, so `allowWrites` is a constant rather than a preference.
+/// binds 127.0.0.1 and nothing else — the kit makes the interface unconfigurable. Every tool but
+/// one reads. `armada_start_session` sits behind the kit's write gate, and `allowWrites` is the
+/// Allow writes switch in Settings ▸ Supervisor, read from defaults on every request so the
+/// switch needs no restart and cannot drift from the listener.
 ///
 /// **Threading.** The listener serves each request on a connection thread of its own. The
 /// only door from there to the main actor is `FleetBridge`, which hops once. Never call the
@@ -28,6 +30,13 @@ final class MCPServerController {
   static let enabledKey = "armada.mcpEnabled"
   static let portKey = "armada.mcpPort"
   static let defaultPort = 8790
+
+  /// Off by default. `nonisolated` because the listener asks on its connection threads, and
+  /// `UserDefaults` is safe to read from any of them.
+  nonisolated static let allowWritesKey = "armada.mcpAllowWrites"
+  nonisolated static var allowsWrites: Bool {
+    UserDefaults.standard.bool(forKey: allowWritesKey)
+  }
 
   private(set) var state: LoopbackListener.State = .stopped
   private(set) var tokenError: String?
@@ -102,12 +111,12 @@ final class MCPServerController {
       info: ServerInfo(
         name: NewSession.Supervisor.serverName, version: AppInfo.shortVersion, title: "Armada"),
       instructions: Tools.instructions,
-      tools: Tools.table(source: FleetBridge()))
+      tools: Tools.table(source: FleetBridge(), starter: SessionStarterBridge()))
 
     let listener = LoopbackListener(
       server: server,
       gate: RequestGate(port: port) { [tokens] presented in tokens.verdict(for: presented) },
-      allowWrites: { false },
+      allowWrites: { MCPServerController.allowsWrites },
       // One line per request into the unified log. Never the arguments: `AuditEntry` cannot
       // carry them, which is the point of it being a type rather than a closure over the frame.
       audit: { entry in MCPLog.request(entry) })

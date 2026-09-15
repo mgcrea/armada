@@ -16,6 +16,13 @@ public protocol FleetSource: Sendable {
   /// A second, deliberate hop rather than a field on every session: it walks the process
   /// tree, and only `armada_get_session` asks.
   func host(forClaudeSession id: String) async -> FleetSnapshot.Host?
+
+  /// The saved projects, their live sessions and what has been spent in each.
+  ///
+  /// Another deliberate hop rather than part of `snapshot()`: only `armada_get_projects`
+  /// wants it, and it rolls a token ledger up into projects. Never called beside
+  /// `snapshot()` in one tool, so the ids and the figures describe one instant.
+  func projects() async -> ProjectsSnapshot
 }
 
 /// The fleet at one instant, as `Sendable` values.

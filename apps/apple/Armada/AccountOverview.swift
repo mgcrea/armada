@@ -106,6 +106,9 @@ struct NewSessionSection: View {
             }
           }
         }
+        .contextMenu {
+          ProjectContextButton(path: project.path, agent: agent.projectAgent)
+        }
       }
       Button("Choose Folder…") {
         launcher.chooseFolder(for: agent, near: projects.first?.url)

@@ -53,6 +53,23 @@ final class NewSessionLauncher {
     if failure != nil { AppDelegate.shared?.showMain() }
   }
 
+  /// When an agent last started a session through `armada_start_session`, for its throttle.
+  private(set) var lastAgentLaunchAt: Date?
+
+  /// A launch an agent asked for, through `SessionStarterBridge`.
+  ///
+  /// **Returns the failure rather than setting `failure`.** Nobody clicked anything, so an
+  /// alert would arrive out of nowhere; the sentence goes back to the agent instead. Only the
+  /// asynchronous LaunchServices half still lands in `failure`, because by then the tool has
+  /// answered and a pane is the one place left to say so.
+  func startForAgent(_ agent: NewSession.Agent, in project: URL, prompt: String?) -> String? {
+    let message = NewSession.start(
+      agent, in: project, terminal: terminal, prompt: prompt,
+      completion: { [weak self] message in self?.failure = message })
+    if message == nil { lastAgentLaunchAt = Date() }
+    return message
+  }
+
   /// Start a Claude Code session with Armada's MCP server attached, which is all a
   /// supervisor is. See `NewSession.Supervisor` and `SupervisorPane`.
   ///

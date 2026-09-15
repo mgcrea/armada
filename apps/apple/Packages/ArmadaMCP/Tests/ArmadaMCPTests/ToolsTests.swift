@@ -11,7 +11,8 @@ struct ToolsTests {
     _ name: String, _ arguments: JSONValue = .object([:]),
     on source: FakeFleetSource = FakeFleetSource()
   ) async -> ToolResult {
-    await Tools.table(source: source).call(name: name, arguments: arguments, allowWrites: false)
+    await Tools.table(source: source, starter: FakeSessionStarter()).call(
+      name: name, arguments: arguments, allowWrites: false)
   }
 
   private func ids(_ result: ToolResult, _ key: String = "sessions") throws -> [String] {
@@ -20,21 +21,23 @@ struct ToolsTests {
 
   // MARK: - The listing
 
-  @Test("Five tools, every one read-only and never behind the write switch")
+  @Test("Six read-only tools always, and one more that starts sessions only behind the switch")
   func listing() {
-    let table = Tools.table(source: FakeFleetSource())
+    let table = Tools.table(source: FakeFleetSource(), starter: FakeSessionStarter())
     let listed = table.listing(allowWrites: false)
-    #expect(listed.count == 5)
-    #expect(Set(listed.map(\.name)) == Set(table.listing(allowWrites: true).map(\.name)))
+    #expect(listed.count == 6)
     for tool in listed {
       #expect(tool.annotations.readOnlyHint, "\(tool.name)")
       #expect(tool.gate == .always, "\(tool.name)")
     }
+    let withWrites = table.listing(allowWrites: true).map(\.name)
+    #expect(withWrites == listed.map(\.name) + ["armada_start_session"])
   }
 
   @Test("Every tool description stays inside its context budget")
   func descriptionBudget() {
-    for tool in Tools.table(source: FakeFleetSource()).listing(allowWrites: false) {
+    let table = Tools.table(source: FakeFleetSource(), starter: FakeSessionStarter())
+    for tool in table.listing(allowWrites: true) {
       let bytes = MCPJSON.string(tool.json).utf8.count
       #expect(bytes < 1_400, "\(tool.name) is \(bytes) bytes")
     }

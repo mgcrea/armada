@@ -20,16 +20,25 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
   static let codexSubagent = "ffffffff-6666-4000-8000-000000000006"
   static let codexEnded = "99999999-7777-4000-8000-000000000007"
 
+  /// Two projects whose ids share an 8-character prefix (ambiguity), one nested inside the
+  /// other, and a third whose folder is gone and whose account is not on this Mac.
+  static let armadaProject = "3f2a0000-0000-4000-8000-000000000001"
+  static let siteProject = "3f2a0000-0000-4000-8000-000000000002"
+  static let almanacProject = "7c1b0000-0000-4000-8000-000000000003"
+
   private let lock = NSLock()
   private var calls = 0
+  private var projectCalls = 0
   let fleet: FleetSnapshot
   var hosts: [String: FleetSnapshot.Host] = [:]
+  var projectsFixture: ProjectsSnapshot = FakeFleetSource.projects()
 
   init(_ fleet: FleetSnapshot = FakeFleetSource.fleet()) {
     self.fleet = fleet
   }
 
   var snapshotCalls: Int { lock.withLock { calls } }
+  var projectsCalls: Int { lock.withLock { projectCalls } }
 
   func snapshot() async -> FleetSnapshot {
     lock.withLock { calls += 1 }
@@ -37,6 +46,69 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
   }
 
   func host(forClaudeSession id: String) async -> FleetSnapshot.Host? { hosts[id] }
+
+  func projects() async -> ProjectsSnapshot {
+    lock.withLock { projectCalls += 1 }
+    return projectsFixture
+  }
+
+  static func projects(
+    isEntitled: Bool = true, complete: Bool = true, list: [ProjectsSnapshot.Project]? = nil
+  ) -> ProjectsSnapshot {
+    ProjectsSnapshot(
+      takenAt: now, isEntitled: isEntitled,
+      index: .init(
+        complete: complete, filesRead: complete ? nil : 412, filesTotal: complete ? nil : 2_290,
+        earliestDay: now.addingTimeInterval(-40 * 86_400)),
+      projects: list ?? [
+        project(
+          armadaProject, name: "armada", path: "/Users/me/armada",
+          live: [
+            .init(
+              id: waiting, vendor: "claude", name: "Fix login", state: "waiting",
+              cwd: "/Users/me/armada")
+          ],
+          week: 41_200_000, sessions: 18),
+        project(
+          siteProject, name: "Armada site", path: "/Users/me/armada/web", live: [], week: 900_000,
+          sessions: 2),
+        project(
+          almanacProject, name: "almanac", path: "/Users/me/almanac", exists: false,
+          accountName: nil, live: [], week: 0, sessions: 0),
+      ])
+  }
+
+  static func project(
+    _ id: String, name: String, path: String, exists: Bool = true,
+    accountName: String? = "Default", live: [ProjectsSnapshot.LiveSession], week: Int,
+    sessions: Int
+  ) -> ProjectsSnapshot.Project {
+    func tokens(_ total: Int) -> ProjectsSnapshot.Tokens {
+      let fresh = total / 100
+      let cacheWrite = total / 20
+      let output = total / 50
+      return .init(
+        fresh: fresh, cacheWrite: cacheWrite, cacheRead: total - fresh - cacheWrite - output,
+        output: output, reasoning: 0)
+    }
+    let windows: [ProjectsSnapshot.Window] = [
+      .init(key: "7d", tokens: tokens(week), sessions: sessions),
+      .init(key: "30d", tokens: tokens(week * 3), sessions: sessions * 3),
+      .init(key: "all", tokens: tokens(week * 5), sessions: sessions * 5),
+    ]
+    return ProjectsSnapshot.Project(
+      id: id, name: name, path: path, exists: exists,
+      defaultAgent: .init(
+        vendor: "claude", accountID: "/Users/me/.claude", accountName: accountName),
+      live: live, lastActive: week > 0 ? now.addingTimeInterval(-600) : nil, windows: windows,
+      byModel: [
+        .init(key: "claude-opus-5", label: "claude-opus-5", vendor: "claude", windows: windows),
+        .init(key: "gpt-5.5", label: "gpt-5.5", vendor: "codex", windows: windows),
+      ],
+      byAccount: [
+        .init(key: "/Users/me/.claude", label: "Default", vendor: "claude", windows: windows)
+      ])
+  }
 
   static func fleet(
     isEntitled: Bool = true, transcriptPath: String? = nil, rolloutPath: String = "/tmp/rollout",

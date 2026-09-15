@@ -106,13 +106,8 @@ nonisolated struct RecentProject: Identifiable, Hashable, Sendable {
     return found
   }
 
-  /// Whether a path is somewhere the system throws away.
-  ///
-  /// `/private/tmp` as well as `/tmp` because the two are the same directory reached
-  /// two ways, and Claude Code records the resolved one; `/var/folders` is where
-  /// `NSTemporaryDirectory` lives, and therefore where Armada's own scripts go.
+  /// Shared with Projects, which must not suggest a scratchpad either.
   private static func isTemporary(_ path: String) -> Bool {
-    let temporary = ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"]
-    return temporary.contains { path.hasPrefix($0) }
+    ProjectPath.isTemporary(path)
   }
 }

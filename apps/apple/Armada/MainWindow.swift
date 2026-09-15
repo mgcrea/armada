@@ -15,6 +15,8 @@ enum SidebarItem: Hashable {
   case usage
   case account(String)
   case codex(String)
+  /// A saved project, by its minted id — never its path, which can move.
+  case project(String)
 
   /// Where the window's selection is stored, and the one thing the menu bar panel
   /// has to write to steer the sidebar. The key keeps its original name so an
@@ -23,18 +25,22 @@ enum SidebarItem: Hashable {
 
   private static let usageToken = "usage"
   private static let codexPrefix = "codex:"
+  private static let projectPrefix = "project:"
 
   var stored: String {
     switch self {
     case .usage: Self.usageToken
     case .account(let id): id
     case .codex(let id): Self.codexPrefix + id
+    case .project(let id): Self.projectPrefix + id
     }
   }
 
   init?(stored: String) {
     if stored == Self.usageToken {
       self = .usage
+    } else if stored.hasPrefix(Self.projectPrefix) {
+      self = .project(String(stored.dropFirst(Self.projectPrefix.count)))
     } else if stored.hasPrefix(Self.codexPrefix) {
       self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
     } else if stored.hasPrefix("/") {
@@ -49,6 +55,7 @@ struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var monitor = EntitlementMonitor.shared
+  @State private var store = ProjectStore.shared
 
   /// What the sidebar had selected last time.
   ///
@@ -98,6 +105,28 @@ struct MainWindowView: View {
             }
           }
         }
+        // A rule between what Armada finds (the accounts above) and what the person saves (the
+        // projects below): a project spans accounts, so it is not one more of them. Untagged, so
+        // it cannot be selected.
+        Divider()
+        Section {
+          ForEach(store.projects) { project in
+            ProjectSidebarRow(project: project)
+              .tag(SidebarItem.project(project.id))
+          }
+          if store.projects.isEmpty {
+            Button("Add Project…") { ProjectAdder.chooseFolder() }
+              .buttonStyle(.borderless)
+              .foregroundStyle(.secondary)
+              .disabled(store.defaultNewAgent == nil)
+          }
+        } header: {
+          HStack {
+            Text("Projects")
+            Spacer()
+            ProjectAddMenu()
+          }
+        }
       }
       .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
       .safeAreaInset(edge: .bottom) {
@@ -131,6 +160,11 @@ struct MainWindowView: View {
             CodexPaneView(account: account)
               .id(account.id)
           }
+        case .project(let id):
+          if let project = store.project(id: id) {
+            ProjectPaneView(project: project)
+              .id(project.id)
+          }
         case nil:
           ContentUnavailableView {
             Label("No agents found", systemImage: "folder.badge.questionmark")
@@ -153,6 +187,7 @@ struct MainWindowView: View {
     case .usage: .usage
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
+    case .project(let id) where store.project(id: id) != nil: .project(id)
     // A Codex home is a real fallback, not a consolation prize: someone may run
     // Codex and no Claude Code at all, and the window should open on their work.
     default: accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }

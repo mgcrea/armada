@@ -4,9 +4,9 @@ import SwiftUI
 
 /// Settings ▸ Supervisor: the MCP server, and a Claude Code session started with it attached.
 ///
-/// A grouped `Form` rather than `MCPKitUI.MCPServerPanel`, as Almanac chose, and for a sharper
-/// reason here: that panel always draws an "Allow writes" switch, and Armada has nothing for it
-/// to govern. A switch that does nothing reads as a promise that something could.
+/// A grouped `Form` rather than `MCPKitUI.MCPServerPanel`, as Almanac chose. Armada's Allow writes
+/// switch governs exactly one thing — an agent starting a session in a saved project — and the
+/// sentence under it has to say that, which the panel's generic switch cannot.
 ///
 /// What is carried over word for word is the loopback sentence, which is a security surface,
 /// and the client configuration, through `ClientSnippet`, so a client this pane tells you to
@@ -14,6 +14,7 @@ import SwiftUI
 struct SupervisorPane: View {
   @AppStorage(MCPServerController.enabledKey) private var enabled = false
   @AppStorage(MCPServerController.portKey) private var port = MCPServerController.defaultPort
+  @AppStorage(MCPServerController.allowWritesKey) private var allowWrites = false
   @State private var controller = MCPServerController.shared
   @State private var accounts = Accounts.shared
   @State private var monitor = EntitlementMonitor.shared
@@ -64,6 +65,13 @@ struct SupervisorPane: View {
           .foregroundStyle(.orange)
         }
       }
+      Toggle(isOn: $allowWrites) {
+        Text("Allow writes")
+        Text(
+          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(launcher.terminal.name), optionally with an opening message. The session asks you for every permission as usual. Nothing else writes."
+        )
+      }
+      .disabled(!enabled)
       if let tokenError = controller.tokenError {
         Text(tokenError)
           .font(.caption)
@@ -90,7 +98,9 @@ struct SupervisorPane: View {
       // Says what the tools cannot do, because "an agent can read my sessions" is the sentence
       // someone will stop on, and the answer to "and then what" is the reassurance.
       Text(
-        "Every tool is read-only. An agent connected here can see sessions, plan limits and the end of each transcript; it cannot change a session, start one, or write to a vendor's folder. The server runs only while Armada does."
+        allowWrites
+          ? "An agent connected here can see sessions, projects, plan limits and the end of each transcript, and one tool, armada_start_session, can open a fresh session in a saved project. It cannot change a running session or write to a vendor's folder. A client already connected sees the change once it reconnects. The server runs only while Armada does."
+          : "Every tool is read-only. An agent connected here can see sessions, projects, plan limits and the end of each transcript; it cannot change a session, start one, or write to a vendor's folder. The server runs only while Armada does."
       )
     }
   }
@@ -151,7 +161,7 @@ struct SupervisorPane: View {
       Text(
         controller.runningPort == nil
           ? "Turn the server on to start a Claude Code session that can see every session on this Mac."
-          : "Opens \(launcher.terminal.name) with claude running in that folder on that account, connected to this server, and asks which sessions need you. It is an ordinary session on your own plan and appears in the list like any other. Its connection details are passed on its command line and in a file beside its startup script; nothing is added to your Claude configuration."
+          : "Opens \(launcher.terminal.name) with claude running in that folder on that account, connected to this server, and asks which sessions need you. It is an ordinary session on your own plan and appears in the list like any other. Its connection details are passed on its command line and in a file beside its startup script; nothing is added to your Claude configuration. Its read tools are pre-allowed; starting a session is not, so it asks you first."
       )
     }
   }

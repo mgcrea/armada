@@ -192,6 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before any view reads `Changelog.hasUnseen`, or a fresh install draws the
     // What's New dot on its very first launch.
     Changelog.markSeenIfUnset()
+    // Before the gate: projects are the person's own list, and stay whatever the licence
+    // says. See `ProjectStore`.
+    ProjectStore.shared.load()
     // The watchers start only if a key verifies: at launch there is never a trial
     // yet, since one is started by hand. See `EntitlementMonitor`.
     EntitlementMonitor.shared.apply()

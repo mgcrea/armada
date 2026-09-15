@@ -119,6 +119,8 @@ struct CodexPaneView: View {
                     target.agent, in: target.project, start: target.start)
                 }
               }
+              Divider()
+              ProjectContextButton(path: session.meta.cwd, agent: .codex(homeID: account.id))
             }
           }
           .onChange(of: scrollTarget) { _, target in
