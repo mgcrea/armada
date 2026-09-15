@@ -24,8 +24,9 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   `codex` running in that folder on that account: Armada writes a startup script and
   hands it to Terminal, never owns the process, and the new session arrives through the
   watchers like any other.
-- **Projects**: folders saved in the sidebar, across accounts. A project's pane starts a
-  session on its default account or any other, lists the live sessions whose folder is the
+- **Projects**: folders saved across accounts, in a pane of their own under Usage — the list
+  on the left, the selected project on the right. A project starts a session on its default
+  account or any other, lists the live sessions whose folder is the
   project's or below it (the deepest saved project wins), and renames, moves or removes the
   project in place. Saved to `projects.json` beside the usage history; nothing is written to
   a vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
@@ -90,7 +91,7 @@ transcripts, separate rate limits.
 | `ProjectPath` | folder matching on whole path components, and which saved project a `cwd` belongs to |
 | `Project` / `ProjectsFile` | a saved folder and the agent it starts; `projects.json`, versioned |
 | `ProjectStore` | the saved list, each folder's symlink-resolved spelling, the live account behind an agent |
-| `ProjectPaneView` / `ProjectSidebarRow` | the sidebar section, the pane, and "Add to Projects" |
+| `ProjectsPaneView` / `ProjectRow` / `ProjectDetail` | the Projects pane: the list, the selected project, and "Add to Projects" |
 | `UsageLines` | one transcript or rollout line → the tokens it spent |
 | `UsageIngest` | whole lines of a chunk → contributions, a cursor, and the dedupe claims |
 | `UsageLedger` | `TokenTally`, `StableHash`, `LocalDay`, and the snapshot the app holds |
@@ -111,7 +112,7 @@ transcripts, separate rate limits.
 | `SupervisorProcess` | the headless `claude` voice owns: frames to stdin, stream-json events back, closed when idle |
 | `VoiceShortcut`, `ShortcutRecorder` | the one global chord through `RegisterEventHotKey`, and the Settings control that records it |
 | `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the synthesizer |
-| `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice |
+| `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice and a button to hear it |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
 usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
@@ -325,6 +326,11 @@ Each of these cost time here, and none is visible from the code that depends on 
 - **The MCP token's Keychain item is per bundle identifier.** Debug and the installed build are
   signed differently, so one shared item would prompt in whichever did not create it. Each build
   has its own token, and the two collide on the port if both are switched on.
+- **A Debug build can serve 503 on every authenticated call.** Observed 2026-09-15: `/health`
+  answered 401 without the token and 503 with it, and `/mcp` returned "The credential store
+  cannot be read right now. Unlock the keychain and try again." It did not clear in an hour, and
+  the cause was not diagnosed. A client sees every tool fail, so check `/health` with the token
+  before blaming the client.
 
 - **Voice's `claude` is Armada's own child, so the session list hides it.**
   `SessionRegistry.isArmadaProbe` filters every `claude` whose parent is Armada, which is right
@@ -382,7 +388,16 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
        "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
   | jq -r '.result.tools[].name'                          # the armada_* tools: six, seven with Allow writes on
+
+# Voice, with Settings ▸ Voice and the MCP server on, while a conversation is open:
+pgrep -lP "$(pgrep -nx Armada)"                          # the voice claude, Armada's own child
+ls ~/Library/Application\ Support/io.mgcrea.armada.debug/voice   # a folder per account; io.mgcrea.armada when installed
 ```
+
+Voice also needs three checks by eye, none of which a command can make. Type in TextEdit, press
+the shortcut, and keep typing: the text must keep landing in TextEdit. The orange microphone
+dot must show only while the card says it is listening. A screenshot taken while the card is
+up must not contain it.
 
 To point a session in this repo at the endpoint rather than starting a supervisor, put the
 JSON snippet from Settings ▸ Supervisor in `.mcp.json` at the root. It carries the bearer

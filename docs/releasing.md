@@ -162,6 +162,8 @@ curl -sI https://armada.mgcrea.io/appcast.xml | grep -i location
 tmp=$(mktemp -d) && curl -sL -o "$tmp/Armada.zip" https://armada.mgcrea.io/download
 [ "$(shasum -a 256 "$tmp/Armada.zip" | cut -d' ' -f1)" = "$(curl -sL https://armada.mgcrea.io/checksum)" ] && echo checksum-ok
 ditto -x -k "$tmp/Armada.zip" "$tmp" && spctl -a -vvv -t install "$tmp/Armada.app"
+codesign -d --entitlements - --xml "$tmp/Armada.app" | plutil -convert json -o - - | jq -r 'keys[]'
+# exactly: com.apple.security.device.audio-input (the microphone, for voice)
 /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$tmp/Armada.app/Contents/Info.plist"
 apps/apple/Vendor/bin/generate_keys -p     # must print the same key
 ```
