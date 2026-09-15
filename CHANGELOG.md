@@ -8,6 +8,54 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.0.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Projects.** Save the folders you work in to the sidebar and start a Claude Code or Codex
+  session in one with a click, on the account the project remembers or on any other, even in a
+  folder that has never had a session. A project's pane lists the live sessions inside it,
+  subfolders and worktrees included, and "Add to Projects" is on every session row and recent
+  folder.
+- **Tokens spent, per project.** A project's pane shows the tokens used in it over 7 days, 30
+  days and all time, split by model, account and subfolder. They are read in the background
+  from every Claude Code transcript and Codex rollout on the Mac, each response counted once
+  even when a resumed or forked session copies it, and kept after Claude Code clears old
+  transcripts.
+- **`armada_get_projects`.** The MCP server's sixth read-only tool: each saved project's
+  default agent and account, its live sessions, and its tokens over 7 days, 30 days and all
+  time, with a split by model and account for one project. It says when older transcripts are
+  still being read, so an agent does not quote a low total as final.
+- **Agents can start sessions, when you allow it.** Settings ▸ Supervisor has an Allow writes
+  switch, off by default. Turned on, the MCP server adds `armada_start_session`, which opens
+  your terminal on a fresh Claude Code or Codex session in one of your saved projects, on its
+  own account or one the agent names, optionally with an opening message. The session asks you
+  for every permission as usual, the supervisor is not pre-allowed to call it, and a message
+  that would be read as a flag, a shell command or a slash command is refused.
+
+- **Talk to Armada.** Settings ▸ Voice gives Armada a global shortcut: press it, or hold it,
+  anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen
+  shows the question and then the answer while it is spoken. Dictation and speech run on the
+  Mac, and the audio is never kept. The question goes to Anthropic as text through your own
+  `claude`, on the account you pick, and a follow-up continues the same conversation. Off by
+  default; it reads the fleet through the MCP server in Settings ▸ Supervisor.
+
+### Changed
+
+- **Armada runs a `claude` of its own while you talk to it.** Voice starts your installed
+  `claude` headless with no built-in tools and only Armada's six read tools, keeps it for
+  follow-up questions, and closes it after five idle minutes. It is the one agent process
+  Armada owns rather than watches.
+- **One entitlement: the microphone.** The app is signed with
+  `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and
+  `make sign` allow exactly that key and fail on any other.
+
+### Internal
+
+- `ArmadaSupervisor`, a second local package: the voice `claude`'s stream-json decoding and
+  argument lockdown, sentence chunking, the silence rule and the shortcut's reducer, under
+  `make -C apps/apple test`.
+
 ## [1.0.0] - 2026-09-14
 
 The app went from nothing to a working menu bar app between 2026-09-11 and 2026-09-13. Entries

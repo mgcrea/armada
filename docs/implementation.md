@@ -24,10 +24,22 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   `codex` running in that folder on that account: Armada writes a startup script and
   hands it to Terminal, never owns the process, and the new session arrives through the
   watchers like any other.
-- **Supervisor**, opt-in: a read-only MCP server on `127.0.0.1` (Settings ▸ Supervisor), and
+- **Projects**: folders saved in the sidebar, across accounts. A project's pane starts a
+  session on its default account or any other, lists the live sessions whose folder is the
+  project's or below it (the deepest saved project wins), and renames, moves or removes the
+  project in place. Saved to `projects.json` beside the usage history; nothing is written to
+  a vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
+  builds in the background over every transcript and rollout (`usage-index.sqlite`).
+- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with six read
+  tools and, behind its Allow writes switch, `armada_start_session`; and
   a Start Supervisor Session button that opens an ordinary Claude Code session with that
-  server attached, its five tools pre-allowed, and a brief. The session is the chat: ask it
-  which sessions need you, what one is doing, or how much plan is left. Voice is not built.
+  server attached, its read tools pre-allowed (never the start tool), and a brief. The session is the chat: ask it
+  which sessions need you, what one is doing, or how much plan is left.
+- **Voice**, opt-in (Settings ▸ Voice): a global shortcut opens a card at the top of the
+  screen, on-device dictation turns the question into text, a headless `claude` Armada runs on
+  the chosen account answers through the same MCP server, and the reply is spoken a sentence at
+  a time. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
+  read tools, continues the conversation for follow-ups, and closes after five idle minutes.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -75,10 +87,31 @@ transcripts, separate rate limits.
 | `AccountOverview` / `CodexOverview` | the detail pane with nothing selected, per vendor |
 | `NewSessionSection` / `SessionTallySection` | the two halves both overviews are built from |
 | `RecentProject` | the folders an account has run in, for that menu |
-| `ArmadaMCP` (package) | the five tools, `FleetSource` and its snapshot types, the transcript condenser; `make -C apps/apple test` |
+| `ProjectPath` | folder matching on whole path components, and which saved project a `cwd` belongs to |
+| `Project` / `ProjectsFile` | a saved folder and the agent it starts; `projects.json`, versioned |
+| `ProjectStore` | the saved list, each folder's symlink-resolved spelling, the live account behind an agent |
+| `ProjectPaneView` / `ProjectSidebarRow` | the sidebar section, the pane, and "Add to Projects" |
+| `UsageLines` | one transcript or rollout line → the tokens it spent |
+| `UsageIngest` | whole lines of a chunk → contributions, a cursor, and the dedupe claims |
+| `UsageLedger` | `TokenTally`, `StableHash`, `LocalDay`, and the snapshot the app holds |
+| `UsageIndexer` / `UsageDatabase` | the background pass and its SQLite ledger |
+| `UsageIndex` | when a pass runs, and the snapshot and progress the views read |
+| `ProjectStats` / `ProjectUsageSection` | the ledger rolled up into projects, and how the pane shows it |
+| `ProjectsSnapshot` (package) / `ProjectsBridge` | `armada_get_projects`'s second hop: stored projects, ledger and live sessions copied in one main-actor hop, rolled up after it |
+| `SessionStarter` (package) / `SessionStarterBridge` | `armada_start_session`'s door: one main-actor hop that re-checks the project, resolves the account, throttles and launches |
+| `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
+| `ArmadaMCP` (package) | the seven tools, `FleetSource` and its snapshot types, `SessionStarter`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
+| `SupervisorMCPConfig` | the 0600 MCP configuration both supervisors are started with |
+| `ArmadaSupervisor` (package) | voice's decisions with no audio or UI: stream-json decoding, the voice `claude`'s arguments, sentence chunking, the silence rule, the shortcut reducer; `make -C apps/apple test` |
+| `VoiceController` | voice's coordinator: performs `VoiceTurn`'s effects, holds what the card shows, starts and resumes the voice `claude` |
+| `VoiceCapture` | the microphone and `DictationTranscriber` for one question |
+| `SupervisorProcess` | the headless `claude` voice owns: frames to stdin, stream-json events back, closed when idle |
+| `VoiceShortcut`, `ShortcutRecorder` | the one global chord through `RegisterEventHotKey`, and the Settings control that records it |
+| `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the synthesizer |
+| `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
 usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
@@ -117,6 +150,38 @@ Each of these cost time here, and none is visible from the code that depends on 
   both be called `api`, and a `ForEach` keyed on the title then runs two sections under
   one id — which renders as sections showing each other's rows and looks like a SwiftUI
   bug. `SessionGroup.id` is the path; the name is only the title.
+- **A project matches on whole path components and on its resolved path.** `/work/armada`
+  is a string prefix of `/work/armada-old`, so `ProjectPath.contains` decides at a `/`. And
+  the open panel can hand back a symlinked path while Claude Code records the resolved `cwd`,
+  so `ProjectStore` keeps both spellings, resolved with `realpath(3)`:
+  `resolvingSymlinksInPath` also strips a leading `/private`, which turns the `/private/tmp`
+  a session records into a `/tmp` that matches nothing.
+- **A message can be in two transcripts, and nothing says so.** A resumed, forked or
+  `bridge-session` mirror transcript copies earlier messages with the same `message.id`, the
+  same timestamp and the same `cwd` under a new `sessionId`; 52 of them were shared by two
+  files in one folder here on 2026-09-14. Within a file, every content block of a message
+  repeats its `usage` (226 lines, 52 messages). So the ledger dedupes on the id across every
+  file, first seen wins. The same goes for Codex: a forked rollout replays its parent's
+  `token_count` totals before its own, with no marker, so a cumulative total already counted
+  counts for nothing.
+- **Codex moves old rollouts into `archived_sessions/`**, flat, keeping the file name. The
+  index keys a rollout on the uuid in its name and follows it by inode, so a move is a path
+  update and not a new file.
+- **A transcript's `cwd` moves with the agent's shell.** 163 of the 300 newest here carry more
+  than one. A session belongs to the folder it started in: the first `cwd` of its own
+  transcript, which its subagents take too.
+- **Never `Hasher` for anything stored.** It is seeded per process, so a dedupe key written by
+  one launch matches nothing in the next. `StableHash` is FNV-1a.
+- **The kit's write gate is `gate:`, not the annotations.** `MCPTool.mutates` is
+  `gate == .requiresWrites`; `.mutating(...)` only tells a client what the tool does. A tool
+  annotated as mutating and left at the default `.always` is listed and callable with Allow
+  writes off.
+- **An agent's opening message is made safe by refusing, not by quoting.** Both CLIs take it as
+  the trailing word on their command line, and a message that begins with `-` is a flag
+  (`--dangerously-skip-permissions`), `!` is shell mode and `/` a slash command, whatever the
+  quoting. So `Tools.promptRefusal` refuses those, the message travels in a 0600 file the script
+  reads and deletes, and it reaches the command line as one double-quoted word. It is still
+  visible to `ps` for the same user while the agent runs, which SECURITY.md puts out of scope.
 - **`.tag` and `.id` on a session row are two different jobs.** `.tag` is what the list's
   selection and `.contextMenu(forSelectionType:)` read; `.id` is what
   `ScrollViewReader.scrollTo` matches, which is how the menu bar panel reaches a row a
@@ -261,6 +326,21 @@ Each of these cost time here, and none is visible from the code that depends on 
   signed differently, so one shared item would prompt in whichever did not create it. Each build
   has its own token, and the two collide on the port if both are switched on.
 
+- **Voice's `claude` is Armada's own child, so the session list hides it.**
+  `SessionRegistry.isArmadaProbe` filters every `claude` whose parent is Armada, which is right
+  here: it is not a session you started. It is stopped by its pid, never by a pattern.
+- **`--safe-mode` is the obvious flag for the voice `claude` and the wrong one.** It drops
+  `--mcp-config` too. `--setting-sources local` is what keeps the person's hooks out.
+- **The voice card must never become key.** The shortcut is pressed while typing somewhere
+  else, and a panel that took focus would take the next keystroke. The panel settings are
+  Cupertino's `DrivingOverlay`'s, where that was measured.
+- **A held hot key repeats its press.** `VoiceShortcut` drops presses while the key is down;
+  without that, holding the chord in press mode would send the question at once.
+- **Writing to a `claude` that has just died raises SIGPIPE**, which ends Armada. The voice
+  process's stdin is set `F_SETNOSIGPIPE`, so the write fails instead.
+- **The voice `claude` starts while you are still speaking.** `VoiceController` pre-warms it
+  on the press, so the second or two it takes is spent before the question exists.
+
 ## Verifying it against reality
 
 The app's numbers are checkable, and were checked, against the machine it runs on:
@@ -301,7 +381,7 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
        "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
-  | jq -r '.result.tools[].name'                          # the five armada_* tools
+  | jq -r '.result.tools[].name'                          # the armada_* tools: six, seven with Allow writes on
 ```
 
 To point a session in this repo at the endpoint rather than starting a supervisor, put the
@@ -430,3 +510,24 @@ listener was driven over a real socket with that table; the rest is known and un
   note reports an assumed 200k as fact.
 - **The supervisor is Claude-only.** Codex takes an MCP server through `-c mcp_servers`, so a
   Codex supervisor is a launch-script change, not a server change.
+
+### Where voice is thin
+
+Built 2026-09-15. The package suite pins the stream-json shapes, the argument lockdown, the
+chunker, the silence rule and every shortcut transition, and the app builds and passes `make
+audit`. Nothing below has been run end to end.
+
+- **Never run with a live microphone or a tool call.** The spike measured stream-json, resume,
+  interrupt and dictation from a recorded file, but Armada's endpoint could not read its token
+  that day. No voice turn has called an Armada tool, and the `tool_use`, API-error and retry
+  fixtures are built from the CLI's schema rather than captured.
+- **Press mode ends a question on level alone**: -42 dBFS and 1.5 s of quiet, untuned. A loud
+  room holds it open until the 45 s cap, and a quiet voice may be cut off.
+- **The microphone prompt is untested in the app bundle**, and so is whether an app, unlike the
+  command-line spike, is also asked for speech recognition.
+- **Replies are spoken in the system language's voice**, whatever language the reply is in.
+- **Only Claude answers.** A Mac with Codex accounts and no Claude account has no voice.
+- **A conversation lasts until Start a New Conversation.** Each account resumes its last
+  session id, so the context grows with every question.
+- **Debug and installed builds share the default shortcut.** Whichever registers second shows
+  that another app already uses it.

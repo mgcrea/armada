@@ -509,6 +509,48 @@ so a watched session's figures still come from its transcript.
 > not a read-only experiment. Use a session's own socket and own token, or reverse it
 > statically.
 
+## Driving a headless session over stream-json
+
+Measured 2026-09-15 against 2.1.270, for voice (`SupervisorProcess`), with a throwaway driver
+writing frames to one long-lived process. Armada's MCP endpoint answered 503 the whole time
+(the Debug build could not read its token from the Keychain), so every turn ran with the
+`armada` server `failed`. Nothing below depends on a tool call.
+
+| Question | Answer |
+| --- | --- |
+| Several prompts to one process? | Yes. Three `{"type":"user",…}` frames in a row, each turn ending in its own `result`; the second answered a question about the first |
+| Arguments | `-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` |
+| First turn, cold | first event at 1.0 s, first `text_delta` at 2.2 s, for a two-word answer |
+| Second turn, same process | first event at 5 ms, first `text_delta` at 1.9 s |
+| Resume in a new process | `--resume <session_id>` from the same working directory continues the conversation; first `text_delta` at 3.1 s |
+| Interrupt | `{"type":"control_request","request_id":…,"request":{"subtype":"interrupt"}}` mid-turn gives a successful `control_response`, a `user` line reading `[Request interrupted by user]`, then `result` `error_during_execution` with `terminal_reason: aborted_streaming`, 6 ms after the request. The process stays up |
+| `--tools ""` | `init.tools` is empty: no built-in tool at all |
+| User settings | Loaded by default: a SessionStart hook from user settings ran (`system/hook_started` and `hook_response` before `init`). `--setting-sources local` keeps them out and keeps `--mcp-config` |
+| `--safe-mode` | Drops the `--mcp-config` server as well (`mcp_servers: []`), so it is no use to a session that needs exactly one |
+| `--disable-slash-commands` | 18 skills and 53 commands in `init` down to none |
+| A reasoning turn | `thinking_delta` and `signature_delta` arrive as `stream_event`s beside `text_delta`, and the `assistant` message repeats each block whole |
+| Model | The account's default (`claude-opus-5[1m]` here), plus a small Haiku call per turn in `modelUsage` |
+
+`system/init` is emitted at the start of **every turn**, not once per process. `total_cost_usd`
+is reported on a subscription too, as a notional figure.
+
+**On-device dictation, the same day,** with the macOS 27.0 SDK and a 5.5 s question recorded
+with `say` rather than a live microphone:
+
+- `DictationTranscriber` (`en-US` already installed) transcribed it in 0.2 s.
+  `SFSpeechRecognizer.authorizationStatus()` stayed `notDetermined` throughout: no
+  speech-recognition prompt. That was a command-line tool; an app bundle may differ.
+- Contextual strings `["Armada", "Bastion"]` turned "bastion" into "Bastion". "Armada" was
+  right without them.
+- **Without `.frequentFinalization`, no result was ever final**, even after
+  `finalizeAndFinishThroughEndOfInput`. With it, finished segments arrive final. Results are
+  segments: the closing "?" arrived as a result of its own.
+- `SpeechDetector` with `reportResults: true` reported nothing on the file, which is why press
+  mode ends a question on the input level instead (`SilenceDetector`).
+
+Not measured: a tool call through the live endpoint, a live microphone, and the time from a
+key press to the first spoken word.
+
 ## Open questions, in priority order
 
 1. Does the unanswered-`tool_use` rule fix false idle? Verify with a session running a

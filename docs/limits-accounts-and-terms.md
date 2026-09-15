@@ -49,6 +49,14 @@ before distributing anything that runs agents to clients.
 **How this shaped Armada:** it watches agents rather than running them, and holds no Claude
 credentials.
 
+**Voice is the one place Armada itself sends `claude` a prompt** (2026-09-15). Each turn is a
+question the person has just spoken, sent when they press or release a shortcut, through the
+unmodified program on their own sign-in: ordinary, individual use rather than "automated or
+non-human means", since nothing is scheduled, looped or sent on their behalf. It is off by
+default, and the process closes after five idle minutes. What stays unconfirmed is the line
+above: whether a sold app running the user's own installed `claude` counts as "running Claude
+Code in your products".
+
 **Still not checked, and now load-bearing: OpenAI's terms for Codex on a ChatGPT
 subscription.** It was a footnote while Codex was unbuilt. As of 2026-09-11 the app reads
 `~/.codex` and displays a ChatGPT plan's usage, so this is the same question the whole

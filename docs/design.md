@@ -43,7 +43,11 @@ is in the decision log.
   a chosen account, which is the same thing the person would have typed. Armada does not
   own the process, hold its pipes or talk to it, and the session comes back through the
   watchers like any other. Whether Armada ever *hosts* an agent — owning the process and
-  driving the conversation — is still undecided and still out of v1.
+  driving the conversation — is still undecided and still out of v1. **Amended 2026-09-15:** it
+  also starts one when an agent asks, through `armada_start_session` — behind the MCP server's
+  Allow writes switch, only in a folder the person saved as a project, with an optional opening
+  message. The terms are unchanged: a terminal window, a session Armada does not own, and every
+  permission still asked of the person.
 - **Armada never holds vendor credentials.** No "sign in with Claude", and nothing reads or
   stores OAuth tokens. See [limits-accounts-and-terms.md](limits-accounts-and-terms.md).
 - **Local only.** One Mac, several accounts per vendor, across vendors. No sync between
@@ -72,25 +76,31 @@ is in the decision log.
 - **On-demand triage agent** that reads across all sessions ("which should I look at
   first?"). **Shipped 2026-09-14 as the supervisor**: a read-only loopback MCP endpoint in the
   app, and a Claude Code session started with it attached. Next: an "allow actions" switch for
-  a focus tool, and voice as on-device speech around the same session.
-- **Voice for the supervisor** (researched 2026-09-14, not built, nothing below measured
-  here). Speech in and out stays on the Mac, and the model sees text, for three reasons:
+  a focus tool. Voice shipped on 2026-09-15, below.
+- **Voice for the s- **Voice for the supervisor.** **Shipped 2026-09-15** as Settings ▸ Voice: a global shortcut,
+  on-device dictation, a headless `claude` Armada runs that answers through the MCP server, and
+  the reply spoken on the Mac. It rests on this research:
   - **Neither route to Claude takes audio.** The Messages API accepts text and images only;
     [an audio content type](https://github.com/anthropics/anthropic-sdk-python/issues/1198)
-    was requested on 2026-02-23 and is open. Claude Code's own voice mode is dictation into
-    the prompt. Codex CLI removed its push-to-talk in 0.118.0 and added realtime audio
-    conversations in 0.145.0, but only inside its own client.
-  - **Recognition.** macOS 26's `SpeechAnalyzer` needs no dependency and, in published
-    benchmarks, leads on clean speech in French, Spanish, German and Italian. Parakeet, run
-    as Core ML through FluidAudio, is reported faster and more accurate on English and on
-    disfluent speech, at the cost of a model download and a package. Start with Apple's.
-  - **Synthesis.** `AVSpeechSynthesizer` with a premium system voice reads the supervisor's
-    replies, taken from the transcript tail Armada already watches.
+    was requested on 2026-02-23 and is open. Codex CLI removed its push-to-talk in 0.118.0 and
+    added realtime audio conversations in 0.145.0, but only inside its own client.
+  - **Claude Code's own `/voice`** is push-to-talk dictation into its prompt, transcribed on
+    Anthropic's servers, free of usage and only for Claude.ai sign-ins
+    ([docs](https://code.claude.com/docs/en/voice-dictation)). It needs the terminal focused
+    and never speaks a reply, which is the gap Armada's voice fills. In a Terminal supervisor
+    it works today with no change to Armada.
+  - **Recognition.** `SpeechAnalyzer`'s `DictationTranscriber` rather than
+    `SpeechTranscriber`, because only dictation honours contextual strings. Parakeet through
+    FluidAudio stays the fallback if English accuracy disappoints, at the cost of a model
+    download or a bundled model.
+  - **Synthesis.** `AVSpeechSynthesizer`, one sentence at a time as the reply streams.
+  - **No wake phrase.** Any always-listening detector keeps the orange microphone dot on all
+    day, and Porcupine validates its key over the network. macOS's Vocal Shortcuts could
+    trigger voice without Armada listening at all, and remains an option.
 
-  All three keep `make audit` true with no new allowance. A cloud voice on either side
-  would be a second network exception and belongs in the decision log first.
-
-## Security model (Drafted)
+  Audio never leaves the Mac, so `make audit` gains no network allowance. It does gain one
+  entitlement, the microphone.
+(Drafted)
 
 **In scope:** an agent that has picked up malicious instructions and misuses messaging to
 steer other agents.
@@ -423,4 +433,7 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-10 | mcp-a2a's A2A peer kept, off by default | Dropping working, tested code that the handoff stage needs |
 | 2026-09-10 | swift-mcp-kit's core used in the app; its HTTP listener not used for messaging | A shared bearer token can't identify sessions |
 | 2026-09-14 | The supervisor is a Claude Code session attached to a read-only loopback MCP endpoint in the app | Does not reverse the row above: that refused the listener for *messaging*, where one shared token cannot say which session is calling. The supervisor has one identity — the person, who starts the session and holds the token — and every tool reads. Rejected: a chat pane calling a model API (a second network exception, a stored credential, and per-token cost where the session already runs on the person's plan); a chat pane on Apple's on-device model (free and private, too small to reason over transcripts); a stdio server binary (a per-session process, and a transport the kit does not have); voice in the first cut (Claude's API takes no audio, so voice is on-device speech around this same text session, and can follow). |
+| 2026-09-15 | Projects: a saved list of folders, with token figures from one background ledger over every transcript, rolled up per project when shown | Starting sessions needed a place that is not an account, and per-project spend needed history no live session holds. One incremental indexer (SQLite, every file's cursor, dedupe keys and daily totals committed together) covers the past and the present from one source, and keying it by folder means adding or nesting a project needs no rescan. Rejected: recording each finished session from `.claude.json`'s `last*` figures plus a separate backfill (two sources that disagree, and a race that loses a session); a JSON ledger with a binary seen-log (the crash recovery SQLite gives for free, written by hand); dollar figures (a price table is an estimate that goes stale, where every other figure in the app is read). Measured on the first pass: 2,719 files, 3.8 GB, 11.5 s. |
+| 2026-09-15 | An agent may start a session, behind the kit's write gate, in saved projects only | The supervisor could see work but not dispatch it. Kept narrow on purpose: registered with `gate: .requiresWrites` so it is neither listed nor callable until Allow writes is on; saved projects only; a fresh session, never a resume; an opening message refused if it starts with `-`, `!` or `/` and carried in a 0600 file, never the script; throttled to one launch per ten seconds; and not pre-allowed in the supervisor, so Claude Code asks the person first. Rejected: any folder (the weakest boundary for the least gain); pre-allowing it (a hostile transcript read by the supervisor could start work unseen). |
+| 2026-09-15 | Voice runs a headless `claude` Armada owns, only while you talk to it | Reverses the letter of the 2026-09-10 "watches rather than runs" row and of the 2026-09-13 rejection of an owned headless `claude`, for one feature and on purpose. What made those right does not hold here: the terms worry was automated use, and each voice turn is one question a person has just spoken, with nothing looped or scheduled; the cost worry was a process per session, and this is one process for one conversation, closed after five idle minutes. It runs the user's own unmodified `claude` on their own sign-in, with `--tools ""`, only Armada's MCP server and its six read tools (`armada_start_session` denied by name), and user settings left out. Rejected: the Terminal supervisor with each question delivered by a hook (a window stays open, and hook delivery is not built); Apple's on-device model (too small to reason over transcripts, as the 2026-09-14 row found); a wake phrase (the orange microphone dot on all day, and a detector to ship and tune). Measured first: docs/claude-code-sessions.md, "Driving a headless session over stream-json". |
 | 2026-09-10 | Deliver to Claude with an `asyncRewake` hook, not channels | Channels are interactive-only, a research preview, not configurable in VS Code, and their content was refused |

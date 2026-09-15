@@ -24,9 +24,10 @@ The three questions you actually have are **which session is waiting on me**, **
 to run out of context**, and **how much of the plan is left** — and each answer lives somewhere
 different, per account, per vendor.
 
-Armada watches rather than runs. It holds no vendor credentials and writes nothing to a
-vendor's config: it reads `~/.claude*` and `~/.codex`, and asks the installed `claude` one
-question that costs no tokens. See
+Armada watches rather than runs, with one opt-in exception: voice runs a `claude` of its own
+while you talk to it. It holds no vendor credentials and writes nothing to a vendor's config: it
+reads `~/.claude*` and `~/.codex`, and asks the installed `claude` one question that costs no
+tokens. See
 [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) for why that shape was
 chosen and what Anthropic's terms actually say.
 
@@ -108,6 +109,18 @@ has the full list with what each fix would cost.
 The Codex pane also leads with how old its figures are, on purpose. Codex has no usage cache, so
 "recent" is the honest word for that list where the Claude one can say "live".
 
+## Projects
+
+Save the folders you work in to the sidebar and a session is one click away in any of them, on the
+account the project remembers or any other, even where no session has run before. A project's pane
+lists what is live inside it, subfolders and worktrees included, and the tokens spent there over 7
+days, 30 days and all time, split by model, account and folder.
+
+Those figures are read in the background from every transcript and Codex session log on the Mac,
+each API response counted once even when a resumed or forked session copies it, and kept after
+Claude Code clears transcripts older than a month. They are tokens, never dollars: a transcript
+records what was used, not what it cost.
+
 ## Supervise the fleet
 
 Settings ▸ Supervisor turns on an MCP server inside Armada and starts a Claude Code session with it
@@ -115,13 +128,22 @@ attached. That session is the chat: ask it which sessions need you, what one of 
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
-the Keychain. All five tools read; none can change a session, start one or write anywhere. The
+the Keychain. Six tools read. The seventh, `armada_start_session`, exists only while you turn on
+Allow writes: it opens a fresh session in one of your saved projects, optionally with an opening
+message, and that session asks you for every permission as usual. None of them can change a running
+session or write to a vendor's folder, and the supervisor is not pre-allowed to start one. The
 supervisor itself is an ordinary `claude` on your own plan: its connection details go on its command
 line and in a file beside its startup script, nothing is added to your Claude configuration, and it
 shows up in the session list like any other. Any other MCP client can connect with the snippet the
 pane offers.
 
-Voice is not built. The plan is on-device speech in and out, around this same text session.
+Settings ▸ Voice asks without a terminal: press a shortcut anywhere, or hold it, ask out loud, and
+a card at the top of the screen shows the question and then the answer while it is spoken. Your
+speech becomes text on the Mac and the audio is never kept. The question goes to Anthropic as text,
+through a `claude` Armada runs on the account you pick, with no built-in tools and only the six
+read tools, and closed after five idle minutes. It is the one place Armada runs an agent instead of
+watching one, and it is off until you turn it on; [SECURITY.md](SECURITY.md) says what it may and
+may not do.
 
 ## Messaging is designed, not built
 
@@ -141,8 +163,8 @@ refused the same request through a channel, so whatever delivers messages can st
 the machine. The router decides delivery and never the sender, every pair is an explicit policy, and
 every delivered message is labelled and logged — see
 [docs/design.md](docs/design.md#security-model-drafted). None of it is written yet: the app today
-installs no hook, and the one socket it opens is the opt-in, read-only supervisor endpoint on
-127.0.0.1.
+installs no hook, and the one socket it opens is the opt-in supervisor endpoint on 127.0.0.1, which
+only reads unless you also allow it to start sessions.
 
 ## Working on it
 
@@ -213,15 +235,17 @@ Built and running:
 | **New sessions**      | start `claude` or `codex` in a chosen folder on a chosen account, via a terminal                  |
 | **Fork**              | open a copy of a session from where it stands, through each vendor's own fork flag                |
 | **Mouse bindings**    | middle and extra buttons cycle the session list or send a keystroke, via an event tap             |
-| **Supervisor**        | a read-only MCP endpoint on 127.0.0.1, and a Claude Code session started with it attached         |
+| **Projects**          | saved folders across accounts, one-click sessions, and the tokens spent in each                   |
+| **Supervisor**        | an MCP endpoint on 127.0.0.1 that reads, and a Claude Code session started with it attached       |
+| **Voice**             | a global shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs           |
 | **Codex**             | sessions, plan limits and context per Codex home, as a spike                                      |
 | **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                              |
 | **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`     |
 
 Deliberately not built: messaging, hooks, `hubctl`, the Unix socket, the messaging MCP surface, and
 anything that writes to a vendor's config. **`~/.claude*` and `~/.codex` are opened read-only** — the only
-things Armada writes are its own: its preferences, its usage history, and the startup script it
-hands to a terminal.
+things Armada writes are its own: its preferences, its usage history, its projects and token ledger,
+and the startup script it hands to a terminal.
 
 ### Known gaps
 
@@ -255,18 +279,19 @@ supervisor's MCP endpoint, off until you turn it on and bound to 127.0.0.1 only.
 asserts all of that against the built bundle rather than against the sources: every Mach-O swept for URL loading, DNS and TLS symbols,
 the shipped Info.plist asserted to keep update checks off and to name that one feed, the sources
 swept for an internet address family, the MCP listener checked to bind loopback and nothing else,
-and no entitlements in the project or in the signature.
+and one entitlement, the microphone for voice, in the project and in the signature.
 
 ```bash
 make audit
 ```
 
-[`scripts/audit-network.sh`](scripts/audit-network.sh) has two allowances. The first is
+[`scripts/audit-network.sh`](scripts/audit-network.sh) has three allowances. The first is
 Sparkle's: the three URL-loading classes it was measured to use, and nothing more. A Sparkle that
 grows a capability it did not have fails the gate, and so does a bundle that has lost Sparkle
 while the allowance is still there. The second is the supervisor endpoint's: swift-mcp-kit's
 listener must bind the loopback literal it was measured to use, and a checkout naming a wildcard
-address fails. Cupertino's version of the script pardons the same framework and an embedded node;
+address fails. The third is not a network capability at all: the microphone entitlement voice
+needs, allowed as the only key in the project's entitlements file and on the signature. Cupertino's version of the script pardons the same framework and an embedded node;
 bastion cannot make the claim at all, because its loopback gateway is always on and is the product. Until the updater landed this file had no allowance table, and it said that the day one
 arrived [SECURITY.md](SECURITY.md) would be reworded in the same commit. It was.
 

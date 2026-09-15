@@ -25,20 +25,35 @@ Three properties, each of which is checkable rather than asserted:
   for URL loading, DNS and TLS symbols, with Sparkle allowed exactly the three URL-loading
   classes it was measured to use and nothing more; the shipped Info.plist asserted to keep
   checks off and to point at that one feed; the sources swept for an internet address
-  family; and no entitlements, in the project or in the signature.
+  family; and one entitlement, the microphone for voice, named in the project and alone in the
+  signature.
 
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and all five of its tools are read-only. `make audit` checks the listener's source for the
+  and six of its seven tools are read-only. The seventh, `armada_start_session`, is listed and
+  callable only while Allow writes is on, which it is not by default: it opens Terminal on a
+  fresh session in a folder you saved as a project, and that session asks you for every
+  permission as usual. `make audit` checks the listener's source for the
   loopback address and refuses a wildcard.
+
+  Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
+  shortcut to the end of the question. Dictation runs on this Mac, the audio is never stored or
+  sent, and replies are spoken by the system synthesizer. The question itself goes to Anthropic
+  as text, through a `claude` Armada runs on the account you choose: see "The voice `claude`"
+  below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
+  and no other keystroke.
 
 - **It never writes to a vendor's configuration.** `~/.claude*` and `~/.codex` are opened
   read-only. Armada installs no hook, writes no `settings.json`, and adds no MCP server entry.
-  The only things it writes anywhere are its own preferences, its usage history in Application
-  Support, and a session startup script in its own temporary directory — beside which a
-  supervisor session's MCP configuration is written, readable by you alone. That session is told
-  about Armada on its own command line; nothing is added to the account's configuration.
+  The only things it writes anywhere are its own preferences; its usage history, saved projects
+  and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
+  Support; and a session startup script in its own temporary directory — beside which a
+  supervisor session's MCP configuration, or an agent-started session's opening message, is
+  written, readable by you alone. That session is told about Armada on its own command line;
+  nothing is added to the account's configuration. Voice keeps one working directory per
+  account in Application Support, where its `claude` records the conversation, and writes that
+  `claude`'s MCP configuration, 0600, to its own temporary directory.
 - **It holds no vendor credentials.** There is no "sign in with Claude", nothing reads or
   stores an OAuth token, and `auth.json` is never opened — a Codex plan name arrives inside
   the rate limits as `plan_type`, so no credential file is touched at all. The reasoning, and
@@ -52,7 +67,9 @@ to "`~/.claude*` and `~/.codex`":
 
 - **Each account's own folders:** `~/.claude`, every `~/.claude-*` beside it, `CLAUDE_CONFIG_DIR`,
   `~/.codex` and `CODEX_HOME`, for session registries, transcripts, session logs and cached
-  usage. Finding the `~/.claude-*` folders means listing the top of your home folder.
+  usage. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
+  transcript and session log is read, Codex's `archived_sessions` included, for the tokens each
+  project spent; what is kept is counts per day, folder, account and model, never text.
 - **`~/.claude.json`**, watched for changes, for the plan usage Claude Code caches there.
 - **`~/.vscode/extensions`**, listed to find a `codex` binary bundled with the Codex extension.
 - **`.git`, up to four folders above each session's working folder**, checked for existence
@@ -79,19 +96,40 @@ attacker-influenced text meets something that acts on it:
   that executes anything derived from it is a vulnerability.
 - **The session startup script.** Starting a session writes a `.command` file into Armada's
   own temporary directory and hands it to Terminal. Every path that reaches it goes through
-  `NewSession.quoted` as a single-quoted shell word; anything that escapes that quoting, or
+  `LaunchScript.quoted` as a single-quoted shell word; anything that escapes that quoting, or
   that gets the script written somewhere another user can replace it before Terminal opens
-  it, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves five read-only tools on `127.0.0.1` to
-  whoever presents the token. Anything that reaches a tool without it, gets past the kit's
-  `Host` and `Origin` checks from a web page, binds another interface, adds a tool that writes,
-  or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
+  it, is in scope. An opening message an agent sends through `armada_start_session` never
+  appears in the script: it is written to a 0600 file beside it, read into a variable and
+  removed before the agent starts, and passed as one double-quoted word, and a message that
+  begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
+  text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
+- **The MCP endpoint.** Switched on, Armada serves six read-only tools on `127.0.0.1` to
+  whoever presents the token, and a seventh that starts a session only while Allow writes is
+  on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
+  checks from a web page, binds another interface, calls `armada_start_session` with Allow
+  writes off, starts a session in a folder that is not a saved project, adds another tool that
+  writes, or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
   the token: it is created 0600 in the launch's own temporary directory and pruned with the
   script, and anything that makes it readable by another user or puts the token on a command
   line is in scope.
 - **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
   control request. Anything that changes _which_ binary is run, or that gets an argument or
   an environment variable in from data rather than from configuration, is in scope.
+- **The voice `claude`.** `SupervisorProcess` runs the user's own `claude` headless for as long
+  as a voice conversation is active, and closes it after five idle minutes. It is started with
+  no built-in tools (`--tools ""`), with Armada's MCP server and no other
+  (`--strict-mcp-config`), with the six read tools allowed by name and `armada_start_session`
+  denied by name, without the person's user settings or hooks, and with no permission bypass;
+  `SupervisorArgumentsTests` pins every one of those. Anything that gives it another tool,
+  another server or a way to write, that puts data rather than the spoken question into its
+  arguments or stdin, or that signals a process Armada did not start, is in scope.
+- **The microphone.** Voice captures audio only between a shortcut press and the end of that
+  question, converts it to text with `DictationTranscriber` on this Mac, and keeps nothing.
+  Anything that leaves the microphone open outside a question, stores or sends audio, or starts
+  listening without the shortcut, is in scope.
+- **The voice shortcut.** One chord through `RegisterEventHotKey`, and a local key monitor in
+  Armada's own Settings window only while a new chord is being recorded. Anything that lets
+  Armada see another keystroke is in scope.
 - **The mouse event tap.** Mouse bindings install a `CGEventTap` under the Accessibility grant
   Armada already holds for window focusing. Its mask is deliberately two event types wide —
   `otherMouseDown` and `otherMouseUp`, the middle and extra buttons — so left clicks, right
@@ -106,12 +144,15 @@ attacker-influenced text meets something that acts on it:
 - **What the `claude` or `codex` process does.** It talks to its vendor over the user's own
   sign-in — that is the program's job, and running it unmodified is the arrangement
   [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) is built around.
-  Armada spawns it and reads one answer.
+  Armada spawns it and reads its answers.
 - **What an agent itself decides to do.** Armada watches sessions and answers questions about
   them; it does not direct them. A supervisor session is an ordinary agent reading those
   answers, and transcript text reaching it through `armada_read_transcript` is labelled as data
   written by other agents. Whether a model then follows instructions inside it is that model's
-  behaviour, not Armada's.
+  behaviour, not Armada's. The one thing such an instruction could make a supervisor do
+  through Armada is start a session, and that is fenced on Armada's side: Allow writes is off
+  by default, the supervisor is not pre-allowed the start tool so Claude Code asks you first
+  with the project and message in view, and the new session asks for every permission itself.
 - **Other programs running as the same macOS user.** They can already read every transcript
   and rewrite every agent's config directly, so nothing in Armada changes their reach. This
   is stated as an explicit out-of-scope in [docs/design.md](docs/design.md#security-model-drafted)
@@ -130,8 +171,9 @@ policy per pair of agents, labelling and an audit log — see
 [docs/design.md](docs/design.md#security-model-drafted) and
 [docs/reaching-agents.md](docs/reaching-agents.md). None of it exists yet. Until it does,
 Armada installs no hook and delivers nothing to any agent. The only MCP tools it serves are the
-supervisor's read-only ones, on loopback, off until you turn them on, and `make audit` is what
-keeps the network half of that honest.
+supervisor's, on loopback, off until you turn them on — and the one of them that starts a session
+is off again until you allow writes — and `make audit` is what keeps the network half of that
+honest.
 
 ## Supported versions
 

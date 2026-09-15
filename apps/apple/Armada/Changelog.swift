@@ -331,6 +331,66 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Projects.",
+            body: [
+              "Save the folders you work in to the sidebar and start a Claude Code or Codex session in one with a click, on the account the project remembers or on any other, even in a folder that has never had a session. A project's pane lists the live sessions inside it, subfolders and worktrees included, and \"Add to Projects\" is on every session row and recent folder.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Tokens spent, per project.",
+            body: [
+              "A project's pane shows the tokens used in it over 7 days, 30 days and all time, split by model, account and subfolder. They are read in the background from every Claude Code transcript and Codex rollout on the Mac, each response counted once even when a resumed or forked session copies it, and kept after Claude Code clears old transcripts.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "`armada_get_projects`.",
+            body: [
+              "The MCP server's sixth read-only tool: each saved project's default agent and account, its live sessions, and its tokens over 7 days, 30 days and all time, with a split by model and account for one project. It says when older transcripts are still being read, so an agent does not quote a low total as final.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Agents can start sessions, when you allow it.",
+            body: [
+              "Settings ▸ Supervisor has an Allow writes switch, off by default. Turned on, the MCP server adds `armada_start_session`, which opens your terminal on a fresh Claude Code or Codex session in one of your saved projects, on its own account or one the agent names, optionally with an opening message. The session asks you for every permission as usual, the supervisor is not pre-allowed to call it, and a message that would be read as a flag, a shell command or a slash command is refused.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Talk to Armada.",
+            body: [
+              "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Dictation and speech run on the Mac, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 5,
+            headline: "Armada runs a `claude` of its own while you talk to it.",
+            body: [
+              "Voice starts your installed `claude` headless with no built-in tools and only Armada's six read tools, keeps it for follow-up questions, and closes it after five idle minutes. It is the one agent process Armada owns rather than watches.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "One entitlement: the microphone.",
+            body: [
+              "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
