@@ -136,7 +136,7 @@ struct AccountPaneView: View {
             if let session = session(for: ids) {
               if let host = SessionHostLookup.host(for: session.registry) {
                 Button("Focus in \(host.name)") {
-                  FocusSession.focus(host, cwd: session.registry.cwd)
+                  FocusSession.focus(host, cwd: session.registry.cwd, session: session)
                 }
               }
               // The fastest route to the thing people actually want a second window

@@ -33,10 +33,11 @@ nonisolated struct SessionHost: Sendable, Hashable {
   /// The last ancestor *below* the application — the VS Code extension host, or
   /// `login` for a Terminal tab.
   ///
-  /// Nothing uses it yet. It is captured because it falls out of the walk for free
-  /// and it is the only exact handle that tells two sessions in the same application
-  /// apart: sessions sharing a `containerPID` are in the same window. Resolving that
-  /// pid *to* a window is the part there is no API for.
+  /// The only exact handle that tells two sessions in the same application apart:
+  /// sessions sharing a `containerPID` are in the same window. Resolving that pid *to* a
+  /// window is the part there is no API for, so `ExtensionTab` goes the other way round —
+  /// it finds the window by any of its sessions' tabs, and this says which sessions those
+  /// are.
   let containerPID: pid_t?
 }
 

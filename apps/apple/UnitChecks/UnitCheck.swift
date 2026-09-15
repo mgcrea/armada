@@ -764,6 +764,43 @@ struct UnitCheck {
       "a later whole-word mention still counts",
       HostWindow.mentions("armada-old, then armada", "armada"))
     check("an empty folder matches nothing", !HostWindow.mentions("anything", ""))
+
+    // The names are VS Code's own, read off live tabs on 2026-09-15.
+    section("HostWindow.tabLabel")
+    check(
+      "a short title, with the editor group after it",
+      HostWindow.tabLabel(
+        "Settings sidebar reorder, Editor Group 1", names: "Settings sidebar reorder"))
+    check(
+      "a short title, with nothing after it",
+      HostWindow.tabLabel("iPadOS support", names: "iPadOS support"))
+    check(
+      "a long title, cut at an ellipsis",
+      HostWindow.tabLabel(
+        "Session list popover but…, Editor Group 1",
+        names: "Session list popover button and ordering"))
+    check(
+      "a cut that keeps the space before the ellipsis",
+      HostWindow.tabLabel(
+        "Armada supervisor agent …", names: "Armada supervisor agent architecture"))
+    check(
+      "a title with commas of its own",
+      HostWindow.tabLabel(
+        "Talk to Armada: a shortcut, a spoken question, Editor Group 2",
+        names: "Talk to Armada: a shortcut, a spoken question"))
+    check(
+      "not a longer tab for a shorter title",
+      !HostWindow.tabLabel("Settings sidebar reorder, Editor Group 1", names: "Settings sidebar"))
+    check(
+      "not a tab shown in full for a longer title",
+      !HostWindow.tabLabel("iPadOS support", names: "iPadOS support for balise"))
+    check(
+      "not a cut that is the whole title",
+      !HostWindow.tabLabel("Session list popover but…", names: "Session list popover but"))
+    check(
+      "not a cut that differs",
+      !HostWindow.tabLabel("Session list popover but…", names: "Session sort menu and grouping"))
+    check("an empty title matches nothing", !HostWindow.tabLabel("", names: ""))
   }
 
   // MARK: - CodexRollout

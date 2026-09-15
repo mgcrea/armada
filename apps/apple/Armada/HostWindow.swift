@@ -17,8 +17,11 @@ import Observation
 /// Code, Cursor, VSCodium and Windsurf all work for the same reason and a terminal
 /// whose title carries the folder works too. Anything that does not match falls
 /// through untouched rather than being raised wrongly.
-@MainActor
-enum HostWindow {
+///
+/// **`nonisolated`, so a caller can keep it off the main thread.** Every call here is
+/// synchronous IPC with another application; the menu bar panel works out what Focus
+/// would reach for its rows while it opens, and does that on a background task.
+nonisolated enum HostWindow {
   /// Whether Armada holds the Accessibility grant, asked **without prompting**.
   ///
   /// `AXIsProcessTrusted()` is the silent one; its `WithOptions` sibling takes
@@ -31,6 +34,7 @@ enum HostWindow {
   /// nothing about the shipped one.
   static var isTrusted: Bool { AXIsProcessTrusted() }
 
+  @MainActor
   static func openAccessibilitySettings() {
     guard
       let url = URL(
@@ -39,15 +43,25 @@ enum HostWindow {
     NSWorkspace.shared.open(url)
   }
 
-  /// Raise the window of `pid` that has `cwd` open. `false` when there is no grant,
-  /// no window, or no title that names the folder — in which case the caller should
-  /// do what it did before this existed.
+  /// Raise the window of `pid` that has `cwd` open, and hand it back. Nil when there is
+  /// no grant, no window, or no title that names the folder — in which case the caller
+  /// should do what it did before this existed.
   ///
-  /// The window, never the tab or the panel inside it. Raising VS Code's window does
-  /// not put the cursor in the Claude panel, and nothing here pretends otherwise.
+  /// The window only. Nothing here can switch the tab inside it — see
+  /// `hasEditorTab(in:titledAnyOf:)` for why — which is `FocusSession`'s job, through
+  /// the Claude Code extension.
   @discardableResult
-  static func raise(inApplication pid: pid_t, cwd: String) -> Bool {
-    guard isTrusted else { return false }
+  static func raise(inApplication pid: pid_t, cwd: String) -> AXUIElement? {
+    guard let window = matchingWindow(inApplication: pid, cwd: cwd), raise(window) else {
+      return nil
+    }
+    return window
+  }
+
+  /// The window of `pid` that has `cwd` open, found without touching it. Nil for the
+  /// same three reasons as `raise`.
+  static func matchingWindow(inApplication pid: pid_t, cwd: String) -> AXUIElement? {
+    guard isTrusted else { return nil }
     let app = AXUIElementCreateApplication(pid)
 
     // **Load-bearing, not tidiness.** Accessibility calls are synchronous IPC on the
@@ -57,7 +71,7 @@ enum HostWindow {
     // one call caps the whole walk below.
     AXUIElementSetMessagingTimeout(app, messagingTimeout)
 
-    guard let windows = value(of: app, kAXWindowsAttribute) as? [AXUIElement] else { return false }
+    guard let windows = value(of: app, kAXWindowsAttribute) as? [AXUIElement] else { return nil }
     // Front-to-back, which is what makes "the first match" mean "the match you used
     // most recently" when the same folder is open in two windows.
     let titles = windows.map { value(of: $0, kAXTitleAttribute) as? String ?? "" }
@@ -69,20 +83,103 @@ enum HostWindow {
     // the right one than a window mentioning `armada` somewhere in a filename.
     for folder in folders {
       if let index = titles.firstIndex(where: { names($0, folder) }) {
-        return raise(windows[index])
+        return windows[index]
       }
     }
     for folder in folders {
       if let index = titles.firstIndex(where: { mentions($0, folder) }) {
-        return raise(windows[index])
+        return windows[index]
       }
     }
-    return false
+    return nil
+  }
+
+  /// Whether `window` is the one `pid` has focused — which, for VS Code, is also the
+  /// window its main process hands an incoming URI to.
+  static func isFocused(_ window: AXUIElement, inApplication pid: pid_t) -> Bool {
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(app, messagingTimeout)
+    guard let focused = value(of: app, kAXFocusedWindowAttribute) else { return false }
+    return CFEqual(focused, window)
+  }
+
+  /// Whether `window` has an editor tab labelled with any of `titles`.
+  ///
+  /// **Read-only, and it has to stay that way.** Measured 2026-09-15 on VS Code: editor
+  /// tabs are `AXRadioButton`/`AXTabButton`, list `AXPress` and advertise `AXValue` as
+  /// settable, and neither selects one. The press returns success and nothing moves —
+  /// VS Code opens a tab on mousedown, and Chromium's accessibility press sends a click.
+  /// Writing `AXValue` did worse: VS Code crashed on the spot. So this only looks, and
+  /// the switching is left to the extension that owns the tab.
+  ///
+  /// The editor's tab groups are the ones with **no description**. The activity bar's
+  /// and the panel's are both described ("Active View Switcher"), which is a non-empty
+  /// string in any locale. Nested web areas are skipped: every webview, the Claude panel
+  /// included, is one, and walking into them visited three times the nodes (2,325 against
+  /// 841 on one window) for no tabs. What is left is about 25ms a window.
+  static func hasEditorTab(in window: AXUIElement, titledAnyOf titles: [String]) -> Bool {
+    var found = false
+    func walk(_ element: AXUIElement, webAreas: Int, depth: Int) {
+      guard !found, depth < maxTreeDepth else { return }
+      let role = value(of: element, kAXRoleAttribute) as? String
+      let webAreas = role == "AXWebArea" ? webAreas + 1 : webAreas
+      guard webAreas <= 1 else { return }
+      let children = value(of: element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+      if role == kAXTabGroupRole,
+        (value(of: element, kAXDescriptionAttribute) as? String ?? "").isEmpty
+      {
+        found = children.contains { tab in
+          // A string rather than a constant: the SDK has no `kAXTabButtonSubrole`.
+          guard value(of: tab, kAXSubroleAttribute) as? String == "AXTabButton" else {
+            return false
+          }
+          let label = value(of: tab, kAXDescriptionAttribute) as? String ?? ""
+          return titles.contains { tabLabel(label, names: $0) }
+        }
+        return
+      }
+      for child in children { walk(child, webAreas: webAreas, depth: depth + 1) }
+    }
+    walk(window, webAreas: 0, depth: 0)
+    return found
+  }
+
+  /// Whether an editor tab's accessible name is `title`, as VS Code labels it.
+  ///
+  /// Measured 2026-09-15, VS Code's live tab names beside Armada's titles for the same
+  /// sessions:
+  ///
+  /// ```
+  /// Settings sidebar reorder, Editor Group 1     Settings sidebar reorder
+  /// Session list popover but…, Editor Group 1    Session list popover button and ordering
+  /// Armada supervisor agent …, Editor Group 1    Armada supervisor agent architecture
+  /// iPadOS support                               iPadOS support
+  /// ```
+  ///
+  /// A long title is cut to a prefix and an ellipsis, with the space before the ellipsis
+  /// kept, and Chromium sometimes appends the editor group after a comma. So a name either
+  /// is the title up to a comma or its end, or is a strict prefix of it ending in the
+  /// ellipsis. **The group suffix is never parsed**: it is localized, and "up to a comma"
+  /// is not.
+  ///
+  /// Internal rather than private only so `make unit` can reach it.
+  static func tabLabel(_ label: String, names title: String) -> Bool {
+    guard !title.isEmpty else { return false }
+    if label == title || label.hasPrefix(title + ",") { return true }
+    guard let ellipsis = label.firstIndex(of: "…") else { return false }
+    let shown = label[..<ellipsis]
+    let rest = label[label.index(after: ellipsis)...]
+    return !shown.isEmpty && (rest.isEmpty || rest.hasPrefix(","))
+      && title.count > shown.count && title.hasPrefix(shown)
   }
 
   /// Long enough that a busy application still answers, short enough that eleven
   /// windows of a wedged one cost a couple of seconds rather than a minute.
   private static let messagingTimeout: Float = 0.2
+
+  /// VS Code's editor tabs sit at depth 28 from their window. Bounded so an application
+  /// with a pathological tree cannot hold the walk.
+  private static let maxTreeDepth = 40
 
   /// How far above the session's own folder to look for the workspace root.
   private static let maxDepth = 4

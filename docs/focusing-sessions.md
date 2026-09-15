@@ -117,7 +117,8 @@ they should, and the two that should find nothing do.
 
 **What it still cannot do**, and the button's label stays honest about all of it:
 
-- The window, never the tab, and never the Claude panel inside the window.
+- The window, never the tab. The tab is reached another way, for VS Code only:
+  [the tab, through the extension](#the-tab-through-the-extension).
 - Two windows on the same folder are indistinguishable. The frontmost of the matches wins,
   which is at worst what would have happened anyway.
 - A `window.title` customised to drop `${rootName}`, or a folder whose name appears in no
@@ -142,6 +143,66 @@ of a second per window.
 Not yet observed on screen: whether raising before activating is visibly one transition. The
 order is deliberate — activating first shows the wrong window for a frame before the raise
 corrects it — but it has not been watched happening, and if it flickers the two lines swap.
+
+## The tab, through the extension
+
+Measured 2026-09-15 on VS Code with the Claude Code extension 2.1.270. The right window came
+forward with whichever Claude tab was last active in it, and the `armada` window on this Mac
+held eight.
+
+**Accessibility sees the tabs and cannot switch them.** Editor tabs are `AXRadioButton` /
+`AXTabButton` inside an `AXTabGroup` with no description. The activity bar's and the panel's
+groups are both described "Active View Switcher", so an empty description picks the editor's
+in any locale. The name is `<label>, Editor Group N`, and the label is the session's title cut
+to a prefix and an ellipsis, space kept: `Armada supervisor agent …`. Skipping nested web areas
+(every webview is one) brings a window's walk from 2,325 nodes to 841, about 25ms.
+
+Selecting one does not work. `AXPress` returns success and nothing moves: VS Code opens a tab on
+mousedown, and Chromium's accessibility press sends a click. `AXValue` is advertised as settable,
+and **writing it crashed VS Code**, taking every session it hosted down with it. Armada only
+reads VS Code's tree.
+
+**The extension switches its own tabs.** It registers a URI handler, and
+`vscode://anthropic.claude-code/open?session=<id>` runs `claude-vscode.primaryEditor.open`,
+which reveals the panel already bound to that id. The registry's `sessionId` is that id: after
+the crash, the fourteen sessions VS Code restored came back under new pids with their old ids.
+
+**The trap is which window receives it.** VS Code routes an incoming URI to its focused window
+(`URLHandlerRouter` falls through to the active client), and a window with no panel for the id
+does not refuse. It opens a new panel on it, resuming a session that is still running in
+another window: two writers on one transcript. So the URI is sent only when all three hold:
+
+- the session's `entrypoint` is `claude-vscode`, because a `claude` in VS Code's integrated
+  terminal has no panel anywhere;
+- the window `HostWindow` matched has an editor tab labelled with the `ai-title` of this
+  session or of any session sharing its extension host;
+- that window has become VS Code's focused window, polled for up to a second after activation.
+
+Anything else leaves the window raised and the tab where it was.
+
+What it costs and what it misses:
+
+- VS Code asks once, "Allow 'Claude Code' extension to open this URI?", and keeps "Do not ask
+  me again" in `extensions.confirmedUriHandlerExtensionIds`.
+- **A session's own title is often not what its tab says.** A fork carries only a
+  `custom-title` ("… (fork)"), and a session opened on a slash command has no title at all and
+  a tab labelled with the command (`/commit & enable git lfs…`). So the window is proved by
+  *any* session in it: every `claude` a window runs is a child of that window's one extension
+  host, `SessionHost.containerPID`. Measured the same day, 21 live sessions fell into nine
+  hosts, one per window, with no exceptions. A window whose sessions are all untitled still
+  gets the window only.
+- The menu bar panel draws the Focus glyph as `arrow.up.forward.app` when all of this holds,
+  and as a dimmer `macwindow` when Focus will stop at the window or the app. It works that out
+  off the main thread as the panel opens (`FocusSession.reach`), with the same checks and
+  neither of the two steps that act.
+- A session held in the sidebar has no editor tab. If another tab in the same window carries
+  the same title, the check passes and the extension opens a second panel on the session. Not
+  seen; written down because it is the one path left to the harm above.
+- Not verified: whether a VS Code that no accessibility client has touched exposes its tabs at
+  all. If it does not, the check finds none and Focus stops at the window. Armada does not set
+  `AXManualAccessibility` to force it.
+- The scheme comes from the host's `CFBundleURLTypes`, so Cursor (`cursor://`) and VS Code
+  Insiders take the same path, untested.
 
 ## Two traps worth writing down
 
@@ -221,9 +282,9 @@ over pipes and allocates no pty. So this tier buys nothing for the common case h
 **VS Code, by `AXRaise`.** No longer deferred — built on 2026-09-12 and written up under
 [the window, by title](#the-window-by-title) above. The ceilings named here when it was
 deferred all turned out to be real: two windows on the same folder are still
-indistinguishable, and a perfect match still raises the *window* and never the Claude panel
-inside it. The one thing that was wrong was the title format, which is not
-`<file> — <folder>`.
+indistinguishable, and a perfect match raises the *window* and never the Claude panel inside
+it; the panel is now [the extension's to reveal](#the-tab-through-the-extension). The one thing
+that was wrong was the title format, which is not `<file> — <folder>`.
 
 `SessionHost.containerPID` — the extension-host pid, one per window — would have been an
 *exact* handle where a title is a heuristic, and it is captured already. There is still no

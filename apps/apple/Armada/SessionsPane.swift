@@ -112,7 +112,8 @@ struct SessionDetail: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         }
-        FocusButton(host: host, cwd: session.registry.cwd, didLookUp: didLookUpHost)
+        FocusButton(
+          host: host, cwd: session.registry.cwd, session: session, didLookUp: didLookUpHost)
         ForkButton(availability: .claude(session, in: account))
       }
       // Above "Session": the context is the live fact worth checking, while the
@@ -167,15 +168,16 @@ struct SessionDetail: View {
 
 /// "Focus in Visual Studio Code", or an explanation of why there is nothing to focus.
 ///
-/// **The label still names the application, even now that this can reach a window.**
-/// "Go to session" or "Open session" would promise the tab, and nothing delivers a
-/// tab: with the Accessibility grant this lands on the window whose title names the
-/// session's folder, and the Claude panel inside it is still wherever it was. Naming
-/// the app is also the more useful label, because it tells you where you are about
-/// to be sent.
+/// **The label still names the application, even now that this can reach a tab.**
+/// "Go to session" would promise the tab every time, and the tab is reached only for a
+/// session the VS Code extension owns, in the window whose title names its folder, when
+/// that window shows a tab for it or for a session beside it; everything else lands on
+/// the window, or on the app. Naming the app is also the more useful label, because it
+/// tells you where you are about to be sent.
 struct FocusButton: View {
   let host: SessionHost?
   let cwd: String
+  let session: Session
   let didLookUp: Bool
 
   @State private var trust = AccessibilityTrust.shared
@@ -183,7 +185,7 @@ struct FocusButton: View {
   var body: some View {
     if let host {
       Button {
-        FocusSession.focus(host, cwd: cwd)
+        FocusSession.focus(host, cwd: cwd, session: session)
       } label: {
         Label("Focus in \(host.name)", systemImage: "arrow.up.forward.app")
       }

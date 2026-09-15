@@ -122,7 +122,7 @@ enum MouseCommand {
       // deliberate button press is the same cost as building a menu, and the result
       // is cached anyway.
       if let host = SessionHostLookup.host(for: session.registry) {
-        FocusSession.focus(host, cwd: session.registry.cwd)
+        FocusSession.focus(host, cwd: session.registry.cwd, session: session)
       } else {
         // A session with no host — `claude -p` in CI, over ssh, inside tmux — has
         // nothing to raise, so the window that knows about it is Armada's own.

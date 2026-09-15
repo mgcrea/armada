@@ -27,19 +27,88 @@ enum FocusSession {
   /// activation that follows carries the window it just raised. The other order
   /// shows the wrong window for a frame before correcting itself.
   ///
+  /// **Then the tab, when there is one to ask for.** See `reveal`.
+  ///
   /// `cwd` rather than anything on `SessionHost`, because the folder is this
   /// action's input and not part of the host's identity; `SessionHost` names an
   /// application and carries no path on purpose.
   @discardableResult
-  static func focus(_ host: SessionHost, cwd: String) -> Bool {
+  static func focus(_ host: SessionHost, cwd: String, session: Session? = nil) -> Bool {
     guard let app = NSRunningApplication(processIdentifier: host.pid) else { return reopen(host) }
-    let raised = HostWindow.raise(inApplication: host.pid, cwd: cwd)
+    let window = HostWindow.raise(inApplication: host.pid, cwd: cwd)
+    if let window, let tab = session.flatMap({ ExtensionTab($0, host: host) }),
+      HostWindow.hasEditorTab(in: window, titledAnyOf: tab.labels)
+    {
+      reveal(tab, in: host, window: window)
+    }
     NSApp.yieldActivation(to: app)
     if app.activate(from: .current, options: []) { return true }
     // A raise that landed is a visible result even when the activation was
     // declined, so it is not worth going through LaunchServices after one.
-    return raised || reopen(host)
+    return window != nil || reopen(host)
   }
+
+  /// What `focus` would reach, found without raising or sending anything.
+  ///
+  /// For a marker drawn before anyone clicks, so it has to agree with `focus`: the same
+  /// window match and the same tab check, stopping short of the two steps that act.
+  /// `nonisolated` so the caller can keep the Accessibility IPC off the main thread — a
+  /// wedged host answers each message only when the timeout runs out. `labels` is
+  /// `ExtensionTab.labels`, nil when there is no extension tab to ask for.
+  nonisolated static func reach(
+    inApplication pid: pid_t, cwd: String, labels: [String]?
+  ) -> FocusReach {
+    guard let window = HostWindow.matchingWindow(inApplication: pid, cwd: cwd) else {
+      return .application
+    }
+    guard let labels, HostWindow.hasEditorTab(in: window, titledAnyOf: labels) else {
+      return .window
+    }
+    return .tab
+  }
+
+  /// Ask the Claude Code extension to show `tab`, once the window holding it is the one
+  /// VS Code will give the request to.
+  ///
+  /// **The extension's own URI, because nothing else switches the tab.** Accessibility
+  /// can read VS Code's tabs and cannot select one (see `HostWindow.hasEditorTab`).
+  /// `vscode://anthropic.claude-code/open?session=<id>` runs the extension's
+  /// `primaryEditor.open`, which reveals the panel bound to that session id — exactly,
+  /// where a tab's label is only a heuristic.
+  ///
+  /// **Gated three ways, because the wrong window does real harm.** A window with no
+  /// panel for the session does not refuse: it opens a new one on the same id, which
+  /// resumes a session that is still running somewhere else — two writers on one
+  /// transcript. VS Code routes an incoming URI to its focused window, so the URI goes
+  /// only when the session is the extension's own (`ExtensionTab`), the window
+  /// `HostWindow` matched has a tab labelled for this session or one sharing its
+  /// extension host, and that window has become VS Code's focused one. Any gate that
+  /// fails leaves the window raised and the tab where it was, which is what Focus did
+  /// before.
+  ///
+  /// Polled rather than sent straight after `activate`, because activation is a request
+  /// the system answers asynchronously: sent at once, the URI can reach the window that
+  /// was focused a moment ago.
+  private static func reveal(_ tab: ExtensionTab, in host: SessionHost, window: AXUIElement) {
+    guard let bundleURL = host.bundleURL else { return }
+    let url = tab.url
+    Task {
+      for _ in 0..<revealAttempts {
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == host.pid,
+          HostWindow.isFocused(window, inApplication: host.pid)
+        {
+          NSWorkspace.shared.open(
+            [url], withApplicationAt: bundleURL, configuration: NSWorkspace.OpenConfiguration(),
+            completionHandler: nil)
+          return
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+      }
+    }
+  }
+
+  /// A second, in 50ms steps: an activation that has not landed by then was declined.
+  private static let revealAttempts = 20
 
   /// LaunchServices, the way `open -a` does it.
   ///
@@ -57,5 +126,82 @@ enum FocusSession {
     configuration.activates = true
     NSWorkspace.shared.openApplication(at: url, configuration: configuration)
     return true
+  }
+}
+
+/// How far `FocusSession.focus` gets for one session.
+nonisolated enum FocusReach: Sendable {
+  /// The session's own tab, through the Claude Code extension.
+  case tab
+  /// The window with the session's folder open, showing whatever tab it was showing.
+  case window
+  /// The application alone: no Accessibility grant, or no window title names the folder.
+  case application
+}
+
+/// A session the Claude Code extension shows in an editor tab, and what it takes to ask
+/// for that tab.
+struct ExtensionTab {
+  let sessionID: String
+
+  /// Titles that prove a window holds this session: its own, and those of every other
+  /// session its extension host runs.
+  ///
+  /// **The siblings are what make untitled sessions reachable.** A session's own title is
+  /// often not what its tab says — a fork carries only a `custom-title`, and a session
+  /// opened on `/commit` has no title and a tab labelled `/commit`. But every `claude` a
+  /// VS Code window runs is a child of that window's one extension host
+  /// (`SessionHost.containerPID`; 21 live sessions on 2026-09-15 fell into nine hosts,
+  /// one per window), so a titled sibling's tab proves the window for all of them.
+  let labels: [String]
+
+  /// `<scheme>://anthropic.claude-code/open?session=<id>`.
+  let url: URL
+
+  /// Nil for anything the extension does not own, for a host that registers no URL
+  /// scheme, and when neither the session nor any sibling has a title to look for.
+  ///
+  /// **The entrypoint is the safety, not a filter for tidiness.** A `claude` started in
+  /// VS Code's integrated terminal has VS Code as its host too, and has no panel in any
+  /// window — asking the extension for it would open one and resume the session a second
+  /// time.
+  ///
+  /// Resolves a host for every session, so call it when something is about to happen —
+  /// a click, a panel opening — and never from a row body. See `SessionHostLookup`.
+  init?(_ session: Session, host: SessionHost) {
+    guard session.registry.entrypoint == Self.entrypoint,
+      let scheme = host.bundleURL.flatMap(Self.urlScheme(of:))
+    else { return nil }
+    let siblings =
+      host.containerPID.map { container in
+        Accounts.shared.allSessions.filter {
+          $0.id != session.id && SessionHostLookup.host(for: $0.registry)?.containerPID == container
+        }
+      } ?? []
+    labels = ([session] + siblings).compactMap(\.title)
+
+    var components = URLComponents()
+    components.scheme = scheme
+    components.host = Self.extensionID
+    components.path = "/open"
+    components.queryItems = [URLQueryItem(name: "session", value: session.id)]
+    guard !labels.isEmpty, let url = components.url else { return nil }
+    self.url = url
+    sessionID = session.id
+  }
+
+  /// The registry's `entrypoint` for a session the VS Code extension started.
+  static let entrypoint = "claude-vscode"
+
+  /// The same id on the VS Code Marketplace and Open VSX, so Cursor and VSCodium take
+  /// the same path.
+  static let extensionID = "anthropic.claude-code"
+
+  /// The scheme the host registers — `vscode`, `vscode-insiders`, `cursor` — read from
+  /// its bundle rather than listed, for the reason `HostWindow` names no bundle
+  /// identifier.
+  private static func urlScheme(of bundleURL: URL) -> String? {
+    let types = Bundle(url: bundleURL)?.infoDictionary?["CFBundleURLTypes"] as? [[String: Any]]
+    return types?.lazy.compactMap { ($0["CFBundleURLSchemes"] as? [String])?.first }.first
   }
 }
