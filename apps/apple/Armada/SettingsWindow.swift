@@ -18,23 +18,28 @@ import SwiftUI
 /// Settings that takes a live event while you are looking at it — see
 /// `MouseBindingRow`'s Detect.
 ///
-/// Two pairs after the configuration panes, then what was bought — the order
-/// Bastion and Cupertino settled on, so the fleet's sidebars read the same.
+/// Four sections, one more than Bastion and Cupertino have. The first is what
+/// Armada watches and does: General, Supervisor, Usage.
 ///
-/// What's New and Updates are the version pair: what did this build change, and
-/// is there a newer one. About and Help are the identity pair, last, because both
-/// are where somebody goes when something is wrong rather than when they are
-/// tuning something. Help is a pane rather than rows on About because Armada is
-/// `LSUIElement`, so a Help menu would only exist while a window happens to be open.
+/// Mouse and Voice are the second, and they are Armada's one extra split: both are
+/// ways of driving it from outside its windows, a button press or a shortcut and a
+/// question, and both hang off a system grant, Accessibility or the microphone.
 ///
-/// Licence sits in its own section below them: somebody opens it because of a
-/// refusal or a receipt, never to tune something.
+/// The third is the fleet's two pairs. What's New and Updates are the version
+/// pair: what did this build change, and is there a newer one. About and Help are
+/// the identity pair, because both are where somebody goes when something is wrong
+/// rather than when they are tuning something. Help is a pane rather than rows on
+/// About because Armada is `LSUIElement`, so a Help menu would only exist while a
+/// window happens to be open.
+///
+/// Licence is last and alone: somebody opens it because of a refusal or a
+/// receipt, never to tune something.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
-  case mouse
   case supervisor
-  case voice
   case usage
+  case mouse
+  case voice
   case whatsNew
   case updates
   case about
@@ -44,10 +49,10 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
-    case .mouse: "Mouse"
     case .supervisor: "Supervisor"
-    case .voice: "Voice"
     case .usage: "Usage"
+    case .mouse: "Mouse"
+    case .voice: "Voice"
     case .whatsNew: "What's New"
     case .updates: "Updates"
     case .about: "About"
@@ -59,10 +64,10 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var systemImage: String {
     switch self {
     case .general: "gearshape"
-    case .mouse: "computermouse"
     case .supervisor: "binoculars"
-    case .voice: "waveform"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
+    case .mouse: "computermouse"
+    case .voice: "waveform"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
     case .about: "info.circle"
@@ -71,7 +76,14 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     }
   }
 
-  var group: SettingsPaneGroup { self == .licence ? .entitlement : .configuration }
+  var group: SettingsPaneGroup {
+    switch self {
+    case .general, .supervisor, .usage: .configuration
+    case .mouse, .voice: .input
+    case .whatsNew, .updates, .about, .help: .information
+    case .licence: .entitlement
+    }
+  }
 
   /// The unread-release count on What's New, and nothing anywhere else. Read on
   /// every sidebar draw, so it clears the moment the pane marks the notes seen.
@@ -80,6 +92,13 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   }
 
   static var defaultPane: SettingsPane { .general }
+}
+
+/// Armada's two sections between the package's pair. Sections draw in ascending
+/// `order`, and `.entitlement` sits at 1_000 to leave room for exactly this.
+extension SettingsPaneGroup {
+  nonisolated static let input = SettingsPaneGroup(order: 100)
+  nonisolated static let information = SettingsPaneGroup(order: 500)
 }
 
 /// The settings window's content.
@@ -98,10 +117,10 @@ struct SettingsWindowView: View {
     SettingsScaffold(selection: Support.settings) { pane in
       switch pane {
       case .general: GeneralPane()
-      case .mouse: MousePane()
       case .supervisor: SupervisorPane()
-      case .voice: VoicePane()
       case .usage: UsageSettingsPane()
+      case .mouse: MousePane()
+      case .voice: VoicePane()
       case .whatsNew: WhatsNewPane()
       case .updates: UpdatesPane()
       case .about:
