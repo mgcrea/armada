@@ -18,30 +18,41 @@ import SwiftUI
 /// Settings that takes a live event while you are looking at it — see
 /// `MouseBindingRow`'s Detect.
 ///
-/// Help is a pane rather than rows on About, and last rather than beside it: it
-/// keeps the About → What's New → Updates reading order the fleet settled on.
+/// Two pairs after the configuration panes, then what was bought — the order
+/// Bastion and Cupertino settled on, so the fleet's sidebars read the same.
+///
+/// What's New and Updates are the version pair: what did this build change, and
+/// is there a newer one. About and Help are the identity pair, last, because both
+/// are where somebody goes when something is wrong rather than when they are
+/// tuning something. Help is a pane rather than rows on About because Armada is
+/// `LSUIElement`, so a Help menu would only exist while a window happens to be open.
+///
+/// Licence sits in its own section below them: somebody opens it because of a
+/// refusal or a receipt, never to tune something.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case mouse
   case supervisor
+  case voice
   case usage
-  case about
   case whatsNew
   case updates
-  case licence
+  case about
   case help
+  case licence
 
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
     case .mouse: "Mouse"
     case .supervisor: "Supervisor"
+    case .voice: "Voice"
     case .usage: "Usage"
-    case .about: "About"
     case .whatsNew: "What's New"
     case .updates: "Updates"
-    case .licence: "Licence"
+    case .about: "About"
     case .help: "Help"
+    case .licence: "Licence"
     }
   }
 
@@ -50,14 +61,17 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "gearshape"
     case .mouse: "computermouse"
     case .supervisor: "binoculars"
+    case .voice: "waveform"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
-    case .about: "info.circle"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
-    case .licence: "checkmark.seal"
+    case .about: "info.circle"
     case .help: "questionmark.circle"
+    case .licence: "checkmark.seal"
     }
   }
+
+  var group: SettingsPaneGroup { self == .licence ? .entitlement : .configuration }
 
   /// The unread-release count on What's New, and nothing anywhere else. Read on
   /// every sidebar draw, so it clears the moment the pane marks the notes seen.
@@ -86,7 +100,10 @@ struct SettingsWindowView: View {
       case .general: GeneralPane()
       case .mouse: MousePane()
       case .supervisor: SupervisorPane()
+      case .voice: VoicePane()
       case .usage: UsageSettingsPane()
+      case .whatsNew: WhatsNewPane()
+      case .updates: UpdatesPane()
       case .about:
         // `includesSupport: false` — the support rows have their own pane now,
         // and the package would otherwise draw them in both.
@@ -95,11 +112,9 @@ struct SettingsWindowView: View {
           showsIdentifier: true,
           includesSupport: false,
           preferIssueTracker: Support.preferIssueTracker)
-      case .whatsNew: WhatsNewPane()
-      case .updates: UpdatesPane()
-      case .licence: LicensePane()
       case .help:
         HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
+      case .licence: LicensePane()
       }
     }
     // Sized for the content, never the window: a sidebar spends up to 240pt before

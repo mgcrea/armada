@@ -47,6 +47,9 @@ final class EntitlementMonitor {
     // After the watchers, for the same reason as the tap: an unlicensed Armada holds no
     // sessions, so the MCP server stops with them rather than answering with an empty fleet.
     MCPServerController.shared.sync()
+    // After the server, which voice reads the fleet through. The shortcut is registered only
+    // while voice is switched on and Armada is entitled, so an unlicensed Armada hears nothing.
+    VoiceController.shared.sync()
   }
 
   func startTrial() {

@@ -163,7 +163,7 @@ nonisolated enum ClaudeControl {
   /// slash here is the difference between a probe that answers and one that reports no
   /// limits at all — see `ClaudeConfigFolder.path` for the measurement. This line is
   /// where that cost every non-default account its live figures.
-  private static func environment(for folder: ClaudeConfigFolder) -> [String: String] {
+  static func environment(for folder: ClaudeConfigFolder) -> [String: String] {
     var environment = ProcessInfo.processInfo.environment
     if folder.isDefault {
       environment.removeValue(forKey: "CLAUDE_CONFIG_DIR")
