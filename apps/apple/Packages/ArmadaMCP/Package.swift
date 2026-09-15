@@ -8,8 +8,7 @@ import PackageDescription
 // What is deliberately NOT here: `Accounts`, `CodexAccounts` and the watchers behind them.
 // They belong to the app target, so this package addresses them through the `FleetSource`
 // protocol instead. That is what lets the tool table and every response shape be tested
-// offline against a fake, with no app, no config folder and no bound port — and it is the
-// only test target Armada has.
+// offline against a fake, with no app, no config folder and no bound port.
 //
 // A remote dependency rather than Almanac's absolute `path:`, because CI builds this and has
 // no checkout of the kit beside the repo. Same identity as the app's own reference, so Xcode

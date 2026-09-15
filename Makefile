@@ -233,9 +233,11 @@ bundle: ## Build an unsigned Release Armada.app, then sign it
 # drops nested designated requirements; Apple documents it as unsuitable for
 # signing. `codesign --verify --deep` below is a different verb.
 #
-# No `--entitlements` on the app, and that is the claim rather than an omission:
-# nothing Armada does needs one. `make audit` asserts the project names no
-# entitlements file, and the check below asserts none ended up on the signature.
+# One entitlement on the app, and it is named rather than defaulted: the
+# microphone, `com.apple.security.device.audio-input`, which the hardened runtime
+# requires before voice can listen. `make audit` asserts the project names exactly
+# that file with exactly that key, and the check below asserts the signature
+# carries that one and nothing else.
 #
 # The identity block is ONE shell invocation because `$$id` has to survive across
 # the codesign calls.
@@ -255,11 +257,15 @@ sign: ## Sign the Release bundle inside out (Developer ID if present, else Apple
 		"$(RELEASE_SPARKLE)/Versions/B/Autoupdate" && \
 	codesign --force --options runtime --timestamp --sign "$$id" \
 		"$(RELEASE_SPARKLE)" && \
-	codesign --force --options runtime --timestamp --sign "$$id" "$(RELEASE_APP)"
+	codesign --force --options runtime --timestamp \
+		--entitlements apps/apple/Armada.entitlements --sign "$$id" "$(RELEASE_APP)"
 	@codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)"
-	@codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | grep -q '<key>' \
-		&& { echo "  the app carries entitlements — it should carry none" >&2; exit 1; } \
-		|| echo "  no entitlements on the app"
+	@granted=$$(codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null \
+		| plutil -convert json -o - - 2>/dev/null \
+		| python3 -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin))))' 2>/dev/null); \
+	[ "$$granted" = "com.apple.security.device.audio-input" ] \
+		&& echo "  one entitlement on the app: the microphone" \
+		|| { echo "  the app's entitlements are '$$granted' — expected the microphone and nothing else" >&2; exit 1; }
 	@# The hardened runtime is on and nothing disables library validation, so a
 	@# Sparkle signed by another team fails at dlopen — at launch, on a user's Mac,
 	@# long after this. Assert the team here, where the message is readable.

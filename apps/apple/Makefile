@@ -94,13 +94,16 @@ build: sparkle ## Build the app (CONFIG=Debug by default; the root's build-relea
 		-configuration $(CONFIG) -destination '$(DESTINATION)' \
 		-derivedDataPath $(DERIVED_DATA) $(BUILD_ARGS)
 
-# The MCP package's own suite: its tool table, run against a fake fleet with no app, no
-# config folder and no bound port. `swift test` rather than `xcodebuild test`, because the
-# package is plain SwiftPM and the app target has no test bundle — the `FleetSource`
-# protocol is what moved everything worth testing out of it. The app's own pure files are
+# The local packages' own suites. ArmadaMCP: its tool table, run against a fake fleet with no
+# app, no config folder and no bound port. ArmadaSupervisor: the voice supervisor's stream-json
+# decoding, argument lockdown, sentence chunking and shortcut rules, with no microphone, no
+# panel and no spawned `claude`. `swift test` rather than `xcodebuild test`, because both
+# packages are plain SwiftPM and the app target has no test bundle — a protocol and a pure
+# reducer are what moved everything worth testing out of it. The app's own pure files are
 # checked separately, by `unit` below.
-test: ## Run the ArmadaMCP package tests
+test: ## Run the local Swift package tests
 	swift test --package-path Packages/ArmadaMCP
+	swift test --package-path Packages/ArmadaSupervisor
 
 # `-f` matches this recipe's own shell as well as the app, which is why the match is
 # anchored on the launched binary's absolute path: that shell's command line starts
@@ -143,7 +146,8 @@ clean: ## Remove build products
 # above reformats other people's code. Recompute with fleet-apple-conventions'
 # scripts/swift_src.py rather than editing this by hand.
 SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaMCP/Sources \
-	Packages/ArmadaMCP/Tests
+	Packages/ArmadaMCP/Tests Packages/ArmadaSupervisor/Package.swift \
+	Packages/ArmadaSupervisor/Sources Packages/ArmadaSupervisor/Tests
 
 # swift-format's version follows whichever Xcode is selected, so a toolchain bump
 # can reformat the whole tree with no change to `.swift-format` and turn the gate
@@ -196,12 +200,20 @@ UNIT_SRC := \
 	Armada/UsageSnapshot.swift \
 	Armada/UsageForecast.swift \
 	Armada/DayWeights.swift \
+	Armada/PaceProfile.swift \
 	Armada/ContextWindow.swift \
 	Armada/CodexContext.swift \
 	Armada/CodexRollout.swift \
 	Armada/SessionOrder.swift \
 	Armada/Changelog.swift \
 	Armada/HostWindow.swift \
+	Armada/ProjectPath.swift \
+	Armada/Project.swift \
+	Armada/UsageLedger.swift \
+	Armada/UsageLines.swift \
+	Armada/UsageIngest.swift \
+	Armada/ProjectStats.swift \
+	Armada/LaunchScript.swift \
 	Armada/License.swift \
 	Armada/Revocations.swift \
 	UnitChecks/AppInfoStub.swift \
