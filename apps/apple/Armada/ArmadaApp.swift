@@ -417,6 +417,10 @@ struct AccountSummary: View {
   /// that has not happened yet.
   @State private var hosts: [pid_t: SessionHost?] = [:]
 
+  /// How far Focus gets for each visible row, by session id. Set with `hosts`, so a
+  /// row's glyph is drawn once, in its final form.
+  @State private var reaches: [String: FocusReach] = [:]
+
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       if showsName {
@@ -466,7 +470,8 @@ struct AccountSummary: View {
 
       ForEach(sessions.prefix(Self.visibleSessions)) { session in
         SummaryRow(
-          session: session, account: account, host: hosts[session.registry.pid] ?? nil)
+          session: session, account: account, host: hosts[session.registry.pid] ?? nil,
+          reach: reaches[session.id])
       }
       if sessions.count > Self.visibleSessions {
         Text("and \(sessions.count - Self.visibleSessions) more")
@@ -504,10 +509,26 @@ struct AccountSummary: View {
     // lookup caches, so reopening the panel costs one syscall per row.
     .task(id: sessions.prefix(Self.visibleSessions).map(\.id)) {
       var resolved: [pid_t: SessionHost?] = [:]
+      var probes: [(id: String, pid: pid_t, cwd: String, labels: [String]?)] = []
       for session in sessions.prefix(Self.visibleSessions) {
-        resolved[session.registry.pid] = SessionHostLookup.host(for: session.registry)
+        let host = SessionHostLookup.host(for: session.registry)
+        resolved[session.registry.pid] = host
+        if let host {
+          probes.append(
+            (session.id, host.pid, session.registry.cwd, ExtensionTab(session, host: host)?.labels))
+        }
       }
+      // Off the main thread: a tab check is about 25ms of Accessibility IPC a window,
+      // and a wedged host makes every message wait out its timeout. See
+      // `FocusSession.reach`.
+      let measured = await Task.detached {
+        Dictionary(
+          uniqueKeysWithValues: probes.map {
+            ($0.id, FocusSession.reach(inApplication: $0.pid, cwd: $0.cwd, labels: $0.labels))
+          })
+      }.value
       hosts = resolved
+      reaches = measured
     }
   }
 
@@ -621,6 +642,11 @@ extension PanelRow where Accessory == EmptyView {
 /// menu still carries it by name: the rarer of the two intents gets the smaller
 /// target, and only a row whose lookup found a host draws one.
 ///
+/// **The glyph says how far the focus goes before anyone clicks.** `arrow.up.forward.app`
+/// is the session's own tab; a dimmer `macwindow` is a click that stops at the window or
+/// at the app, with a tooltip saying which. The two used to look the same, and a Focus
+/// that landed on the right window but the wrong tab read as broken.
+///
 /// A session with no host still gets a row that does something now, which is the
 /// other thing that changed: the destination is Armada's own pane, and that exists
 /// whether or not the lookup found an application to raise.
@@ -637,6 +663,7 @@ struct SummaryRow: View {
   let session: Session
   let account: Account
   let host: SessionHost?
+  let reach: FocusReach?
 
   var body: some View {
     PanelRow(help: "Show \(session.displayName) in Armada") {
@@ -653,25 +680,34 @@ struct SummaryRow: View {
     } accessory: {
       if let host {
         Button {
-          FocusSession.focus(host, cwd: session.registry.cwd)
+          FocusSession.focus(host, cwd: session.registry.cwd, session: session)
           // Dismissed for the reason `SessionRowMenu` gives: with the host already
           // frontmost nothing resigns, and the panel would stay over it.
           MenuBarPanel.dismiss()
         } label: {
-          Image(systemName: "arrow.up.forward.app")
+          Image(systemName: reach == .tab ? "arrow.up.forward.app" : "macwindow")
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(reach == .tab ? .secondary : .tertiary)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help("Focus in \(host.name)")
-        .accessibilityLabel("Focus in \(host.name)")
+        .help(focusHelp(host))
+        .accessibilityLabel(focusHelp(host))
       }
     }
     .modifier(
       SessionRowMenu(
         host: host, cwd: session.registry.cwd,
-        fork: ForkAvailability.claude(session, in: account).target))
+        fork: ForkAvailability.claude(session, in: account).target,
+        session: session))
+  }
+
+  private func focusHelp(_ host: SessionHost) -> String {
+    switch reach {
+    case .tab: "Focus this session's tab in \(host.name)"
+    case .window: "Focus in \(host.name): the window, not this session's tab"
+    case .application, nil: "Focus in \(host.name): the app, not this session's window"
+    }
   }
 }
 
@@ -690,13 +726,16 @@ struct SessionRowMenu: ViewModifier {
   let host: SessionHost?
   let cwd: String
   let fork: ForkTarget?
+  /// For the tab `FocusSession` can ask for. Codex rows have none: they never have a
+  /// host either, so they never focus.
+  var session: Session? = nil
 
   func body(content: Content) -> some View {
     if host != nil || fork != nil {
       content.contextMenu {
         if let host {
           Button("Focus in \(host.name)") {
-            FocusSession.focus(host, cwd: cwd)
+            FocusSession.focus(host, cwd: cwd, session: session)
             // For the same reason the row itself dismisses: the panel is closed by
             // Armada resigning active, and when the host is *already* frontmost
             // nothing resigns and the click reads as dead.
