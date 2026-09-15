@@ -147,7 +147,8 @@ clean: ## Remove build products
 # scripts/swift_src.py rather than editing this by hand.
 SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaMCP/Sources \
 	Packages/ArmadaMCP/Tests Packages/ArmadaSupervisor/Package.swift \
-	Packages/ArmadaSupervisor/Sources Packages/ArmadaSupervisor/Tests
+	Packages/ArmadaSupervisor/Sources Packages/ArmadaSupervisor/Tests \
+	Packages/ArmadaSpeech/Package.swift Packages/ArmadaSpeech/Sources
 
 # swift-format's version follows whichever Xcode is selected, so a toolchain bump
 # can reformat the whole tree with no change to `.swift-format` and turn the gate

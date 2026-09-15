@@ -95,9 +95,11 @@ final class VoiceController {
   func sync() {
     if Self.isEnabled, EntitlementMonitor.shared.current.isEntitled {
       VoiceShortcut.shared.register(VoiceShortcut.Chord.stored)
+      SpeechModelStore.shared.warmUp()
     } else {
       VoiceShortcut.shared.unregister()
       standDown()
+      SpeechModelStore.shared.release()
     }
   }
 

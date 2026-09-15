@@ -42,8 +42,9 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 - **Talk to Armada.** Settings ▸ Voice gives Armada a global shortcut: press it, or hold it,
   anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen
-  shows the question and then the answer while it is spoken. Dictation and speech run on the
-  Mac, and the audio is never kept. The question goes to Anthropic as text through your own
+  shows the question and then the answer while it is spoken. Your speech is recognised on the
+  Mac by Parakeet v3, which works out which of 25 languages you are speaking, or by Apple's
+  dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own
   `claude`, on the account you pick, and a follow-up continues the same conversation. Off by
   default; it reads the fleet through the MCP server in Settings ▸ Supervisor.
 
@@ -61,12 +62,18 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - **One entitlement: the microphone.** The app is signed with
   `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and
   `make sign` allow exactly that key and fail on any other.
+- **A second thing Armada can download: voice's speech model.** When Parakeet v3 is not already
+  in FluidAudio's shared models folder, Settings ▸ Voice offers it, about 480 MB from
+  huggingface.co, and fetches it only when you press Download. `make audit` allows FluidAudio's
+  download code in its own framework, `ArmadaSpeech`, and nowhere else.
 
 ### Internal
 
 - `ArmadaSupervisor`, a second local package: the voice `claude`'s stream-json decoding and
   argument lockdown, sentence chunking, the silence rule and the shortcut's reducer, under
   `make -C apps/apple test`.
+- `ArmadaSpeech`, a dynamic framework holding FluidAudio, pinned to a revision as Cadence pins
+  it, so its downloader's symbols live in one binary the audit names.
 - Client configs are written by `MCPKitWiring`, a new product in `swift-mcp-kit` 1.1.0 that
   holds the merge, the Codex TOML splice and the backup rules Bastion and Cupertino each carried
   a copy of.

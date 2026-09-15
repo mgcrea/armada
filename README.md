@@ -140,7 +140,8 @@ pane offers.
 
 Settings ▸ Voice asks without a terminal: press a shortcut anywhere, or hold it, ask out loud, and
 a card at the top of the screen shows the question and then the answer while it is spoken. Your
-speech becomes text on the Mac and the audio is never kept. The question goes to Anthropic as text,
+speech becomes text on the Mac, with Parakeet v3, which works out which of 25 languages you are
+speaking, or with Apple's dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text,
 through a `claude` Armada runs on the account you pick, with no built-in tools and only the six
 read tools, and closed after five idle minutes. It is the one place Armada runs an agent instead of
 watching one, and it is off until you turn it on; [SECURITY.md](SECURITY.md) says what it may and
@@ -277,9 +278,10 @@ it hands to a terminal.
 ## Security
 
 Armada reads every transcript on the machine, so the claim worth checking is that none of it
-leaves. It reaches **no network on its own, with one named exception**: the update check, which
+leaves. It reaches **no network on its own, with two named exceptions**: the update check, which
 is off until you turn it on or press Check Now, reads one file from `armada.mgcrea.io`, and sends
-no identifier with it. No telemetry, no licence call. The one socket it listens on is the
+no identifier with it; and voice's speech model, fetched from huggingface.co only when you press
+Download in Settings ▸ Voice. No telemetry, no licence call. The one socket it listens on is the
 supervisor's MCP endpoint, off until you turn it on and bound to 127.0.0.1 only. `make audit`
 asserts all of that against the built bundle rather than against the sources: every Mach-O swept for URL loading, DNS and TLS symbols,
 the shipped Info.plist asserted to keep update checks off and to name that one feed, the sources
@@ -290,13 +292,16 @@ and one entitlement, the microphone for voice, in the project and in the signatu
 make audit
 ```
 
-[`scripts/audit-network.sh`](scripts/audit-network.sh) has three allowances. The first is
+[`scripts/audit-network.sh`](scripts/audit-network.sh) has four allowances. The first is
 Sparkle's: the three URL-loading classes it was measured to use, and nothing more. A Sparkle that
 grows a capability it did not have fails the gate, and so does a bundle that has lost Sparkle
 while the allowance is still there. The second is the supervisor endpoint's: swift-mcp-kit's
 listener must bind the loopback literal it was measured to use, and a checkout naming a wildcard
 address fails. The third is not a network capability at all: the microphone entitlement voice
-needs, allowed as the only key in the project's entitlements file and on the signature. Cupertino's version of the script pardons the same framework and an embedded node;
+needs, allowed as the only key in the project's entitlements file and on the signature. The
+fourth is voice's recognizer: FluidAudio, which runs Parakeet, is built into a framework of its
+own, `ArmadaSpeech`, so its downloader's URL-loading and name-lookup symbols sit in one named
+binary and are allowed exactly, there and nowhere else. Cupertino's version of the script pardons the same framework and an embedded node;
 bastion cannot make the claim at all, because its loopback gateway is always on and is the product. Until the updater landed this file had no allowance table, and it said that the day one
 arrived [SECURITY.md](SECURITY.md) would be reworded in the same commit. It was.
 

@@ -27,6 +27,7 @@ struct VoicePane: View {
   var body: some View {
     Form {
       voiceSection
+      VoiceRecognitionSection()
       shortcutSection
       answeringSection
     }

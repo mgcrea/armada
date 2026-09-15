@@ -5,7 +5,7 @@
  * dropped, only regrouped.
  *
  * Every rule is something the code or CI can be held to, in SECURITY.md's words:
- * the update check is the single named exception to the no-network claim, the
+ * the update check and voice's model download are the named exceptions to the no-network claim, the
  * supervisor's endpoint is the one socket Armada listens on, and
  * `scripts/audit-network.sh` (`make audit`) refuses a build that breaks either. If
  * that script is ever relaxed, this section changes in the same commit.
@@ -28,7 +28,7 @@ const RULES = [
   },
   {
     title: "Nothing leaves the Mac",
-    body: `No telemetry, no sync, no licence server: the key is verified offline. The one request Armada makes is the update check, off until you turn it on, which reads <code>${DOWNLOAD.appcast}</code> and sends no identifier with it, not your key and not a machine id.`,
+    body: `No telemetry, no sync, no licence server: the key is verified offline. Armada makes two requests, each only when you ask: the update check, which reads <code>${DOWNLOAD.appcast}</code> and sends no identifier with it, not your key and not a machine id, and the speech model voice downloads from Hugging Face.`,
   },
   {
     title: "The supervisor is off, loopback and read-only",
@@ -62,7 +62,8 @@ const link = "text-ink underline decoration-ink/30 underline-offset-4 hover:deco
             <code>make audit</code>
           )
         } checks them against every build, sweeping each binary in the app for networking symbols with
-        two narrow allowances: the update framework and the supervisor's loopback listener. The programs
+        three narrow allowances: the update framework, voice's speech framework and the supervisor's
+        loopback listener. The programs
         Armada runs do use the network: the <code>claude</code> it asks for your plan limits, and the one
         that answers when you talk to it, talk to Anthropic over your own sign-in, as they do whenever
         you use them. The full inventory is on the{" "}

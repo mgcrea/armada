@@ -374,7 +374,7 @@ nonisolated enum Changelog {
             ordinal: 5,
             headline: "Talk to Armada.",
             body: [
-              "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Dictation and speech run on the Mac, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
+              "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Your speech is recognised on the Mac by Parakeet v3, which works out which of 25 languages you are speaking, or by Apple's dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
             ]),
         ]),
       Section(
@@ -398,6 +398,12 @@ nonisolated enum Changelog {
             headline: "One entitlement: the microphone.",
             body: [
               "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "A second thing Armada can download: voice's speech model.",
+            body: [
+              "When Parakeet v3 is not already in FluidAudio's shared models folder, Settings ▸ Voice offers it, about 480 MB from huggingface.co, and fetches it only when you press Download. `make audit` allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.",
             ]),
         ]),
     ])

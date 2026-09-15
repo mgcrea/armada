@@ -39,7 +39,8 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   server attached, its read tools pre-allowed (never the start tool), and a brief. The session is the chat: ask it
   which sessions need you, what one is doing, or how much plan is left.
 - **Voice**, opt-in (Settings ▸ Voice): a global shortcut opens a card at the top of the
-  screen, on-device dictation turns the question into text, a headless `claude` Armada runs on
+  screen, Parakeet v3 (or Apple's dictation until Parakeet is downloaded) turns the question into
+  text on the Mac, a headless `claude` Armada runs on
   the chosen account answers through the same MCP server, and the reply is spoken a sentence at
   a time. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
   read tools, continues the conversation for follow-ups, and closes after five idle minutes.
@@ -110,7 +111,9 @@ transcripts, separate rate limits.
 | `SupervisorMCPConfig` | the 0600 MCP configuration both supervisors are started with |
 | `ArmadaSupervisor` (package) | voice's decisions with no audio or UI: stream-json decoding, the voice `claude`'s arguments, sentence chunking, the silence rule, the shortcut reducer; `make -C apps/apple test` |
 | `VoiceController` | voice's coordinator: performs `VoiceTurn`'s effects, holds what the card shows, starts and resumes the voice `claude` |
-| `VoiceCapture` | the microphone and `DictationTranscriber` for one question |
+| `VoiceCapture` | the microphone and the recognizer for one question: Parakeet, transcribed again every half second, or `DictationTranscriber` |
+| `ArmadaSpeech` (package, dynamic framework) | `ParakeetRecognizer`: FluidAudio and Parakeet v3, the offline load and the one download |
+| `SpeechModelStore`, `VoiceRecognitionSection` | whether Parakeet is on the Mac, the Download button and its progress |
 | `SupervisorProcess` | the headless `claude` voice owns: frames to stdin, stream-json events back, closed when idle |
 | `VoiceShortcut`, `ShortcutRecorder` | the one global chord through `RegisterEventHotKey`, and the Settings control that records it |
 | `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the synthesizer |
@@ -348,6 +351,17 @@ Each of these cost time here, and none is visible from the code that depends on 
   process's stdin is set `F_SETNOSIGPIPE`, so the write fails instead.
 - **The voice `claude` starts while you are still speaking.** `VoiceController` pre-warms it
   on the press, so the second or two it takes is spent before the question exists.
+- **FluidAudio lives in its own framework so the audit can name it.** Linked statically, its
+  downloader's URLSession symbols would sit in Armada's executable. `ArmadaSpeech` is a dynamic
+  library product for that reason alone; do not make it static.
+- **FluidAudio downloads whenever it is allowed to.** Loading a missing model fetches it unless
+  `ModelHub.offlineMode` is on, so `ParakeetRecognizer.prepare` turns it on before anything else
+  and only `download` turns it off.
+- **The first Parakeet load on a Mac compiles the model**: 12.8 s measured, 0.13 s every time
+  after. `SpeechModelStore.warmUp` loads it when voice is switched on, never on the first press.
+- **FluidAudio's streaming managers do not fit.** `StreamingUnifiedAsrManager` runs an
+  English-only model, and the multilingual Nemotron streaming model is a separate download,
+  weaker on French. Live words come from running v3 over the growing buffer instead.
 
 ## Verifying it against reality
 
@@ -394,6 +408,7 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
 # Voice, with Settings ▸ Voice and the MCP server on, while a conversation is open:
 pgrep -lP "$(pgrep -nx Armada)"                          # the voice claude, Armada's own child
 ls ~/Library/Application\ Support/io.mgcrea.armada.debug/voice   # a folder per account; io.mgcrea.armada when installed
+ls ~/Library/Application\ Support/FluidAudio/Models/parakeet-tdt-0.6b-v3   # the model voice uses when it is there
 ```
 
 Voice also needs three checks by eye, none of which a command can make. Type in TextEdit, press
@@ -543,6 +558,14 @@ audit`. Nothing below has been run end to end.
 - **The microphone prompt is untested in the app bundle**, and so is whether an app, unlike the
   command-line spike, is also asked for speech recognition.
 - **Replies are spoken in the system language's voice**, whatever language the reply is in.
+- **Parakeet was measured on four recorded French questions**, against Apple's dictation, not on
+  English or on sentences mixing both. The Download button has never run, and a 480 MB download
+  interrupted halfway is untested.
+- **A live pass transcribes everything heard so far**, so its cost grows with the question:
+  0.125 s at 16 s, and the silence rule ends a question at 45 s.
+- **`ArmadaSpeech` carries a name lookup it never uses.** `_getaddrinfo` comes from
+  `libtext_processing_rs`, the Rust text normaliser FluidAudio links, not from FluidAudio's own
+  code, and the audit allows it by name.
 - **Only Claude answers.** A Mac with Codex accounts and no Claude account has no voice.
 - **A conversation lasts until Start a New Conversation.** Each account resumes its last
   session id, so the context grows with every question.

@@ -77,8 +77,8 @@ is in the decision log.
   first?"). **Shipped 2026-09-14 as the supervisor**: a read-only loopback MCP endpoint in the
   app, and a Claude Code session started with it attached. Next: an "allow actions" switch for
   a focus tool. Voice shipped on 2026-09-15, below.
-- **Voice for the s- **Voice for the supervisor.** **Shipped 2026-09-15** as Settings ▸ Voice: a global shortcut,
-  on-device dictation, a headless `claude` Armada runs that answers through the MCP server, and
+- **Voice for the supervisor.** **Shipped 2026-09-15** as Settings ▸ Voice: a global shortcut,
+  on-device speech recognition, a headless `claude` Armada runs that answers through the MCP server, and
   the reply spoken on the Mac. It rests on this research:
   - **Neither route to Claude takes audio.** The Messages API accepts text and images only;
     [an audio content type](https://github.com/anthropics/anthropic-sdk-python/issues/1198)
@@ -89,18 +89,27 @@ is in the decision log.
     ([docs](https://code.claude.com/docs/en/voice-dictation)). It needs the terminal focused
     and never speaks a reply, which is the gap Armada's voice fills. In a Terminal supervisor
     it works today with no change to Armada.
-  - **Recognition.** `SpeechAnalyzer`'s `DictationTranscriber` rather than
-    `SpeechTranscriber`, because only dictation honours contextual strings. Parakeet through
-    FluidAudio stays the fallback if English accuracy disappoints, at the cost of a model
-    download or a bundled model.
+  - **Recognition: Parakeet v3, and Apple's dictation until it is there.** Apple's
+    `DictationTranscriber` has to be given one locale before you speak, which does not work for a
+    French speaker who uses English words. Parakeet TDT 0.6B v3, through FluidAudio, works out
+    which of 25 languages is spoken. On four recorded French questions it detected French every
+    time and heard "Salut Armada" and "roadmap" where Apple heard "Hermana" and "Run map", in
+    0.07–0.14 s a question against 0.2–0.4 s; Apple spelled one project name better. It is not
+    the most accurate open model on French (Canary-1B-v2, Qwen3-ASR and Cohere Transcribe score
+    better on published benchmarks), but it has a maintained Swift path and was already on the
+    Mac. FluidAudio's streaming managers are English-only or a weaker multilingual model, so live
+    words come from transcribing the growing buffer again every half second, at most 0.125 s a
+    pass.
   - **Synthesis.** `AVSpeechSynthesizer`, one sentence at a time as the reply streams.
   - **No wake phrase.** Any always-listening detector keeps the orange microphone dot on all
     day, and Porcupine validates its key over the network. macOS's Vocal Shortcuts could
     trigger voice without Armada listening at all, and remains an option.
 
-  Audio never leaves the Mac, so `make audit` gains no network allowance. It does gain one
-  entitlement, the microphone.
-(Drafted)
+  Audio never leaves the Mac. `make audit` gains one entitlement, the microphone, and one network
+  allowance: FluidAudio's model downloader, built into its own `ArmadaSpeech` framework so the
+  allowance names one binary, and run only from the Download button.
+
+## Security model (Drafted)
 
 **In scope:** an agent that has picked up malicious instructions and misuses messaging to
 steer other agents.
@@ -436,6 +445,7 @@ Start from [spike/rewake/](spike/rewake/run.sh) and [spike/identity/](spike/iden
 | 2026-09-15 | Projects: a saved list of folders, with token figures from one background ledger over every transcript, rolled up per project when shown | Starting sessions needed a place that is not an account, and per-project spend needed history no live session holds. One incremental indexer (SQLite, every file's cursor, dedupe keys and daily totals committed together) covers the past and the present from one source, and keying it by folder means adding or nesting a project needs no rescan. Rejected: recording each finished session from `.claude.json`'s `last*` figures plus a separate backfill (two sources that disagree, and a race that loses a session); a JSON ledger with a binary seen-log (the crash recovery SQLite gives for free, written by hand); dollar figures (a price table is an estimate that goes stale, where every other figure in the app is read). Measured on the first pass: 2,719 files, 3.8 GB, 11.5 s. |
 | 2026-09-15 | An agent may start a session, behind the kit's write gate, in saved projects only | The supervisor could see work but not dispatch it. Kept narrow on purpose: registered with `gate: .requiresWrites` so it is neither listed nor callable until Allow writes is on; saved projects only; a fresh session, never a resume; an opening message refused if it starts with `-`, `!` or `/` and carried in a 0600 file, never the script; throttled to one launch per ten seconds; and not pre-allowed in the supervisor, so Claude Code asks the person first. Rejected: any folder (the weakest boundary for the least gain); pre-allowing it (a hostile transcript read by the supervisor could start work unseen). |
 | 2026-09-15 | Voice runs a headless `claude` Armada owns, only while you talk to it | Reverses the letter of the 2026-09-10 "watches rather than runs" row and of the 2026-09-13 rejection of an owned headless `claude`, for one feature and on purpose. What made those right does not hold here: the terms worry was automated use, and each voice turn is one question a person has just spoken, with nothing looped or scheduled; the cost worry was a process per session, and this is one process for one conversation, closed after five idle minutes. It runs the user's own unmodified `claude` on their own sign-in, with `--tools ""`, only Armada's MCP server and its six read tools (`armada_start_session` denied by name), and user settings left out. Rejected: the Terminal supervisor with each question delivered by a hook (a window stays open, and hook delivery is not built); Apple's on-device model (too small to reason over transcripts, as the 2026-09-14 row found); a wake phrase (the orange microphone dot on all day, and a detector to ship and tune). Measured first: docs/claude-code-sessions.md, "Driving a headless session over stream-json". |
+| 2026-09-15 | Voice recognizes speech with Parakeet v3 from FluidAudio's shared models folder, and offers a download when it is missing | Multilingual was the requirement, and Apple's recognizer takes one locale per question; Parakeet was measured against it on the person's own recordings (the Voice bullet above). Chosen with it: a named `make audit` allowance for FluidAudio's downloader, isolated in the `ArmadaSpeech` framework, rather than a trimmed fork of FluidAudio (less to maintain, a weaker claim); a download the person starts, which makes the model the second network exception; and Apple's dictation until the model is there. Rejected: reading Cadence's own copy (macOS's app-data prompt, and a dependency on another app's container); FluidAudio's streaming managers (English-only, or a separate multilingual model weaker on French); bundling the model (480 MB in every download). |
 | 2026-09-15 | Projects are one sidebar row under Usage, opening a list-and-detail pane, not a sidebar section | A project spans accounts, so a section of them beside the account sections read as one more kind of account, and the details it opens (live sessions, tokens by model, account and folder, the settings) want a pane's width. The pane is split the way an account's is, so the list and one project's details sit side by side. It keeps the last project selected, where an account pane keeps no selection, because it has no overview to show instead. Rejected, both tried and turned down on sight: a Projects section above the accounts; the same section below them with a divider between. |
 | 2026-09-15 | A saved project is marked trusted in Claude Code's `.claude.json` when a session starts there | Every new session in a project opened on Claude Code's "Quick safety check": trust is per account, and its walk up the parents stops at the git root, so a trusted `~/Projects` does not reach a repository inside it. Saving the project is the decision the dialog asks for, and no agent can save one. Reverses, for this one field, the rule that nothing is written to a vendor's config. Kept narrow: one boolean, for saved projects only, taken under Claude Code's own `<file>.lock`, written as an edit of those bytes alone and compared with the original before it lands, because a `JSONSerialization` round trip of the real file was not lossless. Rejected: `--dangerously-skip-permissions` (drops every permission prompt, not only this one); `CLAUDE_CODE_SANDBOXED=1` (undocumented, and it turns off other workspace checks); decoding and rewriting the file (lossy, and it holds the sign-in). Codex keeps its own trust in `config.toml` and is not touched yet. |
 | 2026-09-10 | Deliver to Claude with an `asyncRewake` hook, not channels | Channels are interactive-only, a research preview, not configurable in VS Code, and their content was refused |

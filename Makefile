@@ -212,6 +212,7 @@ RELEASE_DIR := apps/apple/.build
 RELEASE_APP ?= $(RELEASE_DIR)/Build/Products/Release/Armada.app
 # Deferred, so it follows RELEASE_APP if a caller overrides that.
 RELEASE_SPARKLE = $(RELEASE_APP)/Contents/Frameworks/Sparkle.framework
+RELEASE_SPEECH = $(RELEASE_APP)/Contents/Frameworks/ArmadaSpeech.framework
 RELEASE_ZIP := $(RELEASE_DIR)/Armada.zip
 APPCAST     := $(RELEASE_DIR)/appcast.xml
 SPARKLE_TOOLS := apps/apple/Vendor/bin
@@ -225,8 +226,8 @@ bundle: ## Build an unsigned Release Armada.app, then sign it
 		XCARGS="$(XCARGS) CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
 	@$(MAKE) --no-print-directory sign
 
-# Inside out: Sparkle's Updater.app, then Autoupdate, then the framework, then the
-# app. A signature over a bundle is a signature over its contents, so anything
+# Inside out: Sparkle's Updater.app, then Autoupdate, then the framework, then
+# ArmadaSpeech (voice's recognizer, FluidAudio inside), then the app. A signature over a bundle is a signature over its contents, so anything
 # signed after the wrapper invalidates it.
 #
 # Never `--deep`. It re-signs nested code with the OUTER identity and options and
@@ -244,6 +245,7 @@ bundle: ## Build an unsigned Release Armada.app, then sign it
 sign: ## Sign the Release bundle inside out (Developer ID if present, else Apple Development)
 	@test -d "$(RELEASE_APP)" || { echo "  no $(RELEASE_APP) — run 'make bundle'" >&2; exit 1; }
 	@test -d "$(RELEASE_SPARKLE)" || { echo "  no Sparkle.framework in $(RELEASE_APP) — the updater is missing" >&2; exit 1; }
+	@test -d "$(RELEASE_SPEECH)" || { echo "  no ArmadaSpeech.framework in $(RELEASE_APP) — voice's recognizer is missing" >&2; exit 1; }
 	@id=$$(security find-identity -v -p codesigning | awk '/Developer ID Application/ {print $$2; exit}'); \
 	if [ -z "$$id" ]; then \
 		id=$$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $$2; exit}'); \
@@ -257,6 +259,8 @@ sign: ## Sign the Release bundle inside out (Developer ID if present, else Apple
 		"$(RELEASE_SPARKLE)/Versions/B/Autoupdate" && \
 	codesign --force --options runtime --timestamp --sign "$$id" \
 		"$(RELEASE_SPARKLE)" && \
+	codesign --force --options runtime --timestamp --sign "$$id" \
+		"$(RELEASE_SPEECH)" && \
 	codesign --force --options runtime --timestamp \
 		--entitlements apps/apple/Armada.entitlements --sign "$$id" "$(RELEASE_APP)"
 	@codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)"

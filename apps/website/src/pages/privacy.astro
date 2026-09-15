@@ -42,12 +42,17 @@ const schema = {
   publisher: { "@id": `${SITE_URL}/#organization` },
 };
 
-/** What the app sends, in full. There is one entry, and that is the point. */
+/** What the app sends, in full. Two entries, each started by you, and that is the point. */
 const LEAVES = [
   {
     what: "An update check",
     when: "Only after you turn it on, or press Check Now.",
     body: `It reads one file, <code>${DOWNLOAD.appcast}</code>, which redirects to the latest release on GitHub. It sends no identifier with it: not your licence key, not a machine id. Your IP address is visible to the servers that answer, as it is for any download.`,
+  },
+  {
+    what: "Voice's speech model",
+    when: "Only when you press Download in Settings ▸ Voice.",
+    body: "It fetches Parakeet v3, about 480 MB, from huggingface.co, and sends no identifier with it. If another app has already put the model in FluidAudio's shared folder on your Mac, Armada uses that copy and downloads nothing. Your IP address is visible to the servers that answer, as it is for any download.",
   },
 ] as const;
 
@@ -122,8 +127,8 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
       <p class={note}>
         That is the whole list for Armada itself: no analytics, no telemetry, no crash reporter and no
         first-run ping. <code>make audit</code> checks it against every build. It sweeps every Mach-O
-        in the built app for URL loading, DNS and TLS symbols, with one narrowly named exception for
-        Sparkle, the framework the update check uses, and checks that the supervisor's MCP endpoint
+        in the built app for URL loading, DNS and TLS symbols, with two narrowly named exceptions,
+        Sparkle for the update check and FluidAudio for the speech model download, and checks that the supervisor's MCP endpoint
         binds 127.0.0.1 and nothing else, and that the microphone is the app's only entitlement.
         {
           REPO_PUBLIC && (

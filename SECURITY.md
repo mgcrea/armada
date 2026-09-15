@@ -17,13 +17,17 @@ not needed and not wanted.
 
 Three properties, each of which is checkable rather than asserted:
 
-- **It reaches no network on its own, with one named exception.** No telemetry, no licence
-  call. The exception is the update check, which is off until you turn it on or press Check
+- **It reaches no network on its own, with two named exceptions.** No telemetry, no licence
+  call. The first is the update check, which is off until you turn it on or press Check
   Now; it reads one file, `armada.mgcrea.io/appcast.xml`, and sends no identifier with it —
   not your licence key, not a machine id. Until you opt in, the updater is never even
-  constructed. `make audit` asserts all of this against the built bundle: every Mach-O swept
-  for URL loading, DNS and TLS symbols, with Sparkle allowed exactly the three URL-loading
-  classes it was measured to use and nothing more; the shipped Info.plist asserted to keep
+  constructed. The second is voice's speech model: Download in Settings ▸ Voice fetches
+  Parakeet v3 from huggingface.co, with the host fixed in code and no identifier or token sent,
+  and nothing else ever starts it. `make audit` asserts all of this against the built bundle:
+  every Mach-O swept for URL loading, DNS and TLS symbols, with Sparkle allowed exactly the
+  three URL-loading classes it was measured to use, `ArmadaSpeech.framework` exactly the
+  URL-loading and name-lookup symbols FluidAudio's downloader was measured to use, and nothing
+  more; the shipped Info.plist asserted to keep
   checks off and to point at that one feed; the sources swept for an internet address
   family; and one entitlement, the microphone for voice, named in the project and alone in the
   signature.
@@ -38,8 +42,8 @@ Three properties, each of which is checkable rather than asserted:
   loopback address and refuses a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
-  shortcut to the end of the question. Dictation runs on this Mac, the audio is never stored or
-  sent, and replies are spoken by the system synthesizer. The question itself goes to Anthropic
+  shortcut to the end of the question. Speech is recognised on this Mac, by Parakeet v3 when the
+  model is there and by Apple's dictation until then; the audio is never stored or sent, and replies are spoken by the system synthesizer. The question itself goes to Anthropic
   as text, through a `claude` Armada runs on the account you choose: see "The voice `claude`"
   below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
   and no other keystroke.
@@ -124,9 +128,18 @@ attacker-influenced text meets something that acts on it:
   another server or a way to write, that puts data rather than the spoken question into its
   arguments or stdin, or that signals a process Armada did not start, is in scope.
 - **The microphone.** Voice captures audio only between a shortcut press and the end of that
-  question, converts it to text with `DictationTranscriber` on this Mac, and keeps nothing.
+  question, converts it to text on this Mac with Parakeet v3 through FluidAudio, or with
+  `DictationTranscriber` until Parakeet is installed, and keeps nothing.
   Anything that leaves the microphone open outside a question, stores or sends audio, or starts
   listening without the shortcut, is in scope.
+- **The Parakeet model and its download.** `ParakeetRecognizer` loads the model from
+  FluidAudio's shared folder, `~/Library/Application Support/FluidAudio/Models`, with FluidAudio's
+  offline mode on, so loading never fetches. The download runs only from the Download button: it
+  pins the registry to `https://huggingface.co` in code, over FluidAudio's `REGISTRY_URL` and
+  `MODEL_REGISTRY_URL` environment overrides, and removes the Hugging Face token variables
+  FluidAudio would otherwise forward. Anything that starts a fetch without that button, sends an
+  identifier, reaches another host, or loads model files from anywhere else, is in scope. A model
+  replaced in that shared folder by another program running as you is not: see below.
 - **The voice shortcut.** One chord through `RegisterEventHotKey`, and a local key monitor in
   Armada's own Settings window only while a new chord is being recorded. Anything that lets
   Armada see another keystroke is in scope.
