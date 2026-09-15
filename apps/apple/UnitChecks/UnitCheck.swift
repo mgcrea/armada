@@ -28,11 +28,18 @@ struct UnitCheck {
     contextWindow()
     usageForecast()
     dayWeights()
+    workingHours()
     sessionOrder()
     changelog()
     hostWindow()
     codexRollout()
     licenseKey()
+    projects()
+    usageLedger()
+    usageLines()
+    usageIngest()
+    projectStats()
+    launchScript()
 
     print("")
     if failures == 0 {
@@ -409,7 +416,7 @@ struct UnitCheck {
     {
       UsageForecast(
         window: UsageWindow(utilization: used, resetsAt: resetsAt), length: .fiveHour,
-        weights: .even, asOf: asOf.map(date), now: date(now), calendar: utc)
+        profile: .even, asOf: asOf.map(date), now: date(now), calendar: utc)
     }
 
     check(
@@ -434,9 +441,13 @@ struct UnitCheck {
     check(
       "one just inside that",
       fiveHour(50, asOf: "2026-09-14T12:00:00Z", now: "2026-09-14T12:29:00Z") != nil)
+    let early = fiveHour(5, asOf: "2026-09-14T10:20:00Z", now: "2026-09-14T10:20:00Z")
     check(
-      "under a tenth of the window elapsed",
-      fiveHour(5, asOf: "2026-09-14T10:20:00Z", now: "2026-09-14T10:20:00Z") == nil)
+      "under a tenth of the window elapsed still has a pace",
+      close(early?.expected, 20.0 / 300) && close(early?.deltaPoints, 5 - 100 * 20.0 / 300))
+    check(
+      "but no projection, and nothing projected from it",
+      early != nil && early?.projected == nil && early?.exhaustsAt == nil)
 
     let even = fiveHour(50, asOf: "2026-09-14T12:30:00Z", now: "2026-09-14T12:30:00Z")
     check(
@@ -457,7 +468,7 @@ struct UnitCheck {
       UsageForecast(
         window: UsageWindow(
           utilization: 20, resetsAt: weeklyNow.addingTimeInterval(hours * 3600)),
-        length: .sevenDay, weights: .even, asOf: weeklyNow, now: weeklyNow, calendar: utc)
+        length: .sevenDay, profile: .even, asOf: weeklyNow, now: weeklyNow, calendar: utc)
     }
     let closing = weekly(resetsIn: 12)
     check(
@@ -469,6 +480,41 @@ struct UnitCheck {
     check(
       "the same reading two days out is on pace, by the forecast's clock",
       weekly(resetsIn: 48)?.verdict == .onPace)
+
+    // Two hours into a weekly window: the first day, far under a tenth of the week.
+    func firstDay(used: Int) -> UsageForecast? {
+      UsageForecast(
+        window: UsageWindow(
+          utilization: used, resetsAt: weeklyNow.addingTimeInterval(166 * 3600)),
+        length: .sevenDay, profile: .even, asOf: weeklyNow, now: weeklyNow, calendar: utc)
+    }
+    let burst = firstDay(used: 15)
+    check(
+      "a first day well past its pace says ahead, and does not claim it will run out",
+      burst?.exhaustsAt == nil
+        && burst.map {
+          if case .ahead = $0.verdict { return true }
+          return false
+        } == true)
+    check(
+      "a quiet first day is on pace rather than forfeiting a week it has barely begun",
+      firstDay(used: 1)?.verdict == .onPace)
+
+    // A week from Monday 00:00, worked 09:00 to 17:00 and nothing outside that: 56
+    // working hours, four of them gone by 13:00 on the Monday.
+    let officeWeek = PaceProfile(
+      days: .even, hours: WorkingHours(start: 9, end: 17, outside: 0))
+    let mondayLunch = date("2030-01-07T13:00:00Z")
+    let office = UsageForecast(
+      window: UsageWindow(utilization: 5, resetsAt: date("2030-01-14T00:00:00Z")),
+      length: .sevenDay, profile: officeWeek, asOf: mondayLunch, now: mondayLunch,
+      calendar: utc)
+    check("working hours shape the weekly pace", close(office?.expected, 4.0 / 56))
+    let session = UsageForecast(
+      window: UsageWindow(utilization: 5, resetsAt: date("2030-01-07T15:00:00Z")),
+      length: .fiveHour, profile: officeWeek, asOf: mondayLunch, now: mondayLunch,
+      calendar: utc)
+    check("and leave the five-hour window alone", close(session?.expected, 3.0 / 5))
   }
 
   // MARK: - DayWeights
@@ -476,7 +522,7 @@ struct UnitCheck {
   static func dayWeights() {
     section("DayWeights")
     // Sunday first, Foundation's numbering: Monday at 1, Tuesday at 0.5.
-    let weekdays = DayWeights(values: [0, 1, 0.5, 1, 1, 1, 0])
+    let weekdays = PaceProfile(days: DayWeights(values: [0, 1, 0.5, 1, 1, 1, 0]))
     let mondayNight = date("2026-09-14T22:00:00Z")
     expectEqual(
       "across midnight, each side at its own day's weight",
@@ -489,9 +535,9 @@ struct UnitCheck {
     let springMonday = parisDate(2026, 3, 30, 12)
     expectEqual(
       "even weights across the spring change count real seconds",
-      DayWeights.even.consumed(from: springSaturday, to: springMonday, calendar: paris),
+      PaceProfile.even.consumed(from: springSaturday, to: springMonday, calendar: paris),
       47 * 3600)
-    let sundayOnly = DayWeights(values: [1, 0, 0, 0, 0, 0, 0])
+    let sundayOnly = PaceProfile(days: DayWeights(values: [1, 0, 0, 0, 0, 0, 0]))
     expectEqual(
       "the short Sunday carries 23 hours of weight",
       sundayOnly.consumed(from: springSaturday, to: springMonday, calendar: paris), 23 * 3600)
@@ -502,25 +548,25 @@ struct UnitCheck {
       25 * 3600)
     expectEqual(
       "segments end at local midnight on both sides of the change",
-      DayWeights(values: [0, 1, 0, 0, 0, 0, 1]).consumed(
+      PaceProfile(days: DayWeights(values: [0, 1, 0, 0, 0, 0, 1])).consumed(
         from: springSaturday, to: springMonday, calendar: paris),
       24 * 3600)
 
     expectEqual(
       "the inverse walks the same short day",
-      DayWeights.even.date(
+      PaceProfile.even.date(
         reaching: 47 * 3600, from: parisDate(2026, 3, 28, 0), limit: parisDate(2026, 4, 4, 0),
         calendar: paris),
       parisDate(2026, 3, 30, 0))
     expectEqual(
       "and steps over a zero-weight Sunday rather than dividing by it",
-      DayWeights(values: [0, 1, 1, 1, 1, 1, 1]).date(
+      PaceProfile(days: DayWeights(values: [0, 1, 1, 1, 1, 1, 1])).date(
         reaching: 2 * 3600, from: date("2026-09-12T23:00:00Z"),
         limit: date("2026-09-19T00:00:00Z"), calendar: utc),
       date("2026-09-14T01:00:00Z"))
     expectEqual(
       "a target past the limit is never reached",
-      DayWeights.even.date(
+      PaceProfile.even.date(
         reaching: 10 * 3600, from: mondayNight, limit: mondayNight.addingTimeInterval(3600),
         calendar: utc),
       nil as Date?)
@@ -530,6 +576,66 @@ struct UnitCheck {
     expectEqual(
       "a stored profile round-trips",
       DayWeights(stored: "25,100,100,50,100,100,25").stored, "25,100,100,50,100,100,25")
+  }
+
+  // MARK: - WorkingHours
+
+  static func workingHours() {
+    section("WorkingHours")
+    let officeHours = WorkingHours(start: 9, end: 17, outside: 0.5)
+    let monday = date("2026-09-14T00:00:00Z")
+    let tuesday = date("2026-09-15T00:00:00Z")
+    expectEqual(
+      "a day is its working hours at full weight and the rest at the outside weight",
+      PaceProfile(days: .even, hours: officeHours).consumed(
+        from: monday, to: tuesday, calendar: utc),
+      8 * 3600 + 0.5 * 16 * 3600)
+
+    // Monday at 1, Tuesday at 0.5, and a shift from 22:00 to 02:00 with nothing outside it.
+    let lateShift = PaceProfile(
+      days: DayWeights(values: [0, 1, 0.5, 1, 1, 1, 0]),
+      hours: WorkingHours(start: 22, end: 2, outside: 0))
+    expectEqual(
+      "a range across midnight counts its small hours at the next day's weight",
+      lateShift.consumed(
+        from: date("2026-09-14T12:00:00Z"), to: date("2026-09-15T12:00:00Z"), calendar: utc),
+      2 * 3600 + 0.5 * 2 * 3600)
+
+    // 02:00 does not exist on 2026-03-29 in Paris, and happens twice on 2026-10-25.
+    expectEqual(
+      "a start hour the spring change skips begins at 03:00",
+      PaceProfile(days: .even, hours: WorkingHours(start: 2, end: 12, outside: 0)).consumed(
+        from: parisDate(2026, 3, 29, 0), to: parisDate(2026, 3, 30, 0), calendar: paris),
+      9 * 3600)
+    expectEqual(
+      "and the autumn change's repeated hour is worked twice",
+      PaceProfile(days: .even, hours: WorkingHours(start: 1, end: 4, outside: 0)).consumed(
+        from: parisDate(2026, 10, 25, 0), to: parisDate(2026, 10, 26, 0), calendar: paris),
+      4 * 3600)
+
+    expectEqual(
+      "the inverse steps over a night weighted to nothing",
+      PaceProfile(days: .even, hours: WorkingHours(start: 9, end: 17, outside: 0)).date(
+        reaching: 2 * 3600, from: date("2026-09-14T16:00:00Z"),
+        limit: date("2026-09-21T00:00:00Z"), calendar: utc),
+      date("2026-09-15T10:00:00Z"))
+    expectEqual(
+      "boundaries fall at both ends of the working hours and at midnight",
+      PaceProfile(days: .even, hours: officeHours).boundaries(
+        from: monday, to: tuesday, calendar: utc),
+      [date("2026-09-14T09:00:00Z"), date("2026-09-14T17:00:00Z"), tuesday])
+    expectEqual(
+      "and only at midnight when every hour counts the same",
+      PaceProfile.even.boundaries(from: monday, to: tuesday, calendar: utc), [tuesday])
+
+    check("the default counts every hour the same", WorkingHours.flat.isFlat)
+    check(
+      "so does a range that starts where it ends",
+      WorkingHours(start: 9, end: 9, outside: 0).isFlat)
+    check("anything unparseable is the default", WorkingHours(stored: "9,x") == .flat)
+    expectEqual("a stored range round-trips", WorkingHours(stored: "9,20,10").stored, "9,20,10")
+    expectEqual(
+      "and is clamped on the way in", WorkingHours(stored: "-3,30,150").stored, "0,23,100")
   }
 
   // MARK: - SessionOrder
@@ -707,6 +813,407 @@ struct UnitCheck {
     expectEqual(
       "and its tail is read from the newest whole line",
       CodexRollout.tail(at: longURL)?.lastEventType, "agent_message")
+  }
+
+  // MARK: - Projects
+
+  static func projects() {
+    section("ProjectPath")
+    expectEqual(
+      "a trailing slash is dropped", ProjectPath.normalize("/work/armada/"), "/work/armada")
+    expectEqual("but the root keeps its only slash", ProjectPath.normalize("/"), "/")
+    expectEqual(
+      "dot segments are resolved without touching the disk",
+      ProjectPath.normalize("/work/./armada/apps/.."), "/work/armada")
+
+    check("a folder contains itself", ProjectPath.contains("/work/armada", "/work/armada"))
+    check("and anything below it", ProjectPath.contains("/work/armada", "/work/armada/apps/apple"))
+    check(
+      "but not a sibling whose name starts the same way",
+      !ProjectPath.contains("/work/armada", "/work/armada-old"))
+    check(
+      "whichever side carries a trailing slash",
+      ProjectPath.contains("/work/armada/", "/work/armada")
+        && ProjectPath.contains("/work/armada", "/work/armada/apps/"))
+    check("the root contains everything", ProjectPath.contains("/", "/work"))
+
+    let nested = [
+      ProjectPath.Candidate(id: "outer", keys: ["/work/armada"]),
+      ProjectPath.Candidate(id: "inner", keys: ["/work/armada/apps/website"]),
+      ProjectPath.Candidate(id: "linked", keys: ["/Users/me/link", "/Volumes/data/real"]),
+    ]
+    expectEqual(
+      "the deepest project wins",
+      ProjectPath.deepest(for: "/work/armada/apps/website/src", in: nested), "inner")
+    expectEqual(
+      "whatever order the candidates come in",
+      ProjectPath.deepest(for: "/work/armada/apps/website", in: Array(nested.reversed())), "inner")
+    expectEqual(
+      "a subfolder only the outer project holds is the outer one's",
+      ProjectPath.deepest(for: "/work/armada/apps/apple", in: nested), "outer")
+    expectEqual(
+      "a worktree inside a repository counts for the repository",
+      ProjectPath.deepest(for: "/work/armada/.claude/worktrees/feature", in: nested), "outer")
+    expectEqual(
+      "a second key, the resolved path, matches too",
+      ProjectPath.deepest(for: "/Volumes/data/real/src", in: nested), "linked")
+    expectEqual(
+      "a folder outside every project has none",
+      ProjectPath.deepest(for: "/work/other", in: nested), nil as String?)
+
+    check("/tmp is temporary", ProjectPath.isTemporary("/tmp/scratch"))
+    check(
+      "and so is the /private/tmp it resolves to",
+      ProjectPath.isTemporary("/private/tmp/claude-501/x/scratchpad"))
+    check("a home folder is not", !ProjectPath.isTemporary("/Users/me/work"))
+
+    section("ProjectsFile")
+    let added = date("2026-09-14T13:00:00Z")
+    let saved = [
+      Project(
+        id: "A", path: "/work/armada", name: nil, agent: .claude(accountID: "/Users/me/.claude"),
+        addedAt: added),
+      Project(
+        id: "B", path: "/work/site", name: "Marketing", agent: .codex(homeID: "/Users/me/.codex"),
+        addedAt: added),
+    ]
+    let data = try? ProjectsFile.encode(saved)
+    expectEqual("a list round-trips", data.flatMap { try? ProjectsFile.decode($0) }, saved)
+    check(
+      "with short keys and unescaped slashes, since people open this file",
+      data.map { String(decoding: $0, as: UTF8.self).contains(#""p":"/work/armada""#) } == true)
+    check(
+      "a file from a newer build is refused rather than read as empty",
+      (try? ProjectsFile.decode(Data(#"{"v":2,"projects":[]}"#.utf8))) == nil)
+    expectEqual("an unnamed project is called after its folder", saved[0].displayName, "armada")
+    expectEqual("a named one by its name", saved[1].displayName, "Marketing")
+  }
+
+  // MARK: - Usage ledger
+
+  static func claudeLine(
+    id: String, model: String = "claude-opus-5", input: Int = 2, write: Int? = 100,
+    read: Int? = 1_000, output: Int = 50, at: String = "2026-09-14T10:00:00.000Z",
+    cwd: String = "/work/armada", session: String = "s1"
+  ) -> String {
+    var usage = #""input_tokens":\#(input),"output_tokens":\#(output)"#
+    if let write { usage += #","cache_creation_input_tokens":\#(write)"# }
+    if let read { usage += #","cache_read_input_tokens":\#(read)"# }
+    return
+      #"{"type":"assistant","cwd":"\#(cwd)","sessionId":"\#(session)","timestamp":"\#(at)","message":{"id":"\#(id)","model":"\#(model)","usage":{\#(usage)}}}"#
+  }
+
+  static func codexTokens(
+    _ input: Int, cached: Int, output: Int, reasoning: Int = 0, at: String
+  ) -> String {
+    #"{"timestamp":"\#(at)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"cache_write_input_tokens":0,"output_tokens":\#(output),"reasoning_output_tokens":\#(reasoning),"total_tokens":\#(input + output)}}}}"#
+  }
+
+  static func usageLedger() {
+    section("StableHash and LocalDay")
+    expectEqual(
+      "FNV-1a of nothing is its offset basis", StableHash.fnv1a64([UInt8]()),
+      0xcbf2_9ce4_8422_2325)
+    expectEqual(
+      "and of \"a\" the published value, the same in every process",
+      StableHash.fnv1a64(Array("a".utf8)), 0xaf63_dc4c_8601_ec8c)
+    expectEqual(
+      "a day is the local one", LocalDay.key(date("2026-09-13T23:30:00Z"), calendar: paris),
+      20_260_914)
+    expectEqual(
+      "in UTC the same instant is the day before",
+      LocalDay.key(date("2026-09-13T23:30:00Z"), calendar: utc), 20_260_913)
+    expectEqual(
+      "stepping back across a month", LocalDay.adding(-6, to: 20_260_903, calendar: utc),
+      20_260_828)
+  }
+
+  static func usageLines() {
+    section("Usage lines")
+    let event = ClaudeUsageLine.parse(Data(claudeLine(id: "msg_1").utf8))
+    check(
+      "an assistant line is one event with its four token kinds",
+      event?.messageID == "msg_1"
+        && event?.tokens == TokenTally(fresh: 2, cacheWrite: 100, cacheRead: 1_000, output: 50))
+    expectEqual(
+      "missing cache fields count as zero rather than dropping the message",
+      ClaudeUsageLine.parse(Data(claudeLine(id: "m", write: nil, read: nil).utf8))?.tokens.total,
+      52)
+    check(
+      "a synthetic message is not usage",
+      ClaudeUsageLine.parse(Data(claudeLine(id: "m", model: "<synthetic>").utf8)) == nil)
+    check(
+      "nor is a line without a message id",
+      ClaudeUsageLine.parse(
+        Data(
+          #"{"type":"assistant","timestamp":"2026-09-14T10:00:00Z","message":{"model":"claude-opus-5","usage":{"input_tokens":1,"output_tokens":1}}}"#
+            .utf8)) == nil)
+    check(
+      "nor a user line that mentions usage",
+      ClaudeUsageLine.parse(Data(#"{"type":"user","message":{"content":"\"usage\""}}"#.utf8))
+        == nil)
+
+    let tokens = CodexUsageLine.parse(
+      Data(
+        codexTokens(1_000, cached: 800, output: 40, reasoning: 10, at: "2026-09-14T10:00:00Z")
+          .utf8))
+    if case .tokenCount(let cumulative, _) = tokens {
+      expectEqual(
+        "Codex input includes the cached part, so fresh is the rest",
+        cumulative.delta(from: nil),
+        TokenTally(fresh: 200, cacheWrite: 0, cacheRead: 800, output: 40, reasoning: 10))
+    } else {
+      check("a token_count line parses", false)
+    }
+    check(
+      "a token_count with no info yet is nothing",
+      CodexUsageLine.parse(
+        Data(
+          #"{"timestamp":"2026-09-14T10:00:00Z","type":"event_msg","payload":{"type":"token_count","info":null}}"#
+            .utf8)) == nil)
+    check(
+      "turn_context carries the model",
+      CodexUsageLine.parse(
+        Data(#"{"type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/work"}}"#.utf8))
+        == .turnContext(model: "gpt-5.4"))
+    check(
+      "session_meta carries the folder and whether it is a subagent",
+      CodexUsageLine.parse(
+        Data(
+          #"{"type":"session_meta","payload":{"id":"x","cwd":"/work","parent_thread_id":"p"}}"#
+            .utf8)) == .meta(cwd: "/work", isChild: true))
+  }
+
+  /// Feeds `buffers` to an ingest one after another, carrying what it did not consume, the
+  /// way the indexer's chunked reads do. Totals per day.
+  static func ingest(
+    _ buffers: [Data], seen: inout Set<UInt64>, cursor: inout IngestCursor, codex: Bool = false
+  ) -> [Int: TokenTally] {
+    var totals: [Int: TokenTally] = [:]
+    var pending = Data()
+    for buffer in buffers {
+      pending.append(buffer)
+      let used =
+        codex
+        ? FileIngest.codex(
+          pending, cursor: &cursor, calendar: utc, claim: { seen.insert($0).inserted },
+          sink: { totals[$0.day, default: TokenTally()] += $0.tokens })
+        : FileIngest.claude(
+          pending, cursor: &cursor, calendar: utc, claim: { seen.insert($0).inserted },
+          sink: { totals[$0.day, default: TokenTally()] += $0.tokens })
+      pending = Data(pending.dropFirst(used))
+    }
+    return totals
+  }
+
+  static func sum(_ totals: [Int: TokenTally]) -> TokenTally {
+    totals.values.reduce(TokenTally(), +)
+  }
+
+  static func usageIngest() {
+    section("FileIngest")
+    let opening =
+      #"{"type":"user","cwd":"/work/armada","sessionId":"s1","timestamp":"2026-09-13T23:29:00.000Z"}"#
+    let first = (0..<3).map { _ in claudeLine(id: "msg_a", at: "2026-09-13T23:30:00.000Z") }
+    // The agent's shell `cd`s: later lines carry a subfolder, and the session still belongs
+    // to the folder it started in.
+    let second = (0..<3).map { _ in
+      claudeLine(
+        id: "msg_b", output: 70, at: "2026-09-14T00:30:00.000Z", cwd: "/work/armada/apps/apple")
+    }
+    let whole = ndjson([opening] + first + second)
+
+    var seen: Set<UInt64> = []
+    var cursor = IngestCursor()
+    let once = ingest([whole], seen: &seen, cursor: &cursor)
+    expectEqual(
+      "each message counts once, on its own day", once,
+      [
+        20_260_913: TokenTally(fresh: 2, cacheWrite: 100, cacheRead: 1_000, output: 50),
+        20_260_914: TokenTally(fresh: 2, cacheWrite: 100, cacheRead: 1_000, output: 70),
+      ])
+    expectEqual("the session belongs to the folder it started in", cursor.cwd, "/work/armada")
+    expectEqual("the cursor ends after the last whole line", cursor.offset, Int64(whole.count))
+
+    var splitsAgree = true
+    for split in 1..<whole.count {
+      var splitSeen: Set<UInt64> = []
+      var splitCursor = IngestCursor()
+      let parts = [Data(whole.prefix(split)), Data(whole.dropFirst(split))]
+      if ingest(parts, seen: &splitSeen, cursor: &splitCursor) != once
+        || splitCursor.offset != Int64(whole.count)
+      {
+        splitsAgree = false
+      }
+    }
+    check("the same totals whichever byte a read stops at", splitsAgree)
+
+    var partialSeen: Set<UInt64> = []
+    var partialCursor = IngestCursor()
+    _ = ingest(
+      [whole + Data(claudeLine(id: "msg_c").utf8.prefix(40))], seen: &partialSeen,
+      cursor: &partialCursor)
+    expectEqual(
+      "a line still being written is left for the next read", partialCursor.offset,
+      Int64(whole.count))
+
+    // A resumed or mirrored transcript copies msg_b under a new session id, then goes on.
+    let mirror = ndjson(
+      [#"{"type":"bridge-session","sessionId":"s2"}"#]
+        + (0..<2).map { _ in
+          claudeLine(id: "msg_b", output: 70, at: "2026-09-14T00:30:00.000Z", session: "s2")
+        }
+        + [claudeLine(id: "msg_d", output: 5, at: "2026-09-14T01:00:00.000Z", session: "s2")])
+    func both(_ one: Data, _ two: Data) -> TokenTally {
+      var shared: Set<UInt64> = []
+      var oneCursor = IngestCursor()
+      var twoCursor = IngestCursor()
+      let a = ingest([one], seen: &shared, cursor: &oneCursor)
+      let b = ingest([two], seen: &shared, cursor: &twoCursor)
+      return sum(a) + sum(b)
+    }
+    let forward = both(whole, mirror)
+    expectEqual("a message copied into a second transcript counts once", forward.output, 125)
+    expectEqual("whichever transcript is read first", both(mirror, whole), forward)
+
+    section("FileIngest, Codex")
+    let meta =
+      #"{"timestamp":"2026-09-14T09:00:00.000Z","type":"session_meta","payload":{"id":"p","cwd":"/work/armada"}}"#
+    let turn =
+      #"{"timestamp":"2026-09-14T09:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.4"}}"#
+    let history = [(1_000, 800, 40), (2_500, 2_000, 90), (4_000, 3_500, 150), (6_000, 5_000, 200)]
+      .enumerated().map { index, tuple in
+        codexTokens(
+          tuple.0, cached: tuple.1, output: tuple.2, at: "2026-09-14T09:0\(index + 1):00.000Z")
+      }
+    let parent = ndjson([meta, turn] + history)
+    let forkMeta = meta.replacingOccurrences(
+      of: #""id":"p""#, with: #""id":"f","forked_from_id":"p""#)
+    let fork = ndjson(
+      [forkMeta, turn] + history
+        + [codexTokens(7_000, cached: 5_900, output: 260, at: "2026-09-14T10:00:00.000Z")])
+    var codexSeen: Set<UInt64> = []
+    var parentCursor = IngestCursor()
+    var forkCursor = IngestCursor()
+    let parentTotal = sum(ingest([parent], seen: &codexSeen, cursor: &parentCursor, codex: true))
+    let forkTotal = sum(ingest([fork], seen: &codexSeen, cursor: &forkCursor, codex: true))
+    expectEqual("a rollout adds up to its last cumulative total", parentTotal.total, 6_200)
+    expectEqual(
+      "a fork adds only what came after the history it replayed", forkTotal.total, 1_060)
+    expectEqual("the folder comes from session_meta", forkCursor.cwd, "/work/armada")
+
+    let falling = ndjson([
+      meta, turn,
+      codexTokens(1_000, cached: 0, output: 0, at: "2026-09-14T09:01:00.000Z"),
+      codexTokens(500, cached: 0, output: 0, at: "2026-09-14T09:02:00.000Z"),
+      codexTokens(800, cached: 0, output: 0, at: "2026-09-14T09:03:00.000Z"),
+    ])
+    var fallingSeen: Set<UInt64> = []
+    var fallingCursor = IngestCursor()
+    expectEqual(
+      "a total that goes down restarts the count rather than subtracting",
+      sum(ingest([falling], seen: &fallingSeen, cursor: &fallingCursor, codex: true)).total,
+      1_300)
+
+    let switched = ndjson([
+      meta, turn,
+      codexTokens(1_000, cached: 0, output: 0, at: "2026-09-14T09:01:00.000Z"),
+      #"{"timestamp":"2026-09-14T09:01:30.000Z","type":"turn_context","payload":{"model":"gpt-5.4-mini"}}"#,
+      codexTokens(1_600, cached: 0, output: 0, at: "2026-09-14T09:02:00.000Z"),
+    ])
+    var modelSeen: Set<UInt64> = []
+    var modelCursor = IngestCursor()
+    var models: [String: Int] = [:]
+    _ = FileIngest.codex(
+      switched, cursor: &modelCursor, calendar: utc, claim: { modelSeen.insert($0).inserted },
+      sink: { models[$0.model, default: 0] += $0.tokens.total })
+    expectEqual(
+      "each delta goes to the model of the turn it came from", models,
+      ["gpt-5.4": 1_000, "gpt-5.4-mini": 600])
+  }
+
+  static func projectStats() {
+    section("ProjectStats")
+    func row(
+      _ day: Int, _ cwd: String, _ model: String = "claude-opus-5", account: String = "/a",
+      vendor: UsageVendor = .claude, output: Int
+    ) -> UsageRow {
+      UsageRow(
+        day: day, cwd: cwd, account: account, vendor: vendor, model: model,
+        tokens: TokenTally(output: output))
+    }
+    func session(
+      _ id: String, _ cwd: String, lastAt: String, vendor: UsageVendor = .claude,
+      isChild: Bool = false
+    ) -> UsageSessionRow {
+      UsageSessionRow(
+        account: "/a", vendor: vendor, sessionID: id, cwd: cwd,
+        firstAt: date(lastAt).addingTimeInterval(-600), lastAt: date(lastAt), isChild: isChild)
+    }
+    let ledger = UsageLedgerSnapshot(
+      generation: 1,
+      rows: [
+        row(20_260_914, "/work/armada", output: 1),
+        // Six days before today: the oldest day inside seven.
+        row(20_260_908, "/work/armada/apps/apple", output: 10),
+        row(20_260_907, "/work/armada", output: 100),
+        row(
+          20_260_801, "/work/armada", "gpt-5.4", account: "/codex", vendor: .codex, output: 1_000),
+        row(20_260_914, "/work/armada/apps/website", output: 10_000),
+        row(20_260_914, "/work/armada-old", output: 100_000),
+      ],
+      sessions: [
+        session("s1", "/work/armada", lastAt: "2026-09-14T10:00:00Z"),
+        session("s2", "/work/armada/apps/apple", lastAt: "2026-09-01T10:00:00Z"),
+        session(
+          "c1", "/work/armada", lastAt: "2026-09-14T09:00:00Z", vendor: .codex, isChild: true),
+      ],
+      earliestDay: 20_260_801, firstPassDone: true)
+    let stats = ProjectStats.compute(
+      projects: [
+        ProjectPath.Candidate(id: "outer", keys: ["/work/armada"]),
+        ProjectPath.Candidate(id: "inner", keys: ["/work/armada/apps/website"]),
+      ],
+      ledger: ledger, today: date("2026-09-14T12:00:00Z"), calendar: utc)
+    expectEqual(
+      "seven days counts today and the six before it", stats["outer"]?.tokens[.week]?.output, 11)
+    expectEqual("thirty days", stats["outer"]?.tokens[.month]?.output, 111)
+    expectEqual("all time", stats["outer"]?.tokens[.all]?.output, 1_111)
+    expectEqual(
+      "a nested project's tokens are its own, not its parent's",
+      stats["inner"]?.tokens[.all]?.output, 10_000)
+    check(
+      "a sibling folder sharing the name as a prefix counts for neither",
+      stats.values.allSatisfy { ($0.tokens[.all]?.output ?? 0) < 100_000 })
+    expectEqual(
+      "sessions in the window, subagents not counted", stats["outer"]?.sessions[.week], 1)
+    expectEqual("sessions all time", stats["outer"]?.sessions[.all], 2)
+    expectEqual(
+      "last active is the newest session's", stats["outer"]?.lastActive,
+      date("2026-09-14T10:00:00Z"))
+    expectEqual(
+      "split by model, largest first", stats["outer"]?.byModel.map(\.key),
+      ["gpt-5.4", "claude-opus-5"])
+    expectEqual(
+      "and by folder, relative to the project", stats["outer"]?.byFolder.map(\.key).sorted(),
+      ["", "apps/apple"])
+  }
+
+  // MARK: - LaunchScript
+
+  static func launchScript() {
+    section("LaunchScript")
+    expectEqual(
+      "a quote is closed, escaped and reopened", LaunchScript.quoted("it's"), #"'it'\''s'"#)
+    expectEqual(
+      "and nothing inside single quotes expands", LaunchScript.quoted("$HOME `x`"),
+      "'$HOME `x`'")
+    let prompt = LaunchScript.promptLines(file: "/tmp/a b/prompt.txt")
+    expectEqual(
+      "the message is read from its file, which is removed before the agent starts",
+      prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
+    expectEqual(
+      "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
   }
 
   // MARK: - LicenseKey
