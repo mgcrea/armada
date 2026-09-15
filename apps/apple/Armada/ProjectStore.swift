@@ -75,6 +75,16 @@ final class ProjectStore {
     return project(id: id)
   }
 
+  /// The project saved on exactly this folder, under any spelling of it. Not one above it,
+  /// which is `project(containing:)`.
+  func project(at raw: String) -> Project? {
+    let spellings = Self.keys(for: ProjectPath.normalize(raw))
+    return projects.first { project in
+      let keys = matchKeys[project.id] ?? [project.path]
+      return spellings.contains { keys.contains($0) }
+    }
+  }
+
   /// Save a folder as a project, or return the one that already is.
   ///
   /// Nil for the root and for anything that is not an absolute path: a project on `/`
@@ -83,13 +93,7 @@ final class ProjectStore {
   func add(path raw: String, agent: ProjectAgent) -> Project? {
     let path = ProjectPath.normalize(raw)
     guard path.hasPrefix("/"), path != "/" else { return nil }
-    let spellings = Self.keys(for: path)
-    if let existing = projects.first(where: { project in
-      let keys = matchKeys[project.id] ?? [project.path]
-      return spellings.contains { keys.contains($0) }
-    }) {
-      return existing
-    }
+    if let existing = project(at: path) { return existing }
     // To the whole second, so the value read back from the file compares equal to it.
     let now = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded(.down))
     let project = Project(

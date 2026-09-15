@@ -40,6 +40,7 @@ struct UnitCheck {
     usageIngest()
     projectStats()
     launchScript()
+    claudeTrust()
 
     print("")
     if failures == 0 {
@@ -1251,6 +1252,181 @@ struct UnitCheck {
       prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
     expectEqual(
       "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
+  }
+
+  // MARK: - ClaudeTrust
+
+  static func claudeTrust() {
+    section("ClaudeTrust.trusting")
+    func edit(_ json: String, _ folder: String = "/work/armada") -> ClaudeTrust.Edit {
+      ClaudeTrust.trusting(Data(json.utf8), folder: folder)
+    }
+    func text(_ edit: ClaudeTrust.Edit) -> String? {
+      if case .edited(let data) = edit { return String(decoding: data, as: UTF8.self) }
+      return nil
+    }
+    func root(_ edit: ClaudeTrust.Edit) -> [String: Any]? {
+      guard case .edited(let data) = edit else { return nil }
+      return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+    func entry(_ edit: ClaudeTrust.Edit, _ folder: String = "/work/armada") -> [String: Any]? {
+      (root(edit)?["projects"] as? [String: Any])?[folder] as? [String: Any]
+    }
+    func trusted(_ edit: ClaudeTrust.Edit, _ folder: String = "/work/armada") -> Bool {
+      entry(edit, folder)?["hasTrustDialogAccepted"] as? Bool == true
+    }
+    func refused(_ edit: ClaudeTrust.Edit) -> Bool {
+      if case .refused = edit { return true }
+      return false
+    }
+
+    // Floats JSONSerialization does not write back as they were, a brace and the field's own
+    // name inside a string, and a sibling whose name starts the same.
+    let template = #"""
+      {
+        "lastCost": 0.30000000000000004,
+        "note": "a } and \"hasTrustDialogAccepted\": false, in a string",
+        "projects": {
+          "/work/armada-old": {
+            "hasTrustDialogAccepted": false
+          },
+          "/work/armada": {
+            "allowedTools": [],
+            "hasTrustDialogAccepted": FLAG,
+            "costUSD": 1.2345678901234567
+          }
+        }
+      }
+      """#
+    let untrusted = template.replacingOccurrences(of: "FLAG", with: "false")
+    let expected = template.replacingOccurrences(of: "FLAG", with: "true")
+    expectEqual(
+      "an untrusted entry has its false made true, and no other byte moves",
+      text(edit(untrusted)), expected)
+    expectEqual("a trusted entry is left alone", edit(expected), .alreadyTrusted)
+    check(
+      "a sibling whose name starts the same is not the one trusted",
+      entry(edit(untrusted), "/work/armada-old")?["hasTrustDialogAccepted"] as? Bool == false)
+
+    let partial = edit(#"{"projects": {"/work/armada": {"allowedTools": ["Bash(ls)"]}}}"#)
+    check(
+      "an entry without the field gains it and keeps what it had",
+      trusted(partial) && entry(partial)?["allowedTools"] as? [String] == ["Bash(ls)"])
+
+    let missing = edit(#"{"projects": {"/elsewhere": {"hasTrustDialogAccepted": true}}}"#)
+    check(
+      "a missing entry is written whole, as Claude Code writes one",
+      trusted(missing) && entry(missing)?["allowedTools"] as? [String] == []
+        && entry(missing)?["mcpServers"] as? [String: Any] != nil
+        && entry(missing)?["hasClaudeMdExternalIncludesApproved"] as? Bool == false)
+    check("beside the entries already there", trusted(missing, "/elsewhere"))
+    check("into an empty projects", trusted(edit(#"{"projects": {}}"#)))
+
+    let signedIn = edit(#"{"oauthAccount": {"emailAddress": "someone@example.com"}, "n": 1}"#)
+    check(
+      "projects is added when the file has none, and the sign-in stays",
+      trusted(signedIn)
+        && (root(signedIn)?["oauthAccount"] as? [String: String])?["emailAddress"]
+          == "someone@example.com"
+    )
+    check("an empty object gains projects", trusted(edit("{}")))
+
+    let escaped = #"{"projects": {"\/work\/café": {"hasTrustDialogAccepted": true}}}"#
+    expectEqual(
+      "a key is compared decoded, escapes and all", edit(escaped, "/work/caf\u{E9}"),
+      .alreadyTrusted)
+    check(
+      "but scalar for scalar, as JavaScript compares it: a decomposed é is another folder",
+      edit(escaped, "/work/cafe\u{301}") != .alreadyTrusted)
+    check(
+      "a folder with a quote in its name is written as a JSON string",
+      trusted(edit("{}", #"/work/a"b"#), #"/work/a"b"#))
+
+    check("an array is refused", refused(edit("[]")))
+    check("projects that is not an object is refused", refused(edit(#"{"projects": []}"#)))
+    check(
+      "an entry that is not an object is refused",
+      refused(edit(#"{"projects": {"/work/armada": true}}"#)))
+    check("a truncated file is refused", refused(edit(#"{"projects": {"#)))
+    check("anything after the object is refused", refused(edit("{} {}")))
+
+    section("ClaudeTrust.ensure")
+    let fileManager = FileManager.default
+    let directory = fileManager.temporaryDirectory.appending(
+      path: "armada-trust-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let project = directory.appending(path: "armada", directoryHint: .isDirectory)
+    let link = directory.appending(path: "link", directoryHint: .notDirectory)
+    try! fileManager.createDirectory(at: project, withIntermediateDirectories: true)
+    try! fileManager.createSymbolicLink(at: link, withDestinationURL: project)
+    defer { try? fileManager.removeItem(at: directory) }
+    let projectPath = project.path(percentEncoded: false)
+    let key = ClaudeTrust.key(for: projectPath)
+
+    expectEqual(
+      "a folder is keyed by its resolved path",
+      ClaudeTrust.key(for: link.path(percentEncoded: false)), key)
+    expectEqual("with no trailing slash", ClaudeTrust.key(for: projectPath + "/"), key)
+
+    func skipped(_ outcome: ClaudeTrust.Outcome) -> Bool {
+      if case .skipped = outcome { return true }
+      return false
+    }
+    func contents(_ url: URL) -> String {
+      (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }
+    func mode(_ url: URL) -> Int? {
+      (try? fileManager.attributesOfItem(atPath: url.path(percentEncoded: false)))?[
+        .posixPermissions]
+        as? Int
+    }
+
+    let config = directory.appending(path: ".claude.json", directoryHint: .notDirectory)
+    check(
+      "a missing file is skipped",
+      skipped(ClaudeTrust.ensure(folder: projectPath, configFile: config)))
+    check("and not created", !fileManager.fileExists(atPath: config.path(percentEncoded: false)))
+
+    let original = #"{"oauthAccount": {"emailAddress": "someone@example.com"}, "projects": {}}"#
+    fileManager.createFile(
+      atPath: config.path(percentEncoded: false), contents: Data(original.utf8),
+      attributes: [.posixPermissions: 0o600])
+    let lock = config.path(percentEncoded: false) + ".lock"
+    mkdir(lock, 0o755)
+    check(
+      "a held lock is waited on briefly, then skipped",
+      skipped(
+        ClaudeTrust.ensure(folder: projectPath, configFile: config, lockBudget: .milliseconds(60))))
+    expectEqual("without touching the file", contents(config), original)
+    check("or the lock", fileManager.fileExists(atPath: lock))
+    rmdir(lock)
+
+    expectEqual(
+      "a free lock and an untrusted folder is written",
+      ClaudeTrust.ensure(folder: link.path(percentEncoded: false), configFile: config), .trusted)
+    check(
+      "under the resolved folder",
+      trusted(.edited(Data(contents(config).utf8)), key))
+    expectEqual("keeping the file's permissions", mode(config), 0o600)
+    check("and releasing the lock", !fileManager.fileExists(atPath: lock))
+    expectEqual(
+      "a second launch finds it trusted",
+      ClaudeTrust.ensure(folder: projectPath, configFile: config), .alreadyTrusted)
+
+    let real = directory.appending(path: "dotfiles-claude.json", directoryHint: .notDirectory)
+    let symlinked = directory.appending(path: "symlinked.json", directoryHint: .notDirectory)
+    fileManager.createFile(atPath: real.path(percentEncoded: false), contents: Data("{}".utf8))
+    try! fileManager.createSymbolicLink(at: symlinked, withDestinationURL: real)
+    expectEqual(
+      "a symlinked file is written through",
+      ClaudeTrust.ensure(folder: projectPath, configFile: symlinked), .trusted)
+    check(
+      "and stays a symlink",
+      (try? fileManager.destinationOfSymbolicLink(atPath: symlinked.path(percentEncoded: false)))
+        != nil && trusted(.edited(Data(contents(real).utf8)), key))
+    let leftovers =
+      ((try? fileManager.contentsOfDirectory(atPath: directory.path(percentEncoded: false)))
+      ?? []).filter { $0.hasSuffix(".tmp") }
+    expectEqual("no temporary file is left behind", leftovers, [])
   }
 
   // MARK: - LicenseKey

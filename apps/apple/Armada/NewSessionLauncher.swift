@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 /// Starting a session, and saying so when it does not start.
 ///
@@ -11,6 +12,8 @@ import SwiftUI
 @Observable
 final class NewSessionLauncher {
   static let shared = NewSessionLauncher()
+
+  private static let logger = Logger(subsystem: "io.mgcrea.armada", category: "new-session")
 
   /// The last failure, until it is dismissed. Nil the rest of the time, which is
   /// almost always — a launch either opens a window or explains itself.
@@ -28,6 +31,7 @@ final class NewSessionLauncher {
   func start(
     _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
   ) {
+    trustIfSaved(agent, in: project)
     if let message = NewSession.start(
       agent, in: project, terminal: terminal, start: start,
       completion: { [weak self] message in self?.failure = message })
@@ -63,6 +67,7 @@ final class NewSessionLauncher {
   /// asynchronous LaunchServices half still lands in `failure`, because by then the tool has
   /// answered and a pane is the one place left to say so.
   func startForAgent(_ agent: NewSession.Agent, in project: URL, prompt: String?) -> String? {
+    trustIfSaved(agent, in: project)
     let message = NewSession.start(
       agent, in: project, terminal: terminal, prompt: prompt,
       completion: { [weak self] message in self?.failure = message })
@@ -90,6 +95,7 @@ final class NewSessionLauncher {
         + (controller.tokenError.map { ": \($0)" } ?? ".")
       return
     }
+    trustIfSaved(.claude(folder), in: project)
     if let message = NewSession.start(
       .claude(folder), in: project, terminal: terminal,
       supervisor: NewSession.Supervisor(port: port, token: token),
@@ -114,6 +120,26 @@ final class NewSessionLauncher {
     panel.message = "Choose the folder to start a \(agent.vendorName) session in."
     guard panel.runModal() == .OK, let url = panel.url else { return }
     start(agent, in: url)
+  }
+
+  /// Mark a saved project trusted on the Claude account about to open it, so the session
+  /// starts on its prompt rather than on Claude Code's folder trust dialog. See `ClaudeTrust`.
+  ///
+  /// **Saved projects only, matched on the folder itself.** Saving a folder is the decision
+  /// the dialog asks for; a folder picked for one launch is not, and neither is a subfolder
+  /// of a saved project. Every launch rather than once when the project is added, so the
+  /// projects saved before this existed are covered, and so is a project moved to another
+  /// account. A write that is skipped is logged and nothing more: the dialog then asks, as it
+  /// always did.
+  private func trustIfSaved(_ agent: NewSession.Agent, in project: URL) {
+    guard case .claude(let folder) = agent,
+      let saved = ProjectStore.shared.project(at: project.path(percentEncoded: false))
+    else { return }
+    if case .skipped(let reason) = ClaudeTrust.ensure(
+      folder: saved.path, configFile: folder.usageJSON)
+    {
+      Self.logger.info("trust not written: \(reason, privacy: .public)")
+    }
   }
 }
 
