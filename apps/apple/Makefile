@@ -155,21 +155,33 @@ SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaM
 # than a mystery diff.
 SWIFT_FORMAT_VERSION := 6.3
 
-swift-format-version:
-	@v="$$(xcrun swift-format --version)"; \
+# The assertion is fatal in CI and before anything is rewritten. A local lint
+# under another toolchain (a beta Xcode's reports `main`) only warns: it changes
+# no file, and CI still lints under the pinned version. $(1) is `fail` or `warn`.
+# A macro each recipe calls rather than a shared prerequisite, which make would
+# run once per invocation with whichever mode reached it first.
+swift_format_guard = v="$$(xcrun swift-format --version)"; \
 	case "$$v" in \
 	  $(SWIFT_FORMAT_VERSION).*) ;; \
 	  *) echo "swift-format $$v, expected $(SWIFT_FORMAT_VERSION).x — the toolchain moved."; \
-	     echo "Reformat deliberately and bump SWIFT_FORMAT_VERSION, or select the matching Xcode."; \
-	     exit 1;; \
+	     if [ -n "$$CI" ] || [ "$(1)" != warn ]; then \
+	       echo "Reformat deliberately and bump SWIFT_FORMAT_VERSION, or select the matching Xcode."; \
+	       exit 1; \
+	     fi; \
+	     echo "Linting anyway. CI lints under $(SWIFT_FORMAT_VERSION).x and may disagree.";; \
 	esac
 
-format-swift: swift-format-version ## Format the Swift half with swift-format
+swift-format-version:
+	@$(call swift_format_guard,fail)
+
+format-swift: ## Format the Swift half with swift-format
+	@$(call swift_format_guard,fail)
 	@xcrun swift-format format --in-place --recursive --parallel $(SWIFT_SRC)
 
 # `--strict` is what makes this a gate: without it lint prints its findings and
 # still exits 0, so CI would pass while reporting every violation it found.
-format-swift-check: swift-format-version ## Fail on unformatted Swift
+format-swift-check: ## Fail on unformatted Swift
+	@$(call swift_format_guard,warn)
 	@xcrun swift-format lint --recursive --parallel --strict $(SWIFT_SRC)
 
 # `git blame` walks straight into the reformat commit unless told not to, and the

@@ -206,7 +206,8 @@ Two things worth knowing before touching the build:
 
 - **`swift-format` comes from the selected Xcode**, so a toolchain bump can reformat the whole tree
   with no change to `.swift-format`. The Makefile asserts the version (6.3.x) so that day arrives as
-  a sentence rather than a mystery diff.
+  a sentence rather than a mystery diff. The assertion fails CI and `format-swift`; a local
+  `format-swift-check` under another Xcode only warns, then lints.
 - **The pbxproj was generated once and committed as a normal file.** There is no generator in the
   repo on purpose: the fleet's `pbxproj_add_product.py` edits it in place, and a regenerating script
   would clobber those edits.
