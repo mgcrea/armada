@@ -36,7 +36,10 @@ final class EntitlementMonitor {
     if current.isEntitled {
       Accounts.shared.start()
       CodexAccounts.shared.start()
+      // After the accounts, whose folders it reads.
+      UsageIndex.shared.start()
     } else {
+      UsageIndex.shared.stop()
       Accounts.shared.stop()
       CodexAccounts.shared.stop()
     }

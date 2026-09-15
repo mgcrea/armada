@@ -23,11 +23,12 @@ nonisolated enum UsageWindowLength: Sendable, Hashable {
     }
   }
 
-  /// Only the weekly window is weighted.
+  /// Only the weekly window is weighted, by day and by working hours.
   ///
-  /// A five-hour window sits inside one day, so there is no weekday to weight it by;
-  /// the analogous idea would be an hours-of-day profile, which is a second settings
-  /// section to buy a marker on a bar that resets four times a working day.
+  /// A five-hour window sits inside one day, so there is no weekday to weight it by.
+  /// The working hours would apply and are left out on purpose: a five-hour window
+  /// starts when the work does, so it is nearly all working time already, and
+  /// weighting it would stall the marker overnight and call a late session far ahead.
   var isWeighted: Bool { self == .sevenDay }
 }
 
@@ -48,9 +49,13 @@ nonisolated struct UsageForecast: Sendable, Hashable {
   /// The share of the allowance spent at `asOf`, 0…1 (and beyond, in principle).
   let used: Double
   /// Where the window lands at reset if the current rate holds. 1.0 is the limit.
-  let projected: Double
+  ///
+  /// Nil until `minimumElapsed` of the window has gone, and only this and what is
+  /// derived from it: see `minimumElapsed` for why the pace itself has no such floor.
+  let projected: Double?
   let resetsAt: Date
-  /// When the allowance runs out, if it is on course to. Nil when it is not.
+  /// When the allowance runs out, if it is on course to. Nil when it is not, and
+  /// while there is no projection to run out by.
   let exhaustsAt: Date?
   let length: UsageWindowLength
   /// The `now` this forecast was computed for, so `verdict` measures the reset against
@@ -66,11 +71,17 @@ nonisolated struct UsageForecast: Sendable, Hashable {
   /// Only meaningful on the weekly window, which is a budget. The five-hour window
   /// is a rate limiter: it resets mostly unspent on any normal day, that is what it
   /// is for, and there is nothing to bank. See `verdict`, which never reports it.
-  var forfeitPoints: Double { max(0, (1 - projected) * 100) }
+  var forfeitPoints: Double? { projected.map { max(0, (1 - $0) * 100) } }
 
   /// Below this share of the window elapsed, `used / expected` is noise: at 2%
   /// elapsed a single expensive prompt projects past 400%. Ten percent of a
   /// five-hour window is half an hour, which is about when the ratio settles.
+  ///
+  /// **It gates the projection, not the forecast.** This used to refuse the whole
+  /// thing, which on the weekly window meant no pace marker for the first 16.8
+  /// hours — the whole first working day, exactly when "am I ahead" is the question.
+  /// The pace is `used - expected`, a difference rather than a ratio, and a
+  /// difference of two small numbers is as sound on day one as on day five.
   static let minimumElapsed = 0.10
 
   /// How old the reading may be, as a share of the window it describes.
@@ -103,7 +114,7 @@ nonisolated struct UsageForecast: Sendable, Hashable {
   init?(
     window: UsageWindow,
     length: UsageWindowLength,
-    weights: DayWeights,
+    profile weighted: PaceProfile,
     asOf: Date?,
     now: Date,
     calendar: Calendar = .current
@@ -121,15 +132,15 @@ nonisolated struct UsageForecast: Sendable, Hashable {
     let span = resetsAt.timeIntervalSince(start)
     guard now.timeIntervalSince(asOf) <= span * Self.staleFraction else { return nil }
 
-    let profile = length.isWeighted ? weights : .even
+    let profile = length.isWeighted ? weighted : .even
     let total = profile.consumed(from: start, to: resetsAt, calendar: calendar)
     guard total > 0 else { return nil }
 
     let expected = profile.consumed(from: start, to: asOf, calendar: calendar) / total
-    guard expected >= Self.minimumElapsed else { return nil }
-
     let used = Double(window.utilization) / 100
-    let projected = used / expected
+    // The floor is also what keeps this off a zero `expected`: a reading in the first
+    // second of a window, or on a day weighted to nothing.
+    let projected = expected >= Self.minimumElapsed ? used / expected : nil
 
     self.expected = expected
     self.used = used
@@ -140,10 +151,12 @@ nonisolated struct UsageForecast: Sendable, Hashable {
     // The curve reaches the limit at the weighted fraction `expected / used`, which
     // is inside the window exactly when the projection is over it.
     self.exhaustsAt =
-      projected > 1
-      ? profile.date(
-        reaching: total * (expected / used), from: start, limit: resetsAt, calendar: calendar)
-      : nil
+      if let projected, projected > 1 {
+        profile.date(
+          reaching: total * (expected / used), from: start, limit: resetsAt, calendar: calendar)
+      } else {
+        nil
+      }
   }
 
   /// The one thing worth saying about this window, or nothing.
@@ -165,10 +178,10 @@ nonisolated struct UsageForecast: Sendable, Hashable {
     // Weekly only, and only once the reset is close enough to be the last word on
     // it. A five-hour window reports 40 points unspent most of the time — true,
     // useless, and said so often it would teach people to stop reading the line.
-    if length == .sevenDay, forfeitPoints > Self.significantForfeit,
+    if length == .sevenDay, let forfeit = forfeitPoints, forfeit > Self.significantForfeit,
       resetsAt.timeIntervalSince(now) <= Self.forfeitHorizon
     {
-      return .forfeiting(forfeitPoints)
+      return .forfeiting(forfeit)
     }
     return .onPace
   }

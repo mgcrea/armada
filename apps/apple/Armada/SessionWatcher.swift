@@ -248,6 +248,7 @@ final class SessionWatcher {
       written.append(session)
     }
 
+    if !written.isEmpty { UsageIndex.shared.noteActivity() }
     for session in written {
       session.lastWrite = Date()
       refreshTitle(session)

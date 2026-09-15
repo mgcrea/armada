@@ -8,8 +8,9 @@ import SwiftUI
 /// a verdict. Three of the four layers below are the verdict.
 ///
 /// Reads, from left to right: the solid fill is spent, the ghost past it is where the
-/// current rate lands by the reset, the tick is where the pace profile says you would
-/// be, and the chevron appears only when the ghost runs off the end.
+/// current rate lands by the reset, the tick and the caret above it are where the pace
+/// profile says you would be, and the chevron appears only when the ghost runs off
+/// the end.
 struct UsageBar: View {
   let percent: Int
   let forecast: UsageForecast?
@@ -29,6 +30,23 @@ struct UsageBar: View {
   /// half of it at both ends, so the two uses must not drift apart.
   private static let tickWidth: CGFloat = 1.5
 
+  /// Fixed rather than scaled with `height`: the caret is a pointer, and the meter
+  /// that needs one most is the popover's, which is also the shortest.
+  private static let caretWidth: CGFloat = 7
+  private static let caretHeight: CGFloat = 4.5
+
+  /// A downward triangle, apex at the bottom edge so it lands on the tick's top.
+  nonisolated private struct Caret: Shape {
+    func path(in rect: CGRect) -> Path {
+      Path { path in
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.closeSubpath()
+      }
+    }
+  }
+
   var body: some View {
     let tint = UsageTint.for(percent)
     GeometryReader { proxy in
@@ -39,10 +57,10 @@ struct UsageBar: View {
         // The projection, drawn under the spent fill so the two read as one bar
         // rather than two. Clamped at the full width; the chevron carries the
         // overflow, because a bar cannot be more than full.
-        if let forecast, forecast.projected > forecast.used, !voided {
+        if let forecast, let projected = forecast.projected, projected > forecast.used, !voided {
           Capsule()
             .fill(tint.opacity(0.28))
-            .frame(width: width * min(forecast.projected, 1))
+            .frame(width: width * min(projected, 1))
         }
 
         if !voided {
@@ -62,14 +80,30 @@ struct UsageBar: View {
           // Inset by half the tick at each end so a marker at 0% or 100% stays
           // inside the bar instead of being clipped in half by the capsule.
           let inset = Self.tickWidth / 2
-          Capsule()
-            .fill(.primary.opacity(0.55))
-            .frame(width: Self.tickWidth, height: height + 3)
-            .offset(x: inset + (width - Self.tickWidth) * min(max(forecast.expected, 0), 1))
+          let x = inset + (width - Self.tickWidth) * min(max(forecast.expected, 0), 1)
+          // An explicit leading stack, because the overlay's `alignment` places the
+          // group and not its members: left implicit, the 1.5pt tick was centred in
+          // the caret's 7pt and drew 2.75pt right of where the offset put it.
+          ZStack(alignment: .leading) {
+            Capsule()
+              .fill(.primary.opacity(0.75))
+              .frame(width: Self.tickWidth, height: height + 3)
+              .offset(x: x)
+            // The caret is what makes the tick findable. On its own it was a 1.5pt
+            // line inside the fill, a few points from the fill's end, and on a 5pt
+            // popover meter it simply did not register. Pointing down from above the
+            // track, it sits on the one background that never changes colour.
+            Caret()
+              .fill(.primary.opacity(0.75))
+              .frame(width: Self.caretWidth, height: Self.caretHeight)
+              .offset(
+                x: x + Self.tickWidth / 2 - Self.caretWidth / 2,
+                y: -(height + 3) / 2 - Self.caretHeight / 2)
+          }
         }
       }
       .overlay(alignment: .trailing) {
-        if let forecast, forecast.projected > 1, !voided {
+        if let projected = forecast?.projected, projected > 1, !voided {
           Image(systemName: "chevron.compact.right")
             .font(.system(size: height + 3, weight: .bold))
             .foregroundStyle(.red)
@@ -80,14 +114,38 @@ struct UsageBar: View {
     .frame(height: height)
     .accessibilityElement()
     .accessibilityLabel(accessibilityLabel)
+    .modifier(OptionalHelp(text: paceHelp))
   }
 
   private var accessibilityLabel: String {
     if voided { return "window has reset, no reading since" }
     guard let forecast else { return "\(percent) percent used" }
-    return
-      "\(percent) percent used, \(Int(forecast.expected * 100)) percent expected by now, "
-      + "projected \(Int(forecast.projected * 100)) percent at reset"
+    let pace = "\(percent) percent used, \(Int(forecast.expected * 100)) percent expected by now"
+    guard let projected = forecast.projected else { return pace }
+    return pace + ", projected \(Int(projected * 100)) percent at reset"
+  }
+
+  /// The gap the caret draws, in words, on hover.
+  ///
+  /// In the popover this is the only place it is written down: the verdict line
+  /// there appears only past `UsageForecast.significantDelta`, so "3 points behind"
+  /// was otherwise a distance to judge by eye on a 5pt bar.
+  private var paceHelp: String? {
+    guard let forecast, !voided else { return nil }
+    let expected = Int((forecast.expected * 100).rounded())
+    return "\(expected)% expected by now: \(Self.paceGap(forecast.deltaPoints))."
+  }
+
+  /// "4 points ahead of pace", "1 point behind pace", "on pace".
+  static func paceGap(_ points: Double) -> String {
+    let rounded = Int(points.rounded())
+    return switch rounded {
+    case 0: "on pace"
+    case 1: "1 point ahead of pace"
+    case -1: "1 point behind pace"
+    case 2...: "\(rounded) points ahead of pace"
+    default: "\(-rounded) points behind pace"
+    }
   }
 }
 
@@ -285,9 +343,17 @@ struct UsageVerdictLine: View {
           "~\(Int(points.rounded()))% will go unused", .secondary,
           help: "Unused allowance does not carry over to the next week.")
       case .onPace:
-        line(
-          "~\(Int((forecast.projected * 100).rounded()))% by reset", .secondary,
-          help: "Projected from the rate so far in this window.")
+        if let projected = forecast.projected {
+          line(
+            "~\(Int((projected * 100).rounded()))% by reset", .secondary,
+            help: "Projected from the rate so far in this window.")
+        } else {
+          // Too early in the window to project from, which is exactly when the gap
+          // to the marker is the one thing worth reading.
+          line(
+            LocalizedStringKey(UsageBar.paceGap(forecast.deltaPoints)), .secondary,
+            help: Self.paceHelp)
+        }
       }
     }
   }
@@ -301,7 +367,7 @@ struct UsageVerdictLine: View {
   }
 
   private static let paceHelp =
-    "Compared with the share of the window that has elapsed, weighted by your per-day profile in Settings."
+    "Compared with the share of the window that has elapsed. The weekly window is weighted by the days and working hours set in Settings."
 }
 
 /// The two lines under a meter: when it resets, and what it is on course to do.

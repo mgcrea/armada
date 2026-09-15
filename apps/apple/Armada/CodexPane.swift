@@ -190,6 +190,7 @@ struct CodexUsageHeader: View {
   let now: Date
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
 
   var body: some View {
     // The same `UsageStrip` as `UsageHeader`, so the two headers give way to a narrow
@@ -262,7 +263,8 @@ struct CodexUsageHeader: View {
   private func forecast(_ window: CodexWindow) -> UsageForecast? {
     guard let length = window.length else { return nil }
     return UsageForecast(
-      window: window.usage, length: length, weights: DayWeights(stored: storedWeights),
+      window: window.usage, length: length,
+      profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
       asOf: account.usage?.observedAt, now: now)
   }
 }

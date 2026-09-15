@@ -283,6 +283,8 @@ final class CodexWatcher {
 
   private func apply(_ scan: CodexScan) {
     var next: [String: CodexSession] = [:]
+    // A tail is only read from a rollout that changed, so this is "something was written".
+    if scan.entries.contains(where: { $0.tail != nil }) { UsageIndex.shared.noteActivity() }
 
     for entry in scan.entries {
       let session: CodexSession

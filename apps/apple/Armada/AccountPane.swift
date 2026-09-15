@@ -225,6 +225,7 @@ struct UsageHeader: View {
   let now: Date
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
 
   var body: some View {
     UsageStrip {
@@ -263,7 +264,8 @@ struct UsageHeader: View {
     // Nothing to project from a window a refusal has already closed.
     guard let window, window.rejectedAt == nil else { return nil }
     return UsageForecast(
-      window: window, length: length, weights: DayWeights(stored: storedWeights),
+      window: window, length: length,
+      profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
       asOf: fetchedAt, now: now)
   }
 }

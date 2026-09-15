@@ -249,6 +249,7 @@ struct GeneralPane: View {
 /// be a name nobody can resolve at a glance.
 struct UsageSettingsPane: View {
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
   @State private var history = UsageHistory.shared
 
   var body: some View {
@@ -277,6 +278,30 @@ struct UsageSettingsPane: View {
         // settings window reads as a cap until told otherwise.
         Text(
           "Relative weights, not limits — Armada cannot change your plan. They only decide where the pace marker sits, so a quiet weekend does not read as falling behind."
+        )
+      }
+
+      Section {
+        Picker("Starts at", selection: startBinding) { hourOptions }
+        Picker("Ends at", selection: endBinding) { hourOptions }
+        LabeledContent("Outside those hours") {
+          HStack(spacing: 10) {
+            Slider(value: outsideBinding, in: 0...1, step: 0.05)
+            Text("\(Int((hours.outside * 100).rounded()))%")
+              .font(.caption.monospacedDigit())
+              .frame(width: 40, alignment: .trailing)
+              .foregroundStyle(.secondary)
+          }
+        }
+        Button("Count every hour the same") { storedHours = WorkingHours.flatStored }
+          .disabled(hours.isFlat)
+      } header: {
+        Text("Working hours")
+      } footer: {
+        // The weekly window only, and it says so, because the session meter sitting
+        // unmoved beside a changed weekly one would otherwise read as a bug.
+        Text(
+          "Hours outside the range count for less, so an evening's work is not measured against a week of round-the-clock days. Applies to the weekly window. A range that ends before it starts runs past midnight."
         )
       }
 
@@ -342,5 +367,41 @@ struct UsageSettingsPane: View {
 
   private func percentLabel(_ index: Int) -> String {
     "\(Int((DayWeights(stored: storedWeights).values[index] * 100).rounded()))%"
+  }
+
+  private var hours: WorkingHours { WorkingHours(stored: storedHours) }
+
+  private var startBinding: Binding<Int> {
+    Binding(
+      get: { hours.start },
+      set: { storedHours = WorkingHours(start: $0, end: hours.end, outside: hours.outside).stored })
+  }
+
+  private var endBinding: Binding<Int> {
+    Binding(
+      get: { hours.end },
+      set: {
+        storedHours = WorkingHours(start: hours.start, end: $0, outside: hours.outside).stored
+      })
+  }
+
+  private var outsideBinding: Binding<Double> {
+    Binding(
+      get: { hours.outside },
+      set: { storedHours = WorkingHours(start: hours.start, end: hours.end, outside: $0).stored })
+  }
+
+  /// Every hour of the day, labelled the way this Mac shows times: "09:00" or "9 AM".
+  private var hourOptions: some View {
+    ForEach(0..<24, id: \.self) { hour in
+      Text(Self.hourLabel(hour)).tag(hour)
+    }
+  }
+
+  /// Formatted on a fixed January day, so no clock change can drop or double an hour.
+  private static func hourLabel(_ hour: Int) -> String {
+    let date = Calendar.current.date(
+      from: DateComponents(year: 2001, month: 1, day: 1, hour: hour))
+    return date?.formatted(date: .omitted, time: .shortened) ?? "\(hour):00"
   }
 }

@@ -38,6 +38,12 @@ nonisolated struct CodexHome: Sendable, Hashable {
     base.appending(path: "thread-writer-locks", directoryHint: .isDirectory)
   }
 
+  /// Rollouts Codex has moved out of `sessions/`, flat rather than by day. Only the usage
+  /// index reads here; a moved rollout keeps its file name and so its session id.
+  var archivedSessionsDir: URL {
+    base.appending(path: "archived_sessions", directoryHint: .isDirectory)
+  }
+
   /// `{"id", "thread_name", "updated_at"}` per line. See `CodexTitleIndex`.
   var sessionIndex: URL {
     base.appending(path: "session_index.jsonl", directoryHint: .notDirectory)

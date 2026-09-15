@@ -17,6 +17,7 @@ struct UsagePaneView: View {
   @State private var now = Date()
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
 
   /// One second, matching `AccountPaneView`. The relative times in every caption
   /// ("resets in 3 hours") are only honest if something re-renders them.
@@ -34,16 +35,16 @@ struct UsagePaneView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 20) {
             ForEach(accounts.all) { account in
-              AccountUsageCard(account: account, weights: weights, now: now)
+              AccountUsageCard(account: account, profile: profile, now: now)
             }
             // After the Claude cards, in the sidebar's order. Not interleaved and not
             // merged: these are separate plans from separate vendors, and the one
             // thing this pane must never invite is reading two vendors' percentages
             // as one budget.
             ForEach(codex.all) { account in
-              CodexUsageCard(account: account, weights: weights, now: now)
+              CodexUsageCard(account: account, profile: profile, now: now)
             }
-            PaceFooter(weights: weights)
+            PaceFooter(profile: profile)
           }
           .padding(20)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -55,7 +56,9 @@ struct UsagePaneView: View {
     .onReceive(clock) { now = $0 }
   }
 
-  private var weights: DayWeights { DayWeights(stored: storedWeights) }
+  private var profile: PaceProfile {
+    PaceProfile(storedDays: storedWeights, storedHours: storedHours)
+  }
 
   /// Counts cards, not accounts, and says so in the vendors' own words when they
   /// differ — "3 accounts" over two Claude organizations and a Codex home is three
@@ -74,7 +77,7 @@ struct UsagePaneView: View {
 /// One account's windows, and its week so far.
 struct AccountUsageCard: View {
   let account: Account
-  let weights: DayWeights
+  let profile: PaceProfile
   let now: Date
 
   var body: some View {
@@ -93,10 +96,10 @@ struct AccountUsageCard: View {
 
       if let usage = account.usage, !usage.isEmpty {
         ForEach(rows(for: usage)) { row in
-          WindowRow(row: row, weights: weights, fetchedAt: usage.fetchedAt, now: now)
+          WindowRow(row: row, profile: profile, fetchedAt: usage.fetchedAt, now: now)
         }
         WeeklyChart(
-          accountID: account.id, window: usage.sevenDay, weights: weights,
+          accountID: account.id, window: usage.sevenDay, profile: profile,
           fetchedAt: usage.fetchedAt, now: now)
       } else {
         Text(account.didReadUsage ? "No usage data yet" : "Reading usage…")
@@ -164,7 +167,7 @@ struct AccountUsageCard: View {
 ///   measuring you against.
 struct CodexUsageCard: View {
   let account: CodexAccount
-  let weights: DayWeights
+  let profile: PaceProfile
   let now: Date
 
   var body: some View {
@@ -182,10 +185,10 @@ struct CodexUsageCard: View {
       if let usage = account.usage, !usage.isEmpty {
         let snapshot = usage.asSnapshot
         ForEach(rows(for: snapshot)) { row in
-          WindowRow(row: row, weights: weights, fetchedAt: snapshot.fetchedAt, now: now)
+          WindowRow(row: row, profile: profile, fetchedAt: snapshot.fetchedAt, now: now)
         }
         WeeklyChart(
-          accountID: account.id, window: snapshot.sevenDay, weights: weights,
+          accountID: account.id, window: snapshot.sevenDay, profile: profile,
           fetchedAt: snapshot.fetchedAt, now: now)
       } else {
         Text(account.sessions.didScan ? "No usage reported yet" : "Reading usage…")
@@ -228,7 +231,7 @@ struct WindowRowModel: Identifiable {
 /// One window: the name, the number, the bar and the verdict.
 struct WindowRow: View {
   let row: WindowRowModel
-  let weights: DayWeights
+  let profile: PaceProfile
   let fetchedAt: Date?
   let now: Date
 
@@ -240,7 +243,7 @@ struct WindowRow: View {
     let forecast =
       row.window.rejectedAt == nil
       ? UsageForecast(
-        window: row.window, length: row.length, weights: weights, asOf: fetchedAt, now: now)
+        window: row.window, length: row.length, profile: profile, asOf: fetchedAt, now: now)
       : nil
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 6) {
@@ -282,7 +285,7 @@ struct WindowRow: View {
 struct WeeklyChart: View {
   let accountID: String
   let window: UsageWindow?
-  let weights: DayWeights
+  let profile: PaceProfile
   let fetchedAt: Date?
   let now: Date
 
@@ -324,7 +327,7 @@ struct WeeklyChart: View {
     -> some View
   {
     let forecast = UsageForecast(
-      window: window, length: .sevenDay, weights: weights, asOf: fetchedAt, now: now)
+      window: window, length: .sevenDay, profile: profile, asOf: fetchedAt, now: now)
     let tint = UsageTint.for(window.utilization)
     return Chart {
       RuleMark(y: .value("Limit", 100))
@@ -351,11 +354,11 @@ struct WeeklyChart: View {
 
       // The projection, dashed from the last real reading to the reset — visibly a
       // different kind of line from the recorded one.
-      if let forecast, let last = samples.last {
+      if let projected = forecast?.projected, let last = samples.last {
         ForEach(
           [
             PacePoint(date: last.t, percent: Double(last.w ?? 0)),
-            PacePoint(date: resetsAt, percent: forecast.projected * 100),
+            PacePoint(date: resetsAt, percent: projected * 100),
           ], id: \.date
         ) { point in
           LineMark(
@@ -377,27 +380,28 @@ struct WeeklyChart: View {
 
   private func yMax(samples: [UsageSample], forecast: UsageForecast?) -> Double {
     let observed = samples.compactMap(\.w).max().map(Double.init) ?? 0
-    let projected = forecast.map { min($0.projected * 100, 200) } ?? 0
+    let projected = forecast?.projected.map { min($0 * 100, 200) } ?? 0
     return max(100, observed, projected) * 1.05
   }
 
-  /// The expected-consumption curve, sampled at each midnight plus both ends, so a
-  /// weighted profile shows as the kinked line it is rather than a straight one.
+  /// The expected-consumption curve through every boundary of the profile, so the day
+  /// weights show as kinks and nights weighted down as flat stretches.
+  ///
+  /// One walk, summed as it goes. The pane re-renders every second, and asking
+  /// `consumed(from: start)` afresh for each of the twenty-odd points a week of working
+  /// hours has would walk the whole week that many times per tick.
   private func paceCurve(start: Date, resetsAt: Date) -> [PacePoint] {
     let calendar = Calendar.current
-    let total = weights.consumed(from: start, to: resetsAt, calendar: calendar)
+    var points = [PacePoint(date: start, percent: 0)]
+    var cursor = start
+    var total: Double = 0
+    for next in profile.boundaries(from: start, to: resetsAt, calendar: calendar) {
+      total += profile.weight(at: cursor, calendar: calendar) * next.timeIntervalSince(cursor)
+      points.append(PacePoint(date: next, percent: total))
+      cursor = next
+    }
     guard total > 0 else { return [] }
-    var dates = [start]
-    var cursor = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: start))
-    while let next = cursor, next < resetsAt {
-      dates.append(next)
-      cursor = calendar.date(byAdding: .day, value: 1, to: next)
-    }
-    dates.append(resetsAt)
-    return dates.map {
-      PacePoint(
-        date: $0, percent: weights.consumed(from: start, to: $0, calendar: calendar) / total * 100)
-    }
+    return points.map { PacePoint(date: $0.date, percent: $0.percent / total * 100) }
   }
 }
 
@@ -408,23 +412,28 @@ struct PacePoint: Hashable {
 
 /// What the pace line is being measured against, and how to change it.
 struct PaceFooter: View {
-  let weights: DayWeights
+  let profile: PaceProfile
 
   var body: some View {
     HStack(spacing: 6) {
       Image(systemName: "calendar")
         .foregroundStyle(.tertiary)
-      Text(
-        weights.isEven
-          ? "Pace assumes an even week."
-          : "Pace is weighted by your per-day profile."
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      Text(caption)
+        .font(.caption)
+        .foregroundStyle(.secondary)
       Button("Adjust…") { AppDelegate.shared?.showSettings() }
         .buttonStyle(.link)
         .font(.caption)
       Spacer(minLength: 0)
+    }
+  }
+
+  private var caption: LocalizedStringKey {
+    switch (profile.days.isEven, profile.hours.isFlat) {
+    case (true, true): "Pace assumes an even week."
+    case (false, true): "Pace is weighted by your per-day profile."
+    case (true, false): "Pace is weighted by your working hours."
+    case (false, false): "Pace is weighted by your days and working hours."
     }
   }
 }

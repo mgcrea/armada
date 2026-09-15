@@ -47,63 +47,9 @@ nonisolated struct DayWeights: Sendable, Hashable {
 
   var isEven: Bool { Set(values).count == 1 }
 
+  /// The weight of the calendar day `date` falls on. Walking the curve over time,
+  /// with the working hours folded in, is `PaceProfile`'s.
   func weight(on date: Date, calendar: Calendar) -> Double {
     values[calendar.component(.weekday, from: date) - 1]
-  }
-
-  /// Expected effort between two instants, in weight-seconds.
-  ///
-  /// Unnormalised on purpose: every caller divides one of these by another, so the
-  /// unit cancels and there is no scale to get wrong. Walks midnight boundaries —
-  /// at most eight segments for a seven-day window — rather than sampling, so a
-  /// window that starts at 14:00 gets ten hours of Monday and not a whole day of it.
-  func consumed(from start: Date, to end: Date, calendar: Calendar) -> Double {
-    guard end > start else { return 0 }
-    var total: Double = 0
-    var cursor = start
-    while cursor < end {
-      let segmentEnd = min(Self.nextMidnight(after: cursor, calendar: calendar) ?? end, end)
-      // A calendar that cannot advance would spin here forever. It cannot happen
-      // with a Gregorian calendar and a real date, which is exactly why it is worth
-      // one line to make sure it stays impossible.
-      guard segmentEnd > cursor else { break }
-      total += weight(on: cursor, calendar: calendar) * segmentEnd.timeIntervalSince(cursor)
-      cursor = segmentEnd
-    }
-    return total
-  }
-
-  /// The inverse: when the curve reaches `target` weight-seconds measured from
-  /// `start`, or nil if it never does before `limit`.
-  ///
-  /// Interpolates inside the segment it lands in, so the answer is a time of day
-  /// rather than a date. A zero-weight day is skipped rather than divided by — on a
-  /// profile with Sunday at 0 the curve is flat all Sunday and the crossing belongs
-  /// to Monday morning.
-  func date(reaching target: Double, from start: Date, limit: Date, calendar: Calendar) -> Date? {
-    guard target > 0 else { return start }
-    var accumulated: Double = 0
-    var cursor = start
-    while cursor < limit {
-      let segmentEnd = min(Self.nextMidnight(after: cursor, calendar: calendar) ?? limit, limit)
-      guard segmentEnd > cursor else { break }
-      let weight = weight(on: cursor, calendar: calendar)
-      let segment = weight * segmentEnd.timeIntervalSince(cursor)
-      if weight > 0, accumulated + segment >= target {
-        return cursor.addingTimeInterval((target - accumulated) / weight)
-      }
-      accumulated += segment
-      cursor = segmentEnd
-    }
-    return nil
-  }
-
-  /// The next midnight strictly after `date`.
-  ///
-  /// `startOfDay` plus one calendar day rather than plus 86400 seconds: on the two
-  /// days a year the clocks move, the arithmetic version lands at 23:00 or 01:00 and
-  /// every later segment is misaligned by an hour.
-  private static func nextMidnight(after date: Date, calendar: Calendar) -> Date? {
-    calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
   }
 }
