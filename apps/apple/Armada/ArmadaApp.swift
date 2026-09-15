@@ -568,25 +568,40 @@ enum MenuBarPanel {
 ///
 /// `contentShape` is the other half: `Spacer` does not hit-test, so without it most
 /// of a row's width is dead to both the click and the hover.
-struct PanelRow<Label: View>: View {
+///
+/// **The accessory sits beside the button, not inside its label.** A button nested in
+/// another button's label hands its click to the outer one on macOS, so a trailing
+/// control has to be a sibling — and the hover fill goes on the stack holding both,
+/// so the row still lights as one piece when the pointer is over the accessory.
+struct PanelRow<Label: View, Accessory: View>: View {
   let help: String
   let action: () -> Void
   @ViewBuilder var label: Label
+  @ViewBuilder var accessory: Accessory
 
   @State private var hovering = false
 
   var body: some View {
-    Button(action: action) {
-      label.contentShape(.rect)
+    HStack(spacing: 4) {
+      Button(action: action) {
+        label.contentShape(.rect)
+      }
+      .buttonStyle(.plain)
+      .pointerStyle(.link)
+      .help(help)
+      accessory
     }
-    .buttonStyle(.plain)
-    .pointerStyle(.link)
-    .help(help)
     .onHover { hovering = $0 }
     .background(
       hovering ? AnyShapeStyle(.selection.opacity(0.25)) : AnyShapeStyle(.clear),
       in: .rect(cornerRadius: 4)
     )
+  }
+}
+
+extension PanelRow where Accessory == EmptyView {
+  init(help: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
+    self.init(help: help, action: action, label: label, accessory: { EmptyView() })
   }
 }
 
@@ -597,9 +612,9 @@ struct PanelRow<Label: View>: View {
 /// context, the folder, the model, the rest of the account's sessions — is in the
 /// pane behind this row, and sending the one click Armada gets to another
 /// application made its own detail view the harder thing to reach. Focusing the
-/// host is a right-click away instead, which is where a second intent belongs, and
-/// it is the rarer of the two: someone who wants to type at the session was going
-/// to switch to their terminal anyway.
+/// host is the small glyph at the row's trailing edge instead, and the right-click
+/// menu still carries it by name: the rarer of the two intents gets the smaller
+/// target, and only a row whose lookup found a host draws one.
 ///
 /// A session with no host still gets a row that does something now, which is the
 /// other thing that changed: the destination is Armada's own pane, and that exists
@@ -629,6 +644,23 @@ struct SummaryRow: View {
           .font(.caption)
           .lineLimit(1)
         Spacer(minLength: 0)
+      }
+    } accessory: {
+      if let host {
+        Button {
+          FocusSession.focus(host, cwd: session.registry.cwd)
+          // Dismissed for the reason `SessionRowMenu` gives: with the host already
+          // frontmost nothing resigns, and the panel would stay over it.
+          MenuBarPanel.dismiss()
+        } label: {
+          Image(systemName: "arrow.up.forward.app")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("Focus in \(host.name)")
+        .accessibilityLabel("Focus in \(host.name)")
       }
     }
     .modifier(
