@@ -403,6 +403,7 @@ struct AccountSummary: View {
   let now: Date
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
 
   /// Three, not five. The popover has to fit two of these plus the buttons, and
   /// the list in the window is one click away.
@@ -520,7 +521,8 @@ struct AccountSummary: View {
     // the past. The reset line beside it is the whole story there.
     guard let window, window.rejectedAt == nil else { return nil }
     return UsageForecast(
-      window: window, length: length, weights: DayWeights(stored: storedWeights),
+      window: window, length: length,
+      profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
       asOf: fetchedAt, now: now)
   }
 
