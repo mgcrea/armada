@@ -377,12 +377,18 @@ nonisolated enum Changelog {
         entries: [
           Entry(
             ordinal: 5,
+            headline: "Sessions in a saved project skip Claude Code's trust dialog.",
+            body: [
+              "Starting a Claude Code session in a project you saved marks its folder trusted on that account, the flag \"Yes, I trust this folder\" sets, so the session opens on its prompt. It is the one thing Armada writes to Claude Code's configuration: one field in `.claude.json`, written under Claude Code's own lock and edited in place, with the rest of the file left exactly as it was.",
+            ]),
+          Entry(
+            ordinal: 6,
             headline: "Armada runs a `claude` of its own while you talk to it.",
             body: [
               "Voice starts your installed `claude` headless with no built-in tools and only Armada's six read tools, keeps it for follow-up questions, and closes it after five idle minutes. It is the one agent process Armada owns rather than watches.",
             ]),
           Entry(
-            ordinal: 6,
+            ordinal: 7,
             headline: "One entitlement: the microphone.",
             body: [
               "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",
