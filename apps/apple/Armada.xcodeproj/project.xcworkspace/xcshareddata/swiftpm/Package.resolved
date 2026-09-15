@@ -1,13 +1,21 @@
 {
-  "originHash" : "8817d471d8521fa0369c743eaa57a9948a12654ce173132d4ed0cfebf3ae56ff",
+  "originHash" : "e1da302da4aba364796c81aa882b6d5d819f983cf2e4a1133df8036b8c443ee0",
   "pins" : [
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidInference/FluidAudio.git",
+      "state" : {
+        "revision" : "6428e29186573c6d33c598e25d460e6690bc0ee1"
+      }
+    },
     {
       "identity" : "swift-mcp-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-mcp-kit.git",
       "state" : {
-        "revision" : "1f496829bd9e11da2b13f13b7e7c54aa88bdc8c9",
-        "version" : "1.0.0"
+        "revision" : "72c2cb2751e8ff912f0c81afa50b8c67e3b53865",
+        "version" : "1.1.0"
       }
     },
     {

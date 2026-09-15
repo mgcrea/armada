@@ -85,6 +85,8 @@ final class MCPServerController {
     do {
       try tokens.regenerate()
       tokenError = nil
+      // Every client configured with the old token stopped working the moment it was replaced.
+      MCPClientWiring.shared.rewire()
     } catch {
       tokenError = error.localizedDescription
     }
@@ -104,6 +106,9 @@ final class MCPServerController {
     if listener != nil, boundPort == wanted { return }
     stop()
     start(port: wanted)
+    // A port changed while the server was off leaves every configured client dialling the old
+    // one. A no-op for a config already current.
+    MCPClientWiring.shared.rewire()
   }
 
   private func start(port: Int) {

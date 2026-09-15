@@ -366,6 +366,12 @@ nonisolated enum Changelog {
             ]),
           Entry(
             ordinal: 4,
+            headline: "Connect a client with one click.",
+            body: [
+              "Settings ▸ Supervisor lists the MCP clients on your Mac, Claude Code once per account plus ChatGPT & Codex, Cursor and Visual Studio Code, and adds Armada to any of them with Configure or takes it back out with Remove. Nothing else in the client's config changes, the previous file is kept beside it as a backup, and a server of someone else's that already uses the name is never replaced without asking. Regenerating the token or changing the port updates every client configured this way. The copy-paste setup is still there for any other client.",
+            ]),
+          Entry(
+            ordinal: 5,
             headline: "Talk to Armada.",
             body: [
               "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Dictation and speech run on the Mac, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
@@ -376,19 +382,19 @@ nonisolated enum Changelog {
         lead: [],
         entries: [
           Entry(
-            ordinal: 5,
+            ordinal: 6,
             headline: "Sessions in a saved project skip Claude Code's trust dialog.",
             body: [
               "Starting a Claude Code session in a project you saved marks its folder trusted on that account, the flag \"Yes, I trust this folder\" sets, so the session opens on its prompt. It is the one thing Armada writes to Claude Code's configuration: one field in `.claude.json`, written under Claude Code's own lock and edited in place, with the rest of the file left exactly as it was.",
             ]),
           Entry(
-            ordinal: 6,
+            ordinal: 7,
             headline: "Armada runs a `claude` of its own while you talk to it.",
             body: [
               "Voice starts your installed `claude` headless with no built-in tools and only Armada's six read tools, keeps it for follow-up questions, and closes it after five idle minutes. It is the one agent process Armada owns rather than watches.",
             ]),
           Entry(
-            ordinal: 7,
+            ordinal: 8,
             headline: "One entitlement: the microphone.",
             body: [
               "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",

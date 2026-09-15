@@ -19,12 +19,14 @@ struct SupervisorPane: View {
   @State private var accounts = Accounts.shared
   @State private var monitor = EntitlementMonitor.shared
   @State private var launcher = NewSessionLauncher.shared
+  @State private var wiring = MCPClientWiring.shared
 
   @State private var accountID = ""
   @State private var folder = FileManager.default.homeDirectoryForCurrentUser
   @State private var snippet: ClientSnippet = .claudeCode
   @State private var tokenRevealed = false
   @State private var copied = false
+  @State private var showsSnippet = false
 
   private var selectedAccount: Account? {
     accounts.account(id: accountID) ?? accounts.all.first
@@ -34,8 +36,10 @@ struct SupervisorPane: View {
     Form {
       serverSection
       supervisorSection
-      if let port = controller.runningPort {
-        connectionSection(port: port)
+      // On the switch rather than on a running listener: configuring a client needs a port and
+      // a token, and both exist before the socket is bound.
+      if enabled {
+        clientsSection
       }
     }
     .formStyle(.grouped)
@@ -178,10 +182,15 @@ struct SupervisorPane: View {
     folder = url
   }
 
-  // MARK: - Connecting by hand
+  // MARK: - Clients
 
-  @ViewBuilder private func connectionSection(port: Int) -> some View {
+  /// One row per client Armada can configure, then the token and, folded away, the snippet for
+  /// any client that is not on the list.
+  @ViewBuilder private var clientsSection: some View {
     Section {
+      ForEach(wiring.clients) { client in
+        MCPClientRow(client: client)
+      }
       LabeledContent("Token") {
         HStack(spacing: 8) {
           Text(tokenRevealed ? controller.token : String(repeating: "•", count: 24))
@@ -195,42 +204,45 @@ struct SupervisorPane: View {
             .buttonStyle(.borderless)
         }
       }
-      Picker("Set up in", selection: $snippet) {
-        ForEach(ClientSnippet.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-      }
-      let name = NewSession.Supervisor.serverName
-      let text = snippet.text(serverName: name, port: port, token: controller.token)
-      // Drawn masked while the token is masked, and copied whole either way — a bulleted
-      // token one row up and the same token in clear one row down would make Reveal a button
-      // that reveals nothing.
-      let shown =
-        tokenRevealed
-        ? text
-        : snippet.text(serverName: name, port: port, token: String(repeating: "•", count: 24))
-      ScrollView(.horizontal) {
-        Text(shown)
-          .font(.system(.caption, design: .monospaced))
-          .textSelection(.enabled)
-      }
-      .frame(maxHeight: 120)
-      HStack {
-        Spacer()
-        Button(copied ? "Copied" : "Copy") {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(text, forType: .string)
-          copied = true
+      DisclosureGroup("Set up another client by hand", isExpanded: $showsSnippet) {
+        Picker("Set up in", selection: $snippet) {
+          ForEach(ClientSnippet.allCases, id: \.self) { Text($0.rawValue).tag($0) }
         }
-        .task(id: copied) {
-          guard copied else { return }
-          try? await Task.sleep(for: .seconds(2))
-          copied = false
+        let name = NewSession.Supervisor.serverName
+        let port = MCPServerController.port
+        let text = snippet.text(serverName: name, port: port, token: controller.token)
+        // Drawn masked while the token is masked, and copied whole either way — a bulleted
+        // token one row up and the same token in clear one row down would make Reveal a button
+        // that reveals nothing.
+        let shown =
+          tokenRevealed
+          ? text
+          : snippet.text(serverName: name, port: port, token: String(repeating: "•", count: 24))
+        ScrollView(.horizontal) {
+          Text(shown)
+            .font(.system(.caption, design: .monospaced))
+            .textSelection(.enabled)
+        }
+        .frame(maxHeight: 120)
+        HStack {
+          Spacer()
+          Button(copied ? "Copied" : "Copy") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+          }
+          .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
+          }
         }
       }
     } header: {
-      Text("Connect another client")
+      Text("Clients")
     } footer: {
       Text(
-        "Copy takes the real token, masked here or not, and it goes into a config file on this Mac. Regenerating stops every client still using the old one, including a supervisor session already running."
+        "Configure adds an \(NewSession.Supervisor.serverName) entry to that client's own config, with this server's address and token, and leaves the rest of the file as it was. The previous file is kept beside it with an .armada-backup suffix, and Remove takes out that entry and nothing else. Regenerating the token or changing the port updates every client configured here; one already running picks the change up when it reconnects. A supervisor session already running keeps the token it started with."
       )
     }
   }

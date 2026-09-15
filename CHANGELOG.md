@@ -32,6 +32,13 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   own account or one the agent names, optionally with an opening message. The session asks you
   for every permission as usual, the supervisor is not pre-allowed to call it, and a message
   that would be read as a flag, a shell command or a slash command is refused.
+- **Connect a client with one click.** Settings ▸ Supervisor lists the MCP clients on your Mac,
+  Claude Code once per account plus ChatGPT & Codex, Cursor and Visual Studio Code, and adds
+  Armada to any of them with Configure or takes it back out with Remove. Nothing else in the
+  client's config changes, the previous file is kept beside it as a backup, and a server of
+  someone else's that already uses the name is never replaced without asking. Regenerating the
+  token or changing the port updates every client configured this way. The copy-paste setup is
+  still there for any other client.
 
 - **Talk to Armada.** Settings ▸ Voice gives Armada a global shortcut: press it, or hold it,
   anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen
@@ -60,6 +67,9 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - `ArmadaSupervisor`, a second local package: the voice `claude`'s stream-json decoding and
   argument lockdown, sentence chunking, the silence rule and the shortcut's reducer, under
   `make -C apps/apple test`.
+- Client configs are written by `MCPKitWiring`, a new product in `swift-mcp-kit` 1.1.0 that
+  holds the merge, the Codex TOML splice and the backup rules Bastion and Cupertino each carried
+  a copy of.
 
 ## [1.0.0] - 2026-09-14
 
