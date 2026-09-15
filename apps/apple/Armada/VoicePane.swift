@@ -1,4 +1,5 @@
 import AVFoundation
+import ArmadaSpeech
 import ArmadaSupervisor
 import SwiftUI
 
@@ -19,10 +20,12 @@ struct VoicePane: View {
   @State private var server = MCPServerController.shared
   @State private var monitor = EntitlementMonitor.shared
   @State private var chord = VoiceShortcut.Chord.stored
+  @State private var kokoro = SpeechModelStore.voice
   /// Its own synthesizer, so a preview never cuts into an answer being spoken.
   @State private var preview = Speaker()
 
   private static let sample = "Two sessions need you. Bastion is waiting for your approval."
+  private static let kokoroChoice = VoiceChoice.kokoro(KokoroSynthesizer.voice)
 
   var body: some View {
     Form {
@@ -33,7 +36,18 @@ struct VoicePane: View {
     }
     .formStyle(.grouped)
     .navigationTitle("Voice")
-    .onDisappear { preview.stop() }
+    .onAppear {
+      kokoro.refresh()
+      if VoiceChoice(storageValue: voiceID) == Self.kokoroChoice { kokoro.warmUp() }
+    }
+    .onDisappear {
+      preview.stop()
+      // Loaded here only to hear it: voice itself is off, so nothing else needs it in memory.
+      if !enabled { kokoro.release() }
+    }
+    .onChange(of: voiceID) {
+      if VoiceChoice(storageValue: voiceID) == Self.kokoroChoice { kokoro.warmUp() }
+    }
     .onChange(of: enabled) { VoiceController.shared.sync() }
     .onChange(of: chord) {
       chord.store()
@@ -116,22 +130,28 @@ struct VoicePane: View {
         }
       }
       Toggle("Speak replies", isOn: $speaks)
-      HStack {
-        Picker("Voice", selection: $voiceID) {
-          Text("System default").tag("")
-          ForEach(Speaker.voices, id: \.identifier) { voice in
-            Text(Self.label(for: voice)).tag(voice.identifier)
+      Group {
+        HStack {
+          Picker("Voice", selection: $voiceID) {
+            Text("System default").tag("")
+            if kokoro.isInstalled || VoiceChoice(storageValue: voiceID) == Self.kokoroChoice {
+              Text("Heart (Kokoro)").tag(Self.kokoroChoice.storageValue)
+            }
+            ForEach(Speaker.voices, id: \.identifier) { voice in
+              Text(Self.label(for: voice)).tag(voice.identifier)
+            }
           }
+          Button {
+            preview.stop()
+            preview.voiceIdentifier = voiceID
+            preview.speak(Self.sample)
+          } label: {
+            Image(systemName: "play.circle")
+          }
+          .buttonStyle(.borderless)
+          .help("Hear this voice")
         }
-        Button {
-          preview.stop()
-          preview.voiceIdentifier = voiceID
-          preview.speak(Self.sample)
-        } label: {
-          Image(systemName: "play.circle")
-        }
-        .buttonStyle(.borderless)
-        .help("Hear this voice")
+        kokoroRow
       }
       .disabled(!speaks)
       Button("Start a New Conversation") {
@@ -141,8 +161,52 @@ struct VoicePane: View {
       Text("Answering")
     } footer: {
       Text(
-        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt."
+        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
       )
+    }
+  }
+
+  /// Kokoro's download, in the same states as Parakeet's in `VoiceRecognitionSection`.
+  @ViewBuilder private var kokoroRow: some View {
+    if !kokoro.isSupported {
+      LabeledContent("Kokoro", value: "Needs macOS 26.6 or later")
+    } else {
+      switch kokoro.state {
+      case .installed:
+        LabeledContent("Kokoro", value: kokoroStatus)
+        if let message = kokoro.loadError {
+          Text(message)
+            .font(.caption)
+            .foregroundStyle(.orange)
+        }
+      case .missing, .failed:
+        Button("Download Kokoro (about 95 MB)") { kokoro.download() }
+          .disabled(kokoro.isOtherDownloading)
+        if case .failed(let message) = kokoro.state {
+          Text(message)
+            .font(.caption)
+            .foregroundStyle(.orange)
+        }
+      case .downloading(let fraction):
+        LabeledContent("Downloading Kokoro") {
+          HStack(spacing: 8) {
+            ProgressView(value: fraction)
+              .frame(width: 160)
+            Button("Cancel") { kokoro.cancelDownload() }
+              .buttonStyle(.borderless)
+          }
+        }
+      }
+    }
+  }
+
+  private var kokoroStatus: String {
+    if kokoro.isPreparing {
+      "Getting ready…"
+    } else if kokoro.isLoaded {
+      "Ready, on this Mac"
+    } else {
+      "Downloaded"
     }
   }
 

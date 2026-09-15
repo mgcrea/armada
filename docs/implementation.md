@@ -42,7 +42,7 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   screen, Parakeet v3 (or Apple's dictation until Parakeet is downloaded) turns the question into
   text on the Mac, a headless `claude` Armada runs on
   the chosen account answers through the same MCP server, and the reply is spoken a sentence at
-  a time. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
+  a time, in a system voice or in Kokoro once downloaded. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
   read tools, continues the conversation for follow-ups, and closes after five idle minutes.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
@@ -109,14 +109,14 @@ transcripts, separate rate limits.
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
 | `SupervisorMCPConfig` | the 0600 MCP configuration both supervisors are started with |
-| `ArmadaSupervisor` (package) | voice's decisions with no audio or UI: stream-json decoding, the voice `claude`'s arguments, sentence chunking, the silence rule, the shortcut reducer; `make -C apps/apple test` |
+| `ArmadaSupervisor` (package) | voice's decisions with no audio or UI: stream-json decoding, the voice `claude`'s arguments, sentence chunking and Kokoro's phoneme splitting, the stored voice choice, the silence rule, the shortcut reducer; `make -C apps/apple test` |
 | `VoiceController` | voice's coordinator: performs `VoiceTurn`'s effects, holds what the card shows, starts and resumes the voice `claude` |
 | `VoiceCapture` | the microphone and the recognizer for one question: Parakeet, transcribed again every half second, or `DictationTranscriber` |
-| `ArmadaSpeech` (package, dynamic framework) | `ParakeetRecognizer`: FluidAudio and Parakeet v3, the offline load and the one download |
-| `SpeechModelStore`, `VoiceRecognitionSection` | whether Parakeet is on the Mac, the Download button and its progress |
+| `ArmadaSpeech` (package, dynamic framework) | `ParakeetRecognizer` and `KokoroSynthesizer`: FluidAudio's Parakeet v3 and Kokoro-82M, their offline loads and their downloads |
+| `SpeechModelStore`, `VoiceRecognitionSection` | whether each model is on the Mac and loaded, and Parakeet's Download button and its progress (Kokoro's is in `VoicePane`) |
 | `SupervisorProcess` | the headless `claude` voice owns: frames to stdin, stream-json events back, closed when idle |
 | `VoiceShortcut`, `ShortcutRecorder` | the one global chord through `RegisterEventHotKey`, and the Settings control that records it |
-| `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the synthesizer |
+| `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the speaker: a system voice or Kokoro per sentence, in order |
 | `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice and a button to hear it |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
@@ -359,6 +359,20 @@ Each of these cost time here, and none is visible from the code that depends on 
   and only `download` turns it off.
 - **The first Parakeet load on a Mac compiles the model**: 12.8 s measured, 0.13 s every time
   after. `SpeechModelStore.warmUp` loads it when voice is switched on, never on the first press.
+- **Kokoro refuses more than 510 phonemes in one call**, counted as Swift characters, and
+  FluidAudio at this revision no longer splits for it. `KokoroSynthesizer.samples` cuts each
+  sentence's phonemes with `PhonemeSplit` first.
+- **Kokoro's G2P files live at a fixed path.** `G2PModel.shared` reads
+  `~/.cache/fluidaudio/Models/kokoro` whatever directory the manager is given, so Armada passes
+  none, and `KokoroSynthesizer.isInstalled` checks both folders.
+- **The lexicon and extra voice packs come through `AssetDownloader`, which offline mode does not
+  stop.** Loading reaches it only for a missing file, so `isInstalled` requires the lexicon before
+  anything loads.
+- **macOS 26.4–26.5.x crash in Apple's BNNS during Kokoro synthesis** (FluidAudio #844, fixed in
+  26.6). FluidAudio only logs it, so `KokoroSynthesizer.isSupported` hides Kokoro there.
+- **Kokoro's first load compiles seven stages for the Neural Engine**, about 20 s by FluidAudio's
+  measure on an M1. `Speaker` reads with the system voice until `SpeechModelStore.voice.isLoaded`,
+  so an answer never waits for it.
 - **FluidAudio's streaming managers do not fit.** `StreamingUnifiedAsrManager` runs an
   English-only model, and the multilingual Nemotron streaming model is a separate download,
   weaker on French. Live words come from running v3 over the growing buffer instead.
@@ -558,6 +572,9 @@ audit`. Nothing below has been run end to end.
 - **The microphone prompt is untested in the app bundle**, and so is whether an app, unlike the
   command-line spike, is also asked for speech recognition.
 - **Replies are spoken in the system language's voice**, whatever language the reply is in.
+  Kokoro reads English only, so a French answer read by Kokoro sounds wrong.
+- **Kokoro has never read a live answer.** Its download, first load and playback are untested in
+  the app, it offers one voice (`af_heart`), and what it adds to Armada's memory is unmeasured.
 - **Parakeet was measured on four recorded French questions**, against Apple's dictation, not on
   English or on sentences mixing both. The Download button has never run, and a 480 MB download
   interrupted halfway is untested.

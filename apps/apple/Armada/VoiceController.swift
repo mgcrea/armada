@@ -52,6 +52,9 @@ final class VoiceController {
   static var speaksReplies: Bool {
     UserDefaults.standard.object(forKey: speaksKey) as? Bool ?? true
   }
+  static var voiceChoice: VoiceChoice {
+    VoiceChoice(storageValue: UserDefaults.standard.string(forKey: voiceKey))
+  }
 
   private(set) var turn = VoiceTurn(mode: .press)
   /// The question as it is being heard.
@@ -95,11 +98,15 @@ final class VoiceController {
   func sync() {
     if Self.isEnabled, EntitlementMonitor.shared.current.isEntitled {
       VoiceShortcut.shared.register(VoiceShortcut.Chord.stored)
-      SpeechModelStore.shared.warmUp()
+      SpeechModelStore.recognizer.warmUp()
+      if Self.speaksReplies, case .kokoro = Self.voiceChoice {
+        SpeechModelStore.voice.warmUp()
+      }
     } else {
       VoiceShortcut.shared.unregister()
       standDown()
-      SpeechModelStore.shared.release()
+      SpeechModelStore.recognizer.release()
+      SpeechModelStore.voice.release()
     }
   }
 

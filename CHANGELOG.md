@@ -47,6 +47,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own
   `claude`, on the account you pick, and a follow-up continues the same conversation. Off by
   default; it reads the fleet through the MCP server in Settings ▸ Supervisor.
+- **A more natural voice for replies, on this Mac.** Settings ▸ Voice can download Kokoro, about
+  95 MB from huggingface.co, and read answers with it instead of a system voice. It runs on the
+  Mac, reads English, and never makes an answer wait: a sentence goes to the system voice while
+  Kokoro is still loading or when Kokoro cannot read it. Not offered on macOS 26.4 and 26.5, where
+  an Apple bug crashes it.
 
 ### Changed
 
@@ -62,10 +67,10 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - **One entitlement: the microphone.** The app is signed with
   `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and
   `make sign` allow exactly that key and fail on any other.
-- **A second thing Armada can download: voice's speech model.** When Parakeet v3 is not already
-  in FluidAudio's shared models folder, Settings ▸ Voice offers it, about 480 MB from
-  huggingface.co, and fetches it only when you press Download. `make audit` allows FluidAudio's
-  download code in its own framework, `ArmadaSpeech`, and nowhere else.
+- **A second thing Armada can download: voice's speech models.** When Parakeet v3 or Kokoro is not
+  already in FluidAudio's shared models folders, Settings ▸ Voice offers it, about 480 MB and
+  95 MB from huggingface.co, and fetches each only when you press its Download button. `make audit`
+  allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.
 
 ### Internal
 
@@ -73,7 +78,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   argument lockdown, sentence chunking, the silence rule and the shortcut's reducer, under
   `make -C apps/apple test`.
 - `ArmadaSpeech`, a dynamic framework holding FluidAudio, pinned to a revision as Cadence pins
-  it, so its downloader's symbols live in one binary the audit names.
+  it, so its downloader's symbols live in one binary the audit names. It holds
+  `ParakeetRecognizer` and `KokoroSynthesizer`.
+- `PhonemeSplit` and `VoiceChoice` in `ArmadaSupervisor`: Kokoro takes at most 510 phonemes a call
+  and FluidAudio no longer splits for it, and the stored voice identifier names a system voice or
+  Kokoro.
 - Client configs are written by `MCPKitWiring`, a new product in `swift-mcp-kit` 1.1.0 that
   holds the merge, the Codex TOML splice and the backup rules Bastion and Cupertino each carried
   a copy of.

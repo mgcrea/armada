@@ -23,10 +23,11 @@
 # because local IPC shares them, so its allowance is asserted where the socket is
 # made instead: see "Loopback" below.
 #
-# The third allowance is voice's recognizer. FluidAudio, which runs Parakeet v3, carries a model
-# downloader, and Armada builds it into a framework of its own, ArmadaSpeech, so that the
-# downloader's symbols sit in one named binary rather than in Armada's executable. The download
-# runs only from the button in Settings ▸ Voice. See "ArmadaSpeech" below for the exact symbols.
+# The third allowance is voice's speech models. FluidAudio, which runs Parakeet v3 and Kokoro,
+# carries a model downloader, and Armada builds it into a framework of its own, ArmadaSpeech, so
+# that the downloader's symbols sit in one named binary rather than in Armada's executable. A
+# download runs only from its button in Settings ▸ Voice. See "ArmadaSpeech" below for the exact
+# symbols.
 #
 # The fourth allowance is not a network capability at all. It is here because this
 # script is also where "no entitlements" used to be asserted: voice needs the
@@ -84,10 +85,10 @@ SPARKLE_ALLOWED='^_OBJC_CLASS_\$_(NSURLSession|NSURLSessionConfiguration|NSMutab
 # check below.
 SPARKLE_EXPECTED="${SPARKLE_EXPECTED:-1}"
 
-# ArmadaSpeech is voice's recognizer: FluidAudio and the Parakeet v3 runtime, built as a framework
-# of its own so this line can name it. Its network capability is FluidAudio's model downloader,
-# which Armada calls only from Settings ▸ Voice ▸ Download, with FluidAudio's offline mode on at
-# every other moment.
+# ArmadaSpeech is voice's speech models: FluidAudio, with Parakeet v3 and Kokoro, built as a
+# framework of its own so this line can name it. Its network capability is FluidAudio's model
+# downloader, which Armada calls only from the Download buttons in Settings ▸ Voice, with
+# FluidAudio's offline mode on at every other moment.
 SPEECH_BIN='Contents/Frameworks/ArmadaSpeech.framework/Versions/A/ArmadaSpeech'
 
 # Exactly these, measured against FluidAudio 6428e291 on 2026-09-15, one per line. The
@@ -178,7 +179,7 @@ while IFS= read -r rel; do
       printf '%s\n' "$unexpected" | sed 's/^/          /'
       status=1
     else
-      printf '  DL    %-46s reaches the network — the Parakeet download, only when pressed\n' "$rel"
+      printf '  DL    %-46s reaches the network — the speech model downloads, only when pressed\n' "$rel"
     fi
     continue
   fi
@@ -412,8 +413,8 @@ if [ "$status" -eq 0 ]; then
   fi
   echo "  Nothing it reads leaves this Mac unless you point an agent at that endpoint."
   if [ "$saw_speech" -eq 1 ]; then
-    echo "  Voice can fetch one file set of its own, its speech model from huggingface.co,"
-    echo "  and only when Download is pressed in Settings ▸ Voice."
+    echo "  Voice can fetch its own speech models from huggingface.co, each only when its"
+    echo "  Download button is pressed in Settings ▸ Voice."
   fi
   echo "  Its one entitlement is the microphone, open only while voice is listening."
   echo "  This says nothing about the \`claude\` it spawns, which talks to Anthropic"

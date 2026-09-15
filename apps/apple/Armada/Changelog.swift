@@ -376,34 +376,40 @@ nonisolated enum Changelog {
             body: [
               "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Your speech is recognised on the Mac by Parakeet v3, which works out which of 25 languages you are speaking, or by Apple's dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
             ]),
+          Entry(
+            ordinal: 6,
+            headline: "A more natural voice for replies, on this Mac.",
+            body: [
+              "Settings ▸ Voice can download Kokoro, about 95 MB from huggingface.co, and read answers with it instead of a system voice. It runs on the Mac, reads English, and never makes an answer wait: a sentence goes to the system voice while Kokoro is still loading or when Kokoro cannot read it. Not offered on macOS 26.4 and 26.5, where an Apple bug crashes it.",
+            ]),
         ]),
       Section(
         name: "Changed",
         lead: [],
         entries: [
           Entry(
-            ordinal: 6,
+            ordinal: 7,
             headline: "Sessions in a saved project skip Claude Code's trust dialog.",
             body: [
               "Starting a Claude Code session in a project you saved marks its folder trusted on that account, the flag \"Yes, I trust this folder\" sets, so the session opens on its prompt. It is the one thing Armada writes to Claude Code's configuration: one field in `.claude.json`, written under Claude Code's own lock and edited in place, with the rest of the file left exactly as it was.",
             ]),
           Entry(
-            ordinal: 7,
+            ordinal: 8,
             headline: "Armada runs a `claude` of its own while you talk to it.",
             body: [
               "Voice starts your installed `claude` headless with no built-in tools and only Armada's six read tools, keeps it for follow-up questions, and closes it after five idle minutes. It is the one agent process Armada owns rather than watches.",
             ]),
           Entry(
-            ordinal: 8,
+            ordinal: 9,
             headline: "One entitlement: the microphone.",
             body: [
               "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",
             ]),
           Entry(
-            ordinal: 9,
-            headline: "A second thing Armada can download: voice's speech model.",
+            ordinal: 10,
+            headline: "A second thing Armada can download: voice's speech models.",
             body: [
-              "When Parakeet v3 is not already in FluidAudio's shared models folder, Settings ▸ Voice offers it, about 480 MB from huggingface.co, and fetches it only when you press Download. `make audit` allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.",
+              "When Parakeet v3 or Kokoro is not already in FluidAudio's shared models folders, Settings ▸ Voice offers it, about 480 MB and 95 MB from huggingface.co, and fetches each only when you press its Download button. `make audit` allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.",
             ]),
         ]),
     ])

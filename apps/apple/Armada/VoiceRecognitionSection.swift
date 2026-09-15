@@ -8,7 +8,7 @@ import SwiftUI
 /// network request after the update check, and says that a copy another app already fetched is
 /// used instead, because that is the question someone with Cadence or MacWhisper installed asks.
 struct VoiceRecognitionSection: View {
-  @State private var store = SpeechModelStore.shared
+  @State private var store = SpeechModelStore.recognizer
 
   var body: some View {
     Section {
@@ -22,6 +22,7 @@ struct VoiceRecognitionSection: View {
       case .missing, .failed:
         LabeledContent("Recognizer", value: "Apple dictation")
         Button("Download Parakeet v3 (about 480 MB)") { store.download() }
+          .disabled(store.isOtherDownloading)
         if case .failed(let message) = store.state {
           Text(message)
             .font(.caption)

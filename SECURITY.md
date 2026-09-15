@@ -21,9 +21,9 @@ Three properties, each of which is checkable rather than asserted:
   call. The first is the update check, which is off until you turn it on or press Check
   Now; it reads one file, `armada.mgcrea.io/appcast.xml`, and sends no identifier with it —
   not your licence key, not a machine id. Until you opt in, the updater is never even
-  constructed. The second is voice's speech model: Download in Settings ▸ Voice fetches
-  Parakeet v3 from huggingface.co, with the host fixed in code and no identifier or token sent,
-  and nothing else ever starts it. `make audit` asserts all of this against the built bundle:
+  constructed. The second is voice's speech models: a Download button in Settings ▸ Voice
+  fetches Parakeet v3 or Kokoro from huggingface.co, with the host fixed in code and no identifier
+  or token sent, and nothing else ever starts either. `make audit` asserts all of this against the built bundle:
   every Mach-O swept for URL loading, DNS and TLS symbols, with Sparkle allowed exactly the
   three URL-loading classes it was measured to use, `ArmadaSpeech.framework` exactly the
   URL-loading and name-lookup symbols FluidAudio's downloader was measured to use, and nothing
@@ -43,7 +43,7 @@ Three properties, each of which is checkable rather than asserted:
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
   shortcut to the end of the question. Speech is recognised on this Mac, by Parakeet v3 when the
-  model is there and by Apple's dictation until then; the audio is never stored or sent, and replies are spoken by the system synthesizer. The question itself goes to Anthropic
+  model is there and by Apple's dictation until then; the audio is never stored or sent, and replies are spoken on this Mac, by the system synthesizer or by Kokoro once downloaded. The question itself goes to Anthropic
   as text, through a `claude` Armada runs on the account you choose: see "The voice `claude`"
   below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
   and no other keystroke.
@@ -132,12 +132,14 @@ attacker-influenced text meets something that acts on it:
   `DictationTranscriber` until Parakeet is installed, and keeps nothing.
   Anything that leaves the microphone open outside a question, stores or sends audio, or starts
   listening without the shortcut, is in scope.
-- **The Parakeet model and its download.** `ParakeetRecognizer` loads the model from
-  FluidAudio's shared folder, `~/Library/Application Support/FluidAudio/Models`, with FluidAudio's
-  offline mode on, so loading never fetches. The download runs only from the Download button: it
+- **The speech models and their downloads.** `ParakeetRecognizer` loads Parakeet from
+  FluidAudio's shared folder, `~/Library/Application Support/FluidAudio/Models`, and
+  `KokoroSynthesizer` loads Kokoro from `~/.cache/fluidaudio/Models`, only once every file it would
+  otherwise fetch is there. Both load with FluidAudio's offline mode on, so loading never fetches.
+  Each download runs only from its Download button: it
   pins the registry to `https://huggingface.co` in code, over FluidAudio's `REGISTRY_URL` and
   `MODEL_REGISTRY_URL` environment overrides, and removes the Hugging Face token variables
-  FluidAudio would otherwise forward. Anything that starts a fetch without that button, sends an
+  FluidAudio would otherwise forward. Anything that starts a fetch without those buttons, sends an
   identifier, reaches another host, or loads model files from anywhere else, is in scope. A model
   replaced in that shared folder by another program running as you is not: see below.
 - **The voice shortcut.** One chord through `RegisterEventHotKey`, and a local key monitor in
