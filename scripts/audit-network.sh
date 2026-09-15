@@ -23,6 +23,13 @@
 # because local IPC shares them, so its allowance is asserted where the socket is
 # made instead: see "Loopback" below.
 #
+# The third allowance is not a network capability at all. It is here because this
+# script is also where "no entitlements" used to be asserted: voice needs the
+# microphone, and the hardened runtime grants it only through
+# `com.apple.security.device.audio-input`. That one key is allowed, in the project
+# and in the signature, and any other still fails. What voice sends goes through
+# the `claude` Armada runs, which the list below already puts outside this audit.
+#
 # Cupertino's script is the model, and the Sparkle rules below are its rules.
 # Bastion's cannot be — its loopback gateway is always on and is the product, where
 # Armada's one listener is opt-in and read-only — so it cannot make the claim at all.
@@ -33,9 +40,10 @@
 #     could never be the test. The address family is: none in Armada's own
 #     sources, and in swift-mcp-kit's listener only the loopback address. Both are
 #     asserted at the source level below.
-#   * What the `claude` process Armada spawns then does. It talks to Anthropic —
-#     that is its job, on the user's own sign-in. This audits Armada, not the
-#     program it asks a question of. See SECURITY.md.
+#   * What the `claude` processes Armada spawns then do: the one it asks for plan
+#     limits, and the one that answers voice questions. They talk to Anthropic —
+#     that is their job, on the user's own sign-in. This audits Armada, not the
+#     program it runs. See SECURITY.md.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -264,17 +272,28 @@ else
   fi
 fi
 
-# Armada ships no entitlements file at all, and that is a property rather than an
-# oversight: nothing it does needs one. An EMPTY permission set that is true by
-# construction is checkable; one arrived at by deletion is not — so this asserts
-# the setting is ABSENT from the project rather than present and empty.
+# Armada's one entitlement is the microphone, for voice. The project must name
+# exactly `Armada.entitlements` in every configuration, and that file must grant
+# exactly `com.apple.security.device.audio-input`: a permission set checked key by
+# key, rather than one that merely happens to be small today.
 echo ""
-echo "  Entitlements — none, by construction"
-if grep -q 'CODE_SIGN_ENTITLEMENTS' apps/apple/Armada.xcodeproj/project.pbxproj; then
-  printf '  FAIL  %-46s the project names an entitlements file\n' "CODE_SIGN_ENTITLEMENTS"
-  status=1
+echo "  Entitlements — the microphone, and nothing else"
+ENTITLEMENTS=apps/apple/Armada.entitlements
+named=$(grep -o 'CODE_SIGN_ENTITLEMENTS = [^;]*;' apps/apple/Armada.xcodeproj/project.pbxproj | sort -u || true)
+if [ "$named" = "CODE_SIGN_ENTITLEMENTS = Armada.entitlements;" ]; then
+  printf '  ok    %-46s Armada.entitlements\n' "CODE_SIGN_ENTITLEMENTS"
 else
-  printf '  ok    %-46s the project names none\n' "CODE_SIGN_ENTITLEMENTS"
+  printf '  FAIL  %-46s expected Armada.entitlements, found: %s\n' "CODE_SIGN_ENTITLEMENTS" "${named:-none}"
+  status=1
+fi
+declared=$(plutil -convert json -o - "$ENTITLEMENTS" 2>/dev/null |
+  python3 -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin))))' 2>/dev/null ||
+  true)
+if [ "$declared" = "com.apple.security.device.audio-input" ]; then
+  printf '  ok    %-46s audio-input only\n' "$ENTITLEMENTS"
+else
+  printf '  FAIL  %-46s expected audio-input only, found: %s\n' "$ENTITLEMENTS" "${declared:-nothing}"
+  status=1
 fi
 
 # And the signature agrees, for a bundle that carries a real one. The project
@@ -303,8 +322,12 @@ else
     python3 -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin))))' 2>/dev/null ||
     true)
   case "$granted" in
+    "com.apple.security.device.audio-input" | \
+      "com.apple.security.device.audio-input,com.apple.security.get-task-allow")
+      printf '  ok    %-46s audio-input only\n' "signed entitlements" ;;
     "" | "com.apple.security.get-task-allow")
-      printf '  ok    %-46s none\n' "signed entitlements" ;;
+      printf '  FAIL  %-46s no audio-input: voice cannot listen\n' "signed entitlements"
+      status=1 ;;
     *)
       printf '  FAIL  %-46s unexpected: %s\n' "signed entitlements" "$granted"
       status=1 ;;
@@ -331,6 +354,7 @@ if [ "$status" -eq 0 ]; then
     echo "  endpoint, on 127.0.0.1 only, and only while Settings ▸ Supervisor has it on."
   fi
   echo "  Nothing it reads leaves this Mac unless you point an agent at that endpoint."
+  echo "  Its one entitlement is the microphone, open only while voice is listening."
   echo "  This says nothing about the \`claude\` it spawns, which talks to Anthropic"
   echo "  on your own sign-in — see SECURITY.md."
 else
