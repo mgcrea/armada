@@ -373,6 +373,11 @@ Each of these cost time here, and none is visible from the code that depends on 
 - **Kokoro's first load compiles seven stages for the Neural Engine**, about 20 s by FluidAudio's
   measure on an M1. `Speaker` reads with the system voice until `SpeechModelStore.voice.isLoaded`,
   so an answer never waits for it.
+- **Stop the `AVAudioPlayerNode` before its engine.** An engine stopped under a player left playing
+  restarts with that player stuck: `isPlaying` stays true, `play()` does nothing, and the next
+  buffer never plays or completes, which left every answer after the first one silent. `Speaker`'s
+  `stopEngine` stops the player first whenever the queue drains, on `stop()`, and after an audio
+  configuration change, where the system has already stopped the engine.
 - **FluidAudio's streaming managers do not fit.** `StreamingUnifiedAsrManager` runs an
   English-only model, and the multilingual Nemotron streaming model is a separate download,
   weaker on French. Live words come from running v3 over the growing buffer instead.

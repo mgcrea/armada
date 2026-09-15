@@ -80,10 +80,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     live.removeAll()
     synthesizer.stopSpeaking(at: .immediate)
     for continuation in waiting { continuation.resume() }
-    if engine.isRunning {
-      player.stop()
-      engine.stop()
-    }
+    stopEngine()
     endPlaying(token: playToken)
   }
 
@@ -115,7 +112,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     guard pending == 0 else { return }
     tail = nil
     rendering.removeAll()
-    if engine.isRunning { engine.stop() }
+    stopEngine()
     onFinished?()
   }
 
@@ -203,8 +200,24 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     if !engine.isRunning { try engine.start() }
   }
 
-  /// Treat the sentence that was playing as done, or the queue would wait on it forever.
+  /// Stop the player before the engine, every time. An engine stopped under a player left playing
+  /// restarts with that player stuck: `isPlaying` stays true, `play()` does nothing, and the next
+  /// buffer never plays and never completes, so the queue waits on it forever. Measured on
+  /// 2026-09-15, as a second answer that was never heard.
+  private func stopEngine() {
+    guard player.engine != nil else { return }
+    player.stop()
+    if engine.isRunning { engine.stop() }
+  }
+
+  /// The system stopped the engine, but not the player: stop that too, and treat the sentence that
+  /// was playing as done, or the queue would wait on it forever.
   @objc nonisolated private func engineConfigurationChanged(_ notification: Notification) {
-    DispatchQueue.main.async { MainActor.assumeIsolated { self.endPlaying(token: self.playToken) } }
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        self.stopEngine()
+        self.endPlaying(token: self.playToken)
+      }
+    }
   }
 }
