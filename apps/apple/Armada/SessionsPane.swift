@@ -4,6 +4,9 @@ import SwiftUI
 struct SessionRow: View {
   let session: Session
   let now: Date
+  /// How far Focus reaches from this row, drawn beside the project it would land in.
+  /// Nil for a session with no host, and until the pane has asked.
+  var focus: FocusMarker? = nil
 
   var body: some View {
     HStack(spacing: 10) {
@@ -13,6 +16,13 @@ struct SessionRow: View {
           .lineLimit(1)
         HStack(spacing: 6) {
           Text(session.registry.projectName)
+          if let focus {
+            Image(systemName: focus.reach.systemImage)
+              .imageScale(.small)
+              .foregroundStyle(focus.reach == .tab ? .secondary : .tertiary)
+              .help(focus.reach.help(hostName: focus.hostName))
+              .accessibilityLabel(focus.reach.help(hostName: focus.hostName))
+          }
           if let reason = session.untitledReason {
             Text("·")
             Text(reason)

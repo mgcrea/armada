@@ -190,11 +190,14 @@ What it costs and what it misses:
   *any* session in it: every `claude` a window runs is a child of that window's one extension
   host, `SessionHost.containerPID`. Measured the same day, 21 live sessions fell into nine
   hosts, one per window, with no exceptions. A window whose sessions are all untitled still
-  gets the window only.
-- The menu bar panel draws the Focus glyph as `arrow.up.forward.app` when all of this holds,
-  and as a dimmer `macwindow` when Focus will stop at the window or the app. It works that out
-  off the main thread as the panel opens (`FocusSession.reach`), with the same checks and
-  neither of the two steps that act.
+  gets the window only. Armada also reads a `custom-title` as the session's title now, ahead
+  of any `ai-title` (see `TranscriptTitle.newestTitle`), so a fork matches its own tab.
+- The menu bar panel and the account's session list draw a Focus glyph per row:
+  `arrow.up.forward.app` when all of this holds, a dimmer `macwindow` when Focus will stop at
+  the window or the app. `FocusSession.resolve` works it out off the main thread with the
+  same checks and neither of the two steps that act, asking each distinct window once. The
+  panel asks as it opens; the list when its rows change and when Armada is activated, since
+  tabs moved in VS Code change nothing Armada watches.
 - A session held in the sidebar has no editor tab. If another tab in the same window carries
   the same title, the check passes and the extension opens a second panel on the session. Not
   seen; written down because it is the one path left to the harm above.

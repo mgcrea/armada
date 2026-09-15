@@ -67,6 +67,40 @@ enum FocusSession {
     return .tab
   }
 
+  /// Hosts and reach for the sessions a list is about to draw a Focus glyph for.
+  ///
+  /// Hosts on the main actor, where `SessionHostLookup` lives and caches; the reach off
+  /// it, for the reason `reach` gives. **Identical probes are asked once**: sessions in
+  /// one window share a folder and their labels, and the tab walk is the expensive part,
+  /// so twenty rows across six windows cost six walks rather than twenty.
+  static func resolve(
+    _ sessions: [Session]
+  ) async -> (hosts: [pid_t: SessionHost?], reaches: [String: FocusReach]) {
+    var hosts: [pid_t: SessionHost?] = [:]
+    var probes: [(id: String, probe: FocusProbe)] = []
+    for session in sessions {
+      let host = SessionHostLookup.host(for: session.registry)
+      hosts[session.registry.pid] = host
+      guard let host else { continue }
+      let labels = ExtensionTab(session, host: host)?.labels.sorted()
+      let probe = FocusProbe(pid: host.pid, cwd: session.registry.cwd, labels: labels)
+      probes.append((session.id, probe))
+    }
+    let reaches = await Task.detached {
+      var memo: [FocusProbe: FocusReach] = [:]
+      var reaches: [String: FocusReach] = [:]
+      for (id, probe) in probes {
+        let reach =
+          memo[probe]
+          ?? FocusSession.reach(inApplication: probe.pid, cwd: probe.cwd, labels: probe.labels)
+        memo[probe] = reach
+        reaches[id] = reach
+      }
+      return reaches
+    }.value
+    return (hosts, reaches)
+  }
+
   /// Ask the Claude Code extension to show `tab`, once the window holding it is the one
   /// VS Code will give the request to.
   ///
@@ -137,6 +171,32 @@ nonisolated enum FocusReach: Sendable {
   case window
   /// The application alone: no Accessibility grant, or no window title names the folder.
   case application
+
+  /// `arrow.up.forward.app` for the session's own tab, `macwindow` for anything short of
+  /// it. Two looks rather than three: the question a glyph answers is "will this land on
+  /// my session", and the tooltip says which of the two shortfalls it is.
+  var systemImage: String { self == .tab ? "arrow.up.forward.app" : "macwindow" }
+
+  func help(hostName: String) -> String {
+    switch self {
+    case .tab: "Focus this session's tab in \(hostName)"
+    case .window: "Focus in \(hostName): the window, not this session's tab"
+    case .application: "Focus in \(hostName): the app, not this session's window"
+    }
+  }
+}
+
+/// A row's Focus glyph: how far it reaches, and the application it reaches into.
+nonisolated struct FocusMarker: Equatable, Sendable {
+  let reach: FocusReach
+  let hostName: String
+}
+
+/// One `FocusSession.reach` question, hashable so identical ones are asked once.
+private nonisolated struct FocusProbe: Hashable, Sendable {
+  let pid: pid_t
+  let cwd: String
+  let labels: [String]?
 }
 
 /// A session the Claude Code extension shows in an editor tab, and what it takes to ask

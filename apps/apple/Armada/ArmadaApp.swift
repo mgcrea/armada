@@ -508,27 +508,11 @@ struct AccountSummary: View {
     // while the panel is open re-resolves rather than leaving a stale row. The
     // lookup caches, so reopening the panel costs one syscall per row.
     .task(id: sessions.prefix(Self.visibleSessions).map(\.id)) {
-      var resolved: [pid_t: SessionHost?] = [:]
-      var probes: [(id: String, pid: pid_t, cwd: String, labels: [String]?)] = []
-      for session in sessions.prefix(Self.visibleSessions) {
-        let host = SessionHostLookup.host(for: session.registry)
-        resolved[session.registry.pid] = host
-        if let host {
-          probes.append(
-            (session.id, host.pid, session.registry.cwd, ExtensionTab(session, host: host)?.labels))
-        }
-      }
-      // Off the main thread: a tab check is about 25ms of Accessibility IPC a window,
-      // and a wedged host makes every message wait out its timeout. See
-      // `FocusSession.reach`.
-      let measured = await Task.detached {
-        Dictionary(
-          uniqueKeysWithValues: probes.map {
-            ($0.id, FocusSession.reach(inApplication: $0.pid, cwd: $0.cwd, labels: $0.labels))
-          })
-      }.value
-      hosts = resolved
-      reaches = measured
+      // Hosts here, the tab checks off the main thread — a tab check is about 25ms of
+      // Accessibility IPC a window. See `FocusSession.resolve`.
+      let resolved = await FocusSession.resolve(Array(sessions.prefix(Self.visibleSessions)))
+      hosts = resolved.hosts
+      reaches = resolved.reaches
     }
   }
 
@@ -685,14 +669,14 @@ struct SummaryRow: View {
           // frontmost nothing resigns, and the panel would stay over it.
           MenuBarPanel.dismiss()
         } label: {
-          Image(systemName: reach == .tab ? "arrow.up.forward.app" : "macwindow")
+          Image(systemName: (reach ?? .application).systemImage)
             .font(.caption)
             .foregroundStyle(reach == .tab ? .secondary : .tertiary)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help(focusHelp(host))
-        .accessibilityLabel(focusHelp(host))
+        .help((reach ?? .application).help(hostName: host.name))
+        .accessibilityLabel((reach ?? .application).help(hostName: host.name))
       }
     }
     .modifier(
@@ -700,14 +684,6 @@ struct SummaryRow: View {
         host: host, cwd: session.registry.cwd,
         fork: ForkAvailability.claude(session, in: account).target,
         session: session))
-  }
-
-  private func focusHelp(_ host: SessionHost) -> String {
-    switch reach {
-    case .tab: "Focus this session's tab in \(host.name)"
-    case .window: "Focus in \(host.name): the window, not this session's tab"
-    case .application, nil: "Focus in \(host.name): the app, not this session's window"
-    }
   }
 }
 

@@ -21,6 +21,13 @@ struct AccountPaneView: View {
   /// screen — never scrolls under the reader's cursor.
   @State private var scrollTarget: String?
 
+  /// Each row's Focus glyph, by session id. Absent for a session with no host.
+  @State private var focusMarkers: [String: FocusMarker] = [:]
+
+  /// Bumped when Armada comes back to the front, to re-ask what Focus reaches: that is
+  /// the moment someone has been opening and closing tabs somewhere else.
+  @State private var focusEpoch = 0
+
   // Shared with `CodexPaneView`, deliberately: this is one preference — how I like my
   // sessions listed — and two keys would mean parameterising `SessionSortMenu` and
   // letting the two panes drift. The defaults come from the enums rather than being
@@ -64,6 +71,25 @@ struct AccountPaneView: View {
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
     .onReceive(clock) { now = $0 }
+    // When the rows change and when Armada is activated, never on the clock: every
+    // answer is Accessibility IPC with the windows the sessions sit in.
+    .task(id: account.sessions.sessions.map(\.id) + ["\(focusEpoch)"]) {
+      let sessions = account.sessions.sessions
+      let resolved = await FocusSession.resolve(sessions)
+      var markers: [String: FocusMarker] = [:]
+      for session in sessions {
+        guard let host = resolved.hosts[session.registry.pid] ?? nil,
+          let reach = resolved.reaches[session.id]
+        else { continue }
+        markers[session.id] = FocusMarker(reach: reach, hostName: host.name)
+      }
+      focusMarkers = markers
+    }
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+    ) { _ in
+      focusEpoch += 1
+    }
     // A session ending should not leave the detail on a row that is gone.
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
@@ -184,7 +210,7 @@ struct AccountPaneView: View {
   /// stating it means the panel's scroll cannot be broken later by someone giving the
   /// `ForEach` an `id:` of its own or wrapping the row in something.
   private func row(_ session: Session) -> some View {
-    SessionRow(session: session, now: now)
+    SessionRow(session: session, now: now, focus: focusMarkers[session.id])
       .tag(session.id)
       .id(session.id)
   }
