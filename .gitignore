@@ -5,17 +5,8 @@
 # skill committed here would be shared with every clone, and this is the choice
 # not to. Ignored rather than merely untracked because it is one `git add -A`
 # away from riding along into a commit.
-#
-# NOT .idea/, which is tracked here on purpose — the icon's design canvas lives
-# in .idea/design/app-icon/ and is the provenance for design/armada-mark.svg.
-.claude
-
-# Except the canvas's uploads/: bastion's and cupertino's brand kits, dropped in
-# as reference while the icon was drawn. They are those apps' artwork rather than
-# this repo's, and this repo is public. The canvas itself, its support.js runtime
-# and its .thumbnail stay tracked, because it cannot open without them. Untracked
-# on 2026-09-14, not purged: the files are still in the history before that.
-.idea/design/app-icon/uploads/
+.idea/
+.claude/
 
 # Xcode
 apps/apple/.build/
