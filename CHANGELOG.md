@@ -5,10 +5,10 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.0.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.1.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.1.0] - 2026-09-16
 
 ### Added
 
@@ -39,19 +39,31 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   someone else's that already uses the name is never replaced without asking. Regenerating the
   token or changing the port updates every client configured this way. The copy-paste setup is
   still there for any other client.
-
 - **Talk to Armada.** Settings ▸ Voice gives Armada a global shortcut: press it, or hold it,
   anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen
   shows the question and then the answer while it is spoken. Your speech is recognised on the
   Mac by Parakeet v3, which works out which of 25 languages you are speaking, or by Apple's
-  dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own
-  `claude`, on the account you pick, and a follow-up continues the same conversation. Off by
-  default; it reads the fleet through the MCP server in Settings ▸ Supervisor.
+  dictation until you download Parakeet, and the audio is never kept. The question goes to
+  Anthropic as text through your own `claude`, on the account you pick, and a follow-up
+  continues the same conversation. Off by default; it reads the fleet through the MCP server in
+  Settings ▸ Supervisor.
 - **A more natural voice for replies, on this Mac.** Settings ▸ Voice can download Kokoro, about
   95 MB from huggingface.co, and read answers with it instead of a system voice. It runs on the
   Mac, reads English, and never makes an answer wait: a sentence goes to the system voice while
   Kokoro is still loading or when Kokoro cannot read it. Not offered on macOS 26.4 and 26.5, where
   an Apple bug crashes it.
+- **Working hours for the weekly pace.** Settings ▸ Usage takes the hours you usually work and
+  how much the rest of the day counts, so an evening's work is no longer measured against a week
+  of round-the-clock days. The pace tick on a usage bar gains a caret above it, and hovering the
+  bar says how many points ahead of or behind pace you are.
+- **Focus from the row.** Session rows in the menu bar popover and in an account's session list
+  carry a Focus button that brings forward the app hosting the session. It is drawn bright when
+  it will reach the session itself, and dimmer when it will stop at the window or the app.
+- **Focus reaches a session's own tab in VS Code.** For a session in the Claude Code extension,
+  Focus raises the right window and then asks the extension to show that session's tab, which
+  Accessibility cannot do. It asks only once the window in front is shown to hold the session,
+  so a session is never opened a second time in another window. VS Code asks once whether
+  Claude Code may open the link.
 
 ### Changed
 
@@ -71,6 +83,12 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   already in FluidAudio's shared models folders, Settings ▸ Voice offers it, about 480 MB and
   95 MB from huggingface.co, and fetches each only when you press its Download button. `make audit`
   allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.
+
+### Fixed
+
+- **A renamed session keeps its name.** Claude Code goes on writing AI titles after a rename, and
+  Armada showed whichever title was newest, so a rename reverted as soon as the next AI title
+  landed. The newest title you set now wins, and an AI title is shown only when there is none.
 
 ### Internal
 
