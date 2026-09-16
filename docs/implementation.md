@@ -378,6 +378,10 @@ Each of these cost time here, and none is visible from the code that depends on 
   buffer never plays or completes, which left every answer after the first one silent. `Speaker`'s
   `stopEngine` stops the player first whenever the queue drains, on `stop()`, and after an audio
   configuration change, where the system has already stopped the engine.
+- **Another app's copy of a model cannot be checked from the outside.** Listing
+  `~/Library/Containers/<other app>/Data` fails with "Operation not permitted", even from
+  Terminal, and hiding that error makes the folder look empty. That is why voice reads
+  FluidAudio's shared models folder and not Cadence's container.
 - **FluidAudio's streaming managers do not fit.** `StreamingUnifiedAsrManager` runs an
   English-only model, and the multilingual Nemotron streaming model is a separate download,
   weaker on French. Live words come from running v3 over the growing buffer instead.
