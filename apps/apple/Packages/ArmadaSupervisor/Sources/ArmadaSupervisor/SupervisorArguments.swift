@@ -75,12 +75,14 @@ public enum SupervisorArguments {
     base.filter { !inheritedSessionVariables.contains($0.key) }
   }
 
-  /// One spoken question as a stream-json user message, newline included.
-  public static func userFrame(_ text: String) -> Data {
-    frame([
+  /// One spoken question as a stream-json user message, newline included, followed by the reply
+  /// language's note when one is fixed (see `ReplyLanguage.questionNote`).
+  public static func userFrame(_ text: String, replyLanguage: ReplyLanguage = .question) -> Data {
+    let content = replyLanguage.questionNote.map { text + "\n\n" + $0 } ?? text
+    return frame([
       "type": "user",
       "session_id": "",
-      "message": ["role": "user", "content": text],
+      "message": ["role": "user", "content": content],
       "parent_tool_use_id": NSNull(),
     ])
   }

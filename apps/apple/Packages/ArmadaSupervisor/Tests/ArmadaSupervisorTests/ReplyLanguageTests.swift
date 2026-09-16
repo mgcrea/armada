@@ -18,6 +18,12 @@ struct ReplyLanguageTests {
     }
   }
 
+  @Test("a fixed language has a short note for the question itself, the question's has none")
+  func questionNote() {
+    #expect(ReplyLanguage.question.questionNote == nil)
+    #expect(ReplyLanguage.fixed("en").questionNote == "(Reply in English.)")
+  }
+
   @Test("a fixed language is named in English in the instruction, the question's has none")
   func instruction() {
     #expect(ReplyLanguage.question.instruction == nil)

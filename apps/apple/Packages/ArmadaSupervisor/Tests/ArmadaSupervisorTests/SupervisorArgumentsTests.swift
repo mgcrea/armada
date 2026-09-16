@@ -74,6 +74,19 @@ struct SupervisorArgumentsTests {
     #expect(brief == VoiceBrief.text + " " + sentence)
   }
 
+  @Test("a fixed reply language rides on the question as well, the question's own adds nothing")
+  func userFrameLanguage() throws {
+    let plain = SupervisorArguments.userFrame("Tu es là ?")
+    #expect(try content(of: plain) == "Tu es là ?")
+    let english = SupervisorArguments.userFrame("Tu es là ?", replyLanguage: .fixed("en"))
+    #expect(try content(of: english) == "Tu es là ?\n\n(Reply in English.)")
+  }
+
+  private func content(of frame: Data) throws -> String? {
+    let object = try JSONSerialization.jsonObject(with: frame) as? [String: Any]
+    return (object?["message"] as? [String: Any])?["content"] as? String
+  }
+
   @Test("a question survives quotes and newlines, one line per frame")
   func userFrame() throws {
     let data = SupervisorArguments.userFrame("What did \"Bastion\" say?\nAnd why?")

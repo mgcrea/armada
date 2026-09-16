@@ -31,7 +31,22 @@ public enum ReplyLanguage: Equatable, Sendable {
   /// The sentence appended to the brief, or nil when the question's language is used.
   public var instruction: String? {
     guard case .fixed(let code) = self else { return nil }
-    let name = Locale(identifier: "en").localizedString(forLanguageCode: code) ?? code
-    return "Always reply in \(name), even when the question is asked in another language."
+    return "Always reply in \(Self.englishName(of: code)), even when the question is asked in "
+      + "another language."
+  }
+
+  /// The note sent after each question, or nil when the question's language is used.
+  ///
+  /// **The brief alone is not enough.** Measured 2026-09-16 on forks of a real voice conversation
+  /// that already held one French exchange: a French question was answered in French three times
+  /// in three with only the brief's sentence, and in English three times in three with this note
+  /// on the question as well. A fresh conversation followed the brief on its own.
+  public var questionNote: String? {
+    guard case .fixed(let code) = self else { return nil }
+    return "(Reply in \(Self.englishName(of: code)).)"
+  }
+
+  private static func englishName(of code: String) -> String {
+    Locale(identifier: "en").localizedString(forLanguageCode: code) ?? code
   }
 }

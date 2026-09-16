@@ -296,7 +296,8 @@ final class VoiceController {
       dispatch(.failure(error.localizedDescription))
       return
     }
-    process?.send(SupervisorArguments.userFrame(text))
+    process?.send(
+      SupervisorArguments.userFrame(text, replyLanguage: processReplyLanguage ?? .question))
   }
 
   private func account() -> Account? {
@@ -417,7 +418,8 @@ final class VoiceController {
       Self.store(sessionID: nil, for: folder)
       do {
         try ensureProcess()
-        process?.send(SupervisorArguments.userFrame(question))
+        process?.send(
+          SupervisorArguments.userFrame(question, replyLanguage: processReplyLanguage ?? .question))
       } catch {
         dispatch(.failure(error.localizedDescription))
       }
