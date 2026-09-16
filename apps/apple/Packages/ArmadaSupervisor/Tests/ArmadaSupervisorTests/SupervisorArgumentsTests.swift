@@ -64,6 +64,16 @@ struct SupervisorArgumentsTests {
     #expect(value(after: "--resume", in: resumed) == "5f401944")
   }
 
+  @Test("the brief gains a language sentence only when a reply language is fixed")
+  func replyLanguage() throws {
+    #expect(value(after: "--append-system-prompt", in: argv) == VoiceBrief.text)
+    let english = SupervisorArguments.arguments(
+      mcpConfig: "/tmp/x.json", resume: nil, replyLanguage: .fixed("en"))
+    let brief = try #require(value(after: "--append-system-prompt", in: english))
+    let sentence = try #require(ReplyLanguage.fixed("en").instruction)
+    #expect(brief == VoiceBrief.text + " " + sentence)
+  }
+
   @Test("a question survives quotes and newlines, one line per frame")
   func userFrame() throws {
     let data = SupervisorArguments.userFrame("What did \"Bastion\" say?\nAnd why?")

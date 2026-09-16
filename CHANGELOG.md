@@ -8,6 +8,16 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.1.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Choose the language voice answers in.** Settings ▸ Voice has an Answer in picker: the
+  language you ask in, as before, or one language whatever you speak, such as English when you
+  ask in French. It applies from your next question and the conversation carries on. The Voice
+  picker lists that language's system voices, and it is the language a system voice falls back
+  to while Kokoro is loading.
+
 ## [1.1.0] - 2026-09-16
 
 ### Added

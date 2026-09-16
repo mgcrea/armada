@@ -443,6 +443,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Choose the language voice answers in.",
+            body: [
+              "Settings ▸ Voice has an Answer in picker: the language you ask in, as before, or one language whatever you speak, such as English when you ask in French. It applies from your next question and the conversation carries on. The Voice picker lists that language's system voices, and it is the language a system voice falls back to while Kokoro is loading.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

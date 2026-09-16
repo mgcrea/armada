@@ -15,6 +15,7 @@ struct VoicePane: View {
   @AppStorage(VoiceController.accountKey) private var accountID = ""
   @AppStorage(VoiceController.speaksKey) private var speaks = true
   @AppStorage(VoiceController.voiceKey) private var voiceID = ""
+  @AppStorage(VoiceController.replyLanguageKey) private var replyLanguageID = ""
   @State private var shortcut = VoiceShortcut.shared
   @State private var accounts = Accounts.shared
   @State private var server = MCPServerController.shared
@@ -47,6 +48,15 @@ struct VoicePane: View {
     }
     .onChange(of: voiceID) {
       if VoiceChoice(storageValue: voiceID) == Self.kokoroChoice { kokoro.warmUp() }
+    }
+    .onChange(of: replyLanguageID) {
+      // A system voice picked for the old language would read the new one badly, and would not be
+      // in the list any more. Kokoro and the default are kept.
+      if case .system(let identifier) = VoiceChoice(storageValue: voiceID),
+        !voices.contains(where: { $0.identifier == identifier })
+      {
+        voiceID = ""
+      }
     }
     .onChange(of: enabled) { VoiceController.shared.sync() }
     .onChange(of: chord) {
@@ -129,6 +139,13 @@ struct VoicePane: View {
           }
         }
       }
+      Picker("Answer in", selection: $replyLanguageID) {
+        Text("The language you ask in").tag("")
+        Divider()
+        ForEach(replyLanguages, id: \.code) { language in
+          Text(language.name).tag(language.code)
+        }
+      }
       Toggle("Speak replies", isOn: $speaks)
       Group {
         HStack {
@@ -137,7 +154,7 @@ struct VoicePane: View {
             if kokoro.isInstalled || VoiceChoice(storageValue: voiceID) == Self.kokoroChoice {
               Text("Heart (Kokoro)").tag(Self.kokoroChoice.storageValue)
             }
-            ForEach(Speaker.voices, id: \.identifier) { voice in
+            ForEach(voices, id: \.identifier) { voice in
               Text(Self.label(for: voice)).tag(voice.identifier)
             }
           }
@@ -161,7 +178,7 @@ struct VoicePane: View {
       Text("Answering")
     } footer: {
       Text(
-        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
+        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. A change of language applies from your next question. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
       )
     }
   }
@@ -198,6 +215,27 @@ struct VoicePane: View {
         }
       }
     }
+  }
+
+  /// System voices for the language replies are spoken in: the fixed one, or the system's.
+  private var voices: [AVSpeechSynthesisVoice] {
+    switch ReplyLanguage(storageValue: replyLanguageID) {
+    case .question: Speaker.voices(language: nil)
+    case .fixed(let code): Speaker.voices(language: code)
+    }
+  }
+
+  /// Every language this Mac has a system voice for, by name, plus the stored one if its voices
+  /// have since been removed, so the picker never shows a choice it cannot display.
+  private var replyLanguages: [(code: String, name: String)] {
+    var codes = Set(AVSpeechSynthesisVoice.speechVoices().compactMap(Speaker.languageCode(of:)))
+    if !replyLanguageID.isEmpty { codes.insert(replyLanguageID) }
+    return
+      codes
+      .map { code in
+        (code, Locale.current.localizedString(forLanguageCode: code)?.localizedCapitalized ?? code)
+      }
+      .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
 
   private var kokoroStatus: String {

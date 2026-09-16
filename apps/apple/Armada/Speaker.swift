@@ -17,6 +17,9 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   /// Everything queued has been spoken. Not called for a queue that `stop()` cleared.
   var onFinished: (() -> Void)?
   var voiceIdentifier: String?
+  /// The language replies are asked for. A fixed one is what a system voice falls back to, so an
+  /// English answer is never read by the default voice of a French Mac.
+  var replyLanguage: ReplyLanguage = .question
 
   private let synthesizer = AVSpeechSynthesizer()
   /// The utterance being spoken and the sentence waiting on it. A stopped utterance's late cancel
@@ -46,6 +49,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
 
   func speak(_ text: String) {
     let choice = VoiceChoice(storageValue: voiceIdentifier)
+    let language = replyLanguage
     let generation = generation
     let previous = tail
     var rendered: Task<[Float]?, Never>?
@@ -65,7 +69,9 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
       guard let self, generation == self.generation else { return }
       var played = false
       if let samples, !samples.isEmpty { played = await play(samples) }
-      if !played, generation == self.generation { await say(text, choice: choice) }
+      if !played, generation == self.generation {
+        await say(text, choice: choice, language: language)
+      }
       finishedOne(generation)
     }
   }
@@ -84,23 +90,35 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     endPlaying(token: playToken)
   }
 
-  /// Voices for the system language, best quality first.
-  static var voices: [AVSpeechSynthesisVoice] {
-    let language = Locale.current.language.languageCode?.identifier ?? "en"
+  /// Voices for `language`, a language code, or for the system language when it is nil, best
+  /// quality first.
+  static func voices(language: String?) -> [AVSpeechSynthesisVoice] {
+    let language = language ?? Locale.current.language.languageCode?.identifier ?? "en"
     return AVSpeechSynthesisVoice.speechVoices()
-      .filter { $0.language.hasPrefix(language) }
+      .filter { Self.languageCode(of: $0) == language }
       .sorted {
         $0.quality.rawValue != $1.quality.rawValue
           ? $0.quality.rawValue > $1.quality.rawValue : $0.name < $1.name
       }
   }
 
-  /// The system voice for `choice`: the one picked, or the system language's default when that is
-  /// gone, or when the choice is Kokoro and this sentence is not going to it.
-  private static func voice(for choice: VoiceChoice) -> AVSpeechSynthesisVoice? {
+  /// `en` for an `en-US` voice.
+  static func languageCode(of voice: AVSpeechSynthesisVoice) -> String? {
+    Locale(identifier: voice.language).language.languageCode?.identifier
+  }
+
+  /// The system voice for `choice`: the one picked; when that is gone, or the choice is Kokoro and
+  /// this sentence is not going to it, the best voice for a fixed reply language, and the system
+  /// language's default otherwise.
+  private static func voice(for choice: VoiceChoice, language: ReplyLanguage)
+    -> AVSpeechSynthesisVoice?
+  {
     if case .system(let identifier) = choice,
       let voice = AVSpeechSynthesisVoice(identifier: identifier)
     {
+      return voice
+    }
+    if case .fixed(let code) = language, let voice = voices(language: code).first {
       return voice
     }
     return AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
@@ -118,9 +136,9 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
 
   // MARK: - System voice
 
-  private func say(_ text: String, choice: VoiceChoice) async {
+  private func say(_ text: String, choice: VoiceChoice, language: ReplyLanguage) async {
     let utterance = AVSpeechUtterance(string: text)
-    utterance.voice = Self.voice(for: choice)
+    utterance.voice = Self.voice(for: choice, language: language)
     await withCheckedContinuation { continuation in
       live[ObjectIdentifier(utterance)] = (utterance, continuation)
       synthesizer.speak(utterance)

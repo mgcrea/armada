@@ -40,6 +40,7 @@ final class VoiceController {
   nonisolated static let accountKey = "armada.voiceAccount"
   nonisolated static let speaksKey = "armada.voiceSpeaks"
   nonisolated static let voiceKey = "armada.voiceIdentifier"
+  nonisolated static let replyLanguageKey = "armada.voiceReplyLanguage"
   /// Conversation ids by config folder path, so a follow-up after the process closed resumes.
   nonisolated static let sessionsKey = "armada.voiceSessions"
 
@@ -54,6 +55,9 @@ final class VoiceController {
   }
   static var voiceChoice: VoiceChoice {
     VoiceChoice(storageValue: UserDefaults.standard.string(forKey: voiceKey))
+  }
+  static var replyLanguage: ReplyLanguage {
+    ReplyLanguage(storageValue: UserDefaults.standard.string(forKey: replyLanguageKey))
   }
 
   private(set) var turn = VoiceTurn(mode: .press)
@@ -71,6 +75,9 @@ final class VoiceController {
   @ObservationIgnored private let overlay = VoiceOverlay()
   @ObservationIgnored private var process: SupervisorProcess?
   @ObservationIgnored private var processFolder: String?
+  /// The language the running `claude`'s brief asks for. It is fixed at launch, so a different
+  /// setting starts a new process, resuming the same conversation, at the next question.
+  @ObservationIgnored private var processReplyLanguage: ReplyLanguage?
   /// Bumped for every process started or stopped, so a late event or exit from the one before
   /// is recognised and dropped.
   @ObservationIgnored private var generation = 0
@@ -190,6 +197,7 @@ final class VoiceController {
     case .interrupt: process?.send(SupervisorArguments.interruptFrame)
     case .speak(let sentence):
       speaker.voiceIdentifier = UserDefaults.standard.string(forKey: Self.voiceKey)
+      speaker.replyLanguage = Self.replyLanguage
       speaker.speak(sentence)
     case .stopSpeaking: speaker.stop()
     case .scheduleDismiss:
@@ -301,7 +309,12 @@ final class VoiceController {
   private func ensureProcess() throws {
     guard let account = account() else { throw Problem.noAccount }
     let folder = account.folder
-    if let process, process.isRunning, processFolder == folder.path { return }
+    let language = Self.replyLanguage
+    if let process, process.isRunning, processFolder == folder.path,
+      processReplyLanguage == language
+    {
+      return
+    }
     stopProcess()
 
     guard let executable = ClaudeControl.executable() else { throw Problem.noClaude }
@@ -333,11 +346,12 @@ final class VoiceController {
       .init(
         executable: executable,
         arguments: SupervisorArguments.arguments(
-          mcpConfig: config.path(percentEncoded: false), resume: resume),
+          mcpConfig: config.path(percentEncoded: false), resume: resume, replyLanguage: language),
         environment: SupervisorArguments.environment(from: ClaudeControl.environment(for: folder)),
         directory: directory))
     self.process = process
     processFolder = folder.path
+    processReplyLanguage = language
     sawEvent = false
     resumed = resume != nil
   }
@@ -346,6 +360,7 @@ final class VoiceController {
     process?.stop()
     process = nil
     processFolder = nil
+    processReplyLanguage = nil
     generation += 1
   }
 
