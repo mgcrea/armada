@@ -242,6 +242,7 @@ UNIT_SRC := \
 	Armada/UsageIngest.swift \
 	Armada/ProjectStats.swift \
 	Armada/LaunchScript.swift \
+	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
 	Armada/License.swift \
 	Armada/Revocations.swift \

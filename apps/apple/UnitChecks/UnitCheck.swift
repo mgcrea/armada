@@ -40,6 +40,7 @@ struct UnitCheck {
     usageIngest()
     projectStats()
     launchScript()
+    editorLaunch()
     claudeTrust()
 
     print("")
@@ -1292,6 +1293,95 @@ struct UnitCheck {
       prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
     expectEqual(
       "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
+  }
+
+  // MARK: - EditorLaunch
+
+  static func editorLaunch() {
+    section("EditorLaunch.shellEnvironment")
+    let marker = EditorLaunch.environmentMarker
+    var output = Data("Welcome back!\nPATH=/not/this\n\(marker)".utf8)
+    output.append(Data("PATH=/opt/homebrew/bin:/usr/bin\0NOTE=two\nlines\0EQ=a=b\0".utf8))
+    let shell = EditorLaunch.shellEnvironment(output)
+    expectEqual(
+      "what a profile prints before the marker is not read",
+      shell?["PATH"], "/opt/homebrew/bin:/usr/bin")
+    expectEqual("a value keeps its newline", shell?["NOTE"], "two\nlines")
+    expectEqual("and an equals sign after the first", shell?["EQ"], "a=b")
+    check(
+      "no marker is no environment", EditorLaunch.shellEnvironment(Data("PATH=/x\0".utf8)) == nil)
+
+    section("EditorLaunch.windowEnvironment")
+    let base = [
+      "PATH": "/opt/homebrew/bin", "CLAUDE_CONFIG_DIR": "/Users/me/.claude-work", "SHLVL": "2",
+      "VSCODE_IPC_HOOK_CLI": "/tmp/x", "CLAUDECODE": "1", "HOME": "/Users/me",
+    ]
+    let custom = EditorLaunch.windowEnvironment(shell: base, configDirectory: "/Users/me/.claude-b")
+    expectEqual(
+      "another account's folder is stated", custom["CLAUDE_CONFIG_DIR"], "/Users/me/.claude-b")
+    expectEqual("the shell's PATH is kept", custom["PATH"], "/opt/homebrew/bin")
+    check(
+      "the shell's own and VS Code's variables are dropped",
+      custom["SHLVL"] == nil && custom["VSCODE_IPC_HOOK_CLI"] == nil && custom["CLAUDECODE"] == nil)
+    let standard = EditorLaunch.windowEnvironment(shell: base, configDirectory: nil)
+    check(
+      "the default folder unsets what a profile exported", standard["CLAUDE_CONFIG_DIR"] == nil)
+
+    section("EditorLaunch.hostsAgree")
+    check("no windows agree with anything", EditorLaunch.hostsAgree([], configDirectory: "/a"))
+    check(
+      "every default window agrees with the default",
+      EditorLaunch.hostsAgree([nil, ""], configDirectory: nil))
+    check(
+      "a trailing slash is the same folder",
+      EditorLaunch.hostsAgree(["/Users/me/.claude-b/"], configDirectory: "/Users/me/.claude-b"))
+    check(
+      "one window on another account is enough to refuse",
+      !EditorLaunch.hostsAgree([nil, "/Users/me/.claude-b"], configDirectory: nil))
+    check(
+      "and a default window refuses a custom account",
+      !EditorLaunch.hostsAgree([nil], configDirectory: "/Users/me/.claude-b"))
+
+    section("EditorLaunch.settingsSetConfigDirectory")
+    check(
+      "the setting naming the folder is found",
+      EditorLaunch.settingsSetConfigDirectory(
+        #"{ "claudeCode.environmentVariables": [{ "name": "CLAUDE_CONFIG_DIR", "value": "/x" }] }"#)
+    )
+    check(
+      "other variables in the setting are not",
+      !EditorLaunch.settingsSetConfigDirectory(
+        #"{ "claudeCode.environmentVariables": [{ "name": "DEBUG", "value": "1" }] }"#))
+
+    section("EditorLaunch.openURL")
+    expectEqual(
+      "a fresh tab carries no session",
+      EditorLaunch.openURL(scheme: "vscode", prompt: nil)?.absoluteString,
+      "vscode://anthropic.claude-code/open")
+    expectEqual(
+      "and the message is encoded",
+      EditorLaunch.openURL(scheme: "vscode", prompt: "fix a&b #1")?.absoluteString,
+      "vscode://anthropic.claude-code/open?prompt=fix%20a%26b%20%231")
+    check(
+      "extension folders of any version",
+      EditorLaunch.isClaudeExtension("anthropic.claude-code-2.1.273-darwin-arm64")
+        && !EditorLaunch.isClaudeExtension("anthropic.claude-codex-1.0"))
+
+    section("EditorLaunch.processArguments")
+    var bytes: [UInt8] = []
+    withUnsafeBytes(of: Int32(2)) { bytes += $0 }
+    bytes += Array("/Applications/Code Helper\0\0\0".utf8)
+    bytes += Array(
+      "helper\0--type=utility\0A=1\0VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost\0\0junk\0".utf8
+    )
+    let parsed = EditorLaunch.processArguments(bytes)
+    expectEqual(
+      "the arguments, without the executable path", parsed?.arguments, ["helper", "--type=utility"])
+    expectEqual(
+      "the environment after them", parsed?.environment["VSCODE_CRASH_REPORTER_PROCESS_TYPE"],
+      "extensionHost")
+    check("and nothing past its end", parsed?.environment.count == 2)
+    check("too short to hold a count", EditorLaunch.processArguments([1, 0]) == nil)
   }
 
   // MARK: - ClaudeTrust

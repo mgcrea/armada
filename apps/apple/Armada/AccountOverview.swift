@@ -133,7 +133,9 @@ struct NewSessionSection: View {
       // Names the terminal, because that is a setting somebody chose once and will not
       // remember, and it is the whole of what this button does that is not obvious.
       Text(
-        "Opens \(launcher.terminal.name) with \(agent.commandName) running in that folder, on this account."
+        launcher.opensInVSCode(agent)
+          ? "Opens a \(agent.vendorName) tab in that folder's \(VSCodeLaunch.name) window, or a new window on this account."
+          : "Opens \(launcher.terminal.name) with \(agent.commandName) running in that folder, on this account."
       )
     }
   }

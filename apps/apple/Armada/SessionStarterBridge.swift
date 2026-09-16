@@ -6,7 +6,7 @@ import Foundation
 ///
 /// **Checks again what the tool already checked.** The tool found the project in a snapshot and
 /// vetted the message, but the project can be removed and its folder moved between that
-/// snapshot and this hop, and this is the side that opens the terminal.
+/// snapshot and this hop, and this is the side that opens the terminal or VS Code.
 ///
 /// **Throttled.** One launch per `throttle` seconds from agents, so a supervisor caught in a
 /// loop opens one window and is told to wait rather than filling the screen.
@@ -59,7 +59,9 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     return .started(
       StartedSession(
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
-        account: account, terminal: launcher.terminal.name, withPrompt: request.prompt != nil))
+        account: account, terminal: launcher.destinationName(for: agent),
+        withPrompt: request.prompt != nil,
+        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent)))
   }
 
   /// The agent to launch: the account named, else the project's own when the vendor matches,

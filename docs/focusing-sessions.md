@@ -207,6 +207,64 @@ What it costs and what it misses:
 - The scheme comes from the host's `CFBundleURLTypes`, so Cursor (`cursor://`) and VS Code
   Insiders take the same path, untested.
 
+## Starting a session in a project's window
+
+Measured 2026-09-16 on VS Code 1.137 with the Claude Code extension 2.1.273. Settings ▸ General
+▸ "Start Claude Code sessions in Visual Studio Code" sends a fresh Claude Code launch here
+instead of to the terminal. `VSCodeLaunch` runs it, and the same gate as the tab above carries
+it.
+
+**The link opens a tab and starts nothing.** Without `session`,
+`vscode://anthropic.claude-code/open?prompt=<text>` opens a fresh conversation tab with the
+text in its "Message input" box. No `claude` runs on that account and no transcript is written
+until the person sends a message, so the session reaches Armada's list only then, and an
+opening message from `armada_start_session` waits there (`promptAwaitsSend` in its result).
+With `session`, the link resumes that session rather than forking it, so forks stay in the
+terminal, and so do Codex and the supervisor.
+
+**The link cannot name a window.** It goes to the window VS Code last focused. `code <folder>`
+on a folder that is already open did not bring its window forward, and two links sent after it
+opened tabs in two other projects' windows. So `HostWindow` raises the window whose title has a
+segment that is exactly the project's folder name, and only that name, since Focus's
+parent-folder fallback would pick `~/Projects/apps` for a launch in `~/Projects/apps/canopy`.
+More than one such window is refused. Then Armada activates VS Code, waits until the window
+stays focused for three checks 50ms apart, and sends the link. The first build raised once and
+failed: the window reported focused, then activating VS Code put its previous front window back
+a moment later. The raise is now repeated while VS Code settles.
+
+**An untrusted folder does nothing.** A window in Restricted Mode does not load the extension,
+and the link produces no tab and no error. `HostWindow.showsRestrictedMode` looks for the
+`AXLandmarkBanner` whose name starts "Restricted Mode" and turns it into a sentence. The match
+is on English text, so in another locale the launch goes ahead and does nothing.
+
+**A window keeps the account it was opened with.** The extension builds each `claude`'s
+environment from its extension host's own, then lays `claudeCode.environmentVariables` over
+it. Measured with a marker variable:
+
+- A folder that is not open, opened with VS Code's bundled `bin/code --new-window` (VS Code
+  already running or not), gets an extension host carrying the variables `code` ran with. So
+  a new window is opened with `CLAUDE_CONFIG_DIR` set for a custom folder and unset for the
+  default, as the terminal script does.
+- A folder already open, asked for again with or without `--new-window`, only comes forward.
+  Its host keeps what it had. Armada reads every VS Code extension host's environment with
+  `KERN_PROCARGS2` (they carry `VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost`, as do the
+  language servers they start). It reuses the window only when all of them agree with the
+  chosen account, because nothing maps a host to its window.
+- A `claudeCode.environmentVariables` naming `CLAUDE_CONFIG_DIR`, in the user's settings or
+  the project's `.vscode/settings.json`, beats all of it and is refused.
+
+**The environment has to come from the login shell.** A window opened with Armada's launchd
+environment got `PATH=/usr/bin:/bin:/usr/sbin:/sbin` in its extension host, and leaving `PATH`
+out gave the same. MCP servers run with `npx` and hooks calling Homebrew tools would fail in
+it. Armada runs `$SHELL -ilc 'printf <marker>; env -0'` (70ms here), as VS Code does when
+opened from the Dock, drops the shell's own and VS Code's variables, and states the account.
+The canopy and contour windows opened this way had the shell's `PATH`, and contour's two
+warm-up `claude` processes ran on `~/.claude-skitrust`.
+
+Not covered: two different folders with the same name, one open and one not (the new window
+then makes two matching titles, and the launch refuses); Cursor and VS Code Insiders, whose
+bundle and `bin/` differ; an extension installed outside `~/.vscode/extensions`.
+
 ## Two traps worth writing down
 
 **`NSRunningApplication` has no no-argument `activate()`.** That one is `NSApplication`'s.

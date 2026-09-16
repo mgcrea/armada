@@ -458,6 +458,12 @@ nonisolated enum Changelog {
             body: [
               "Settings ▸ Voice has an Answer in picker: the language you ask in, as before, or one language whatever you speak, such as English when you ask in French. It applies from your next question and the conversation carries on. The Voice picker lists that language's system voices, and it is the language a system voice falls back to while Kokoro is loading.",
             ]),
+          Entry(
+            ordinal: 1,
+            headline: "Start Claude Code sessions in Visual Studio Code.",
+            body: [
+              "Turn it on in Settings ▸ General, and a new Claude Code session opens as a tab in the project's own VS Code window, or in a new window on the session's account when the project is not open. Armada brings that window to the front first, so the tab never lands in another project, and it needs the Accessibility permission Focus already uses. A new window gets your shell's PATH. An opening message from an agent is typed into the tab for you to send. If a project's window is open on a different account, Armada says so rather than starting there. Forks, Codex and the supervisor still open in your terminal.",
+            ]),
         ]),
     ])
 

@@ -101,6 +101,21 @@ struct StartSessionToolTests {
     #expect(result.text == "~/Projects/almanac is not there any more.")
   }
 
+  @Test("A message VS Code only typed in is reported as waiting to be sent")
+  func promptAwaitsSend() async {
+    let starter = FakeSessionStarter()
+    starter.outcome = .started(
+      StartedSession(
+        project: "Armada", path: "/Users/me/armada", vendor: "claude",
+        accountID: "/Users/me/.claude", account: "Personal", terminal: "Visual Studio Code",
+        withPrompt: true, promptAwaitsSend: true))
+    let result = await call(["project": "armada", "prompt": "fix the build"], starter: starter)
+    #expect(!result.isError)
+    #expect(result.text.contains("Asked Visual Studio Code"))
+    #expect(result.text.contains("typed into its input but not sent"))
+    #expect(result.text.contains("once the person sends the message"))
+  }
+
   @Test("An unlicensed Armada starts nothing")
   func notEntitled() async {
     let source = FakeFleetSource()

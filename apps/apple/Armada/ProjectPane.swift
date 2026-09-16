@@ -477,7 +477,7 @@ struct ProjectDetail: View {
       Text("New session")
     } footer: {
       Text(
-        "Opens \(launcher.terminal.name) in \(project.displayPath). The arrow starts one on another account."
+        "Opens \(store.resolve(project.agent).map { launcher.destinationName(for: $0) } ?? launcher.terminal.name) in \(project.displayPath). The arrow starts one on another account."
       )
     }
   }

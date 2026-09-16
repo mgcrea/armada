@@ -92,6 +92,36 @@ nonisolated enum ProcessAncestry {
     return String(cString: buffer)
   }
 
+  /// A process's environment, or nil when the kernel will not hand it over.
+  ///
+  /// `KERN_PROCARGS2`, which is what `ps -E` reads. It answers for this user's own processes
+  /// and refuses anybody else's, which is all `VSCodeLaunch` needs: the VS Code extension hosts
+  /// it asks about are the person's. Parsed by `EditorLaunch.processArguments`, where
+  /// `make unit` checks the layout.
+  static func environment(of pid: pid_t) -> [String: String]? {
+    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+    var size = 0
+    guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0, size > 0 else { return nil }
+    var bytes = [UInt8](repeating: 0, count: size)
+    guard sysctl(&mib, UInt32(mib.count), &bytes, &size, nil, 0) == 0 else { return nil }
+    return EditorLaunch.processArguments(Array(bytes.prefix(size)))?.environment
+  }
+
+  /// Every pid on the machine, in no particular order.
+  ///
+  /// Asked twice, because the table can grow between the call that sizes the buffer and the
+  /// one that fills it; the margin covers a burst of launches in between.
+  static func allPIDs() -> [pid_t] {
+    let estimate = proc_listallpids(nil, 0)
+    guard estimate > 0 else { return [] }
+    var pids = [pid_t](repeating: 0, count: Int(estimate) + 64)
+    let count = pids.withUnsafeMutableBytes {
+      proc_listallpids($0.baseAddress, Int32($0.count))
+    }
+    guard count > 0 else { return [] }
+    return Array(pids.prefix(Int(count))).filter { $0 > 0 }
+  }
+
   /// The controlling terminal as `/dev/ttys004`, or nil for a process that has none.
   ///
   /// **Nil for every VS Code-hosted session, which today is most of them.** Measured

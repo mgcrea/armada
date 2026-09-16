@@ -94,6 +94,58 @@ nonisolated enum HostWindow {
     return nil
   }
 
+  /// The windows of `pid` whose title has a segment that is exactly `folder`, front to back.
+  ///
+  /// **Stricter than `matchingWindow`, and it has to be.** Focus is looking for a session that
+  /// already runs somewhere, so falling back to a parent folder finds the window that holds it.
+  /// A new session has no such window yet: the fallback would take a window on `~/Projects/apps`
+  /// for a launch in `~/Projects/apps/footprint`, and the session would start in the wrong
+  /// folder. So only the folder's own name counts, and the caller refuses when more than one
+  /// window carries it, because two folders sharing a name is what titles cannot tell apart.
+  static func windows(inApplication pid: pid_t, naming folder: String) -> [AXUIElement] {
+    guard isTrusted, !folder.isEmpty else { return [] }
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(app, messagingTimeout)
+    guard let windows = value(of: app, kAXWindowsAttribute) as? [AXUIElement] else { return [] }
+    return windows.filter { names(value(of: $0, kAXTitleAttribute) as? String ?? "", folder) }
+  }
+
+  /// Raise `window` and say whether the action was accepted. See `raise(_:)`.
+  @discardableResult
+  static func raiseWindow(_ window: AXUIElement) -> Bool { raise(window) }
+
+  /// Whether `window` shows VS Code's Restricted Mode banner, which means the folder is not
+  /// trusted and the extensions that need trust — Claude Code among them — never loaded.
+  ///
+  /// Measured 2026-09-16: a link sent to such a window did nothing at all, no tab and no error.
+  /// The banner is an `AXLandmarkBanner` named "Restricted Mode is intended for safe code
+  /// browsing…". **Matched on English text**, so in another locale this says false and the
+  /// launch goes ahead as it would have without the check. Nested web areas are skipped, as in
+  /// `hasEditorTab`, and the walk is bounded by the same depth.
+  static func showsRestrictedMode(_ window: AXUIElement) -> Bool {
+    var found = false
+    func walk(_ element: AXUIElement, webAreas: Int, depth: Int) {
+      guard !found, depth < maxTreeDepth else { return }
+      let role = value(of: element, kAXRoleAttribute) as? String
+      let webAreas = role == "AXWebArea" ? webAreas + 1 : webAreas
+      guard webAreas <= 1 else { return }
+      if value(of: element, kAXSubroleAttribute) as? String == "AXLandmarkBanner" {
+        let name =
+          (value(of: element, kAXDescriptionAttribute) as? String)
+          ?? (value(of: element, kAXTitleAttribute) as? String) ?? ""
+        if name.hasPrefix("Restricted Mode") {
+          found = true
+          return
+        }
+      }
+      for child in value(of: element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
+        walk(child, webAreas: webAreas, depth: depth + 1)
+      }
+    }
+    walk(window, webAreas: 0, depth: 0)
+    return found
+  }
+
   /// Whether `window` is the one `pid` has focused — which, for VS Code, is also the
   /// window its main process hands an incoming URI to.
   static func isFocused(_ window: AXUIElement, inApplication pid: pid_t) -> Bool {

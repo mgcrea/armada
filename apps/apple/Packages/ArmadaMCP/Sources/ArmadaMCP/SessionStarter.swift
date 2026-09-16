@@ -37,10 +37,13 @@ public struct StartedSession: Sendable, Equatable {
   public let account: String
   public let terminal: String
   public let withPrompt: Bool
+  /// The opening message was typed into the session's input rather than sent, which is what VS
+  /// Code's Claude Code extension does with one. The person sends it.
+  public let promptAwaitsSend: Bool
 
   public init(
     project: String, path: String, vendor: String, accountID: String, account: String,
-    terminal: String, withPrompt: Bool
+    terminal: String, withPrompt: Bool, promptAwaitsSend: Bool = false
   ) {
     self.project = project
     self.path = path
@@ -49,6 +52,7 @@ public struct StartedSession: Sendable, Equatable {
     self.account = account
     self.terminal = terminal
     self.withPrompt = withPrompt
+    self.promptAwaitsSend = promptAwaitsSend
   }
 }
 

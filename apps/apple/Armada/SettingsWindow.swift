@@ -150,6 +150,7 @@ struct GeneralPane: View {
   @State private var trust = AccessibilityTrust.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
   @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
+  @AppStorage(VSCodeLaunch.defaultsKey) private var inVSCode = false
 
   /// Reading resolves the unset case to whichever terminal a launch would actually
   /// use; writing stores the choice. Without the mapping the picker shows blank until
@@ -206,13 +207,25 @@ struct GeneralPane: View {
             Text(terminal.name).tag(terminal.bundleID)
           }
         }
+        // Only where VS Code is installed, like the terminals above. See `VSCodeLaunch` for
+        // which launches it takes and why the rest stay in the terminal.
+        if VSCodeLaunch.isInstalled {
+          Toggle("Start Claude Code sessions in \(VSCodeLaunch.name)", isOn: $inVSCode)
+          if inVSCode && !trust.isTrusted {
+            Text("Needs Accessibility, below, to bring the project's window to the front.")
+              .font(.caption)
+              .foregroundStyle(.red)
+          }
+        }
       } header: {
         Text("New sessions")
       } footer: {
         // Says what the list leaves out, because a one-row picker otherwise reads as a
         // bug on a Mac with three terminals installed. See `TerminalApp` for the rule.
         Text(
-          "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. It asks for no Automation permission, and the session appears in the list here like any other."
+          VSCodeLaunch.isInstalled
+            ? "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. In \(VSCodeLaunch.name), a fresh Claude Code session opens as a tab in the project's own window, or a new window on the session's account; an opening message waits in the input for you to send. Forks, Codex and the supervisor still start in the terminal."
+            : "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. It asks for no Automation permission, and the session appears in the list here like any other."
         )
       }
 
@@ -231,7 +244,7 @@ struct GeneralPane: View {
         // Armada does with it — a permission request with no stated ceiling is the
         // kind people deny. The ceiling is real: the window, never the panel in it.
         Text(
-          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open. It reads window titles, raises windows, and — once mouse buttons are switched on in Mouse — sees presses of your mouse's extra buttons. Nothing else."
+          "Without this, Focus brings the application forward and macOS decides which of its windows you land on — whichever one you were in last. With it, Armada reads the host application's window titles and raises the one that has this session's folder open, and does the same for a project's window before starting a session in Visual Studio Code. It reads window titles, raises windows, and — once mouse buttons are switched on in Mouse — sees presses of your mouse's extra buttons. Nothing else."
         )
       }
 

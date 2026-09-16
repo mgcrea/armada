@@ -11,8 +11,9 @@ import MCPKit
 /// Nothing here reaches the network. `armada_start_session` is the one thing an agent can do *to*
 /// the Mac through Armada, and it is fenced three ways: registered behind the kit's write gate, so
 /// it is neither listed nor callable until the person turns on Allow writes; confined to folders
-/// the person saved as projects; and what it opens is an ordinary terminal session that asks them
-/// for every permission. Raising a window or sending a keystroke stays out.
+/// the person saved as projects; and what it opens is an ordinary session, in their terminal or
+/// in VS Code when they chose it, that asks them for every permission. Sending a keystroke stays
+/// out: in VS Code an opening message waits in the input for the person to send.
 public enum Tools {
 
   /// Said once per client instead of once per tool description.
@@ -20,8 +21,8 @@ public enum Tools {
     Armada is a menu bar app watching every Claude Code and Codex session on this Mac, across \
     every account. These tools read what it already holds, and none reaches the network. The \
     one exception to reading is armada_start_session, listed only when the person has turned \
-    on Allow writes in Armada: it opens their terminal on a fresh session in one of their saved \
-    projects, and that session still asks them for every permission. Ask the person before \
+    on Allow writes in Armada: it opens a fresh session in one of their saved projects, in their \
+    terminal or VS Code, and that session still asks them for every permission. Ask the person before \
     starting one.
 
     How to read the answers:
@@ -614,9 +615,10 @@ public enum Tools {
         name: "armada_start_session",
         title: "Start a session",
         description:
-          "Open the person's terminal on a fresh Claude Code or Codex session in one of their "
-          + "saved projects, on the project's own account or the one named, optionally with an "
-          + "opening message. The session asks the person for permissions as usual. Armada does "
+          "Open a fresh Claude Code or Codex session in one of the person's saved projects, in "
+          + "their terminal or VS Code as they chose, on the project's own account or the one "
+          + "named, optionally with an opening message. The session asks the person for "
+          + "permissions as usual. Armada does "
           + "not own it and has no id for it yet: it appears in armada_get_fleet within a few "
           + "seconds. Saved projects only.",
         properties: [
@@ -667,10 +669,17 @@ public enum Tools {
         return .failure(message)
       case .started(let started):
         let vendorName = started.vendor == "codex" ? "Codex" : "Claude Code"
+        let message =
+          started.promptAwaitsSend
+          ? ", with the opening message typed into its input but not sent"
+          : started.withPrompt ? ", with the opening message" : ""
+        let appears =
+          started.promptAwaitsSend
+          ? "It appears in armada_get_fleet once the person sends the message."
+          : "It appears in armada_get_fleet within a few seconds."
         let lede =
           "Asked \(started.terminal) to start a \(vendorName) session in \(started.project) on "
-          + "\(started.account)\(started.withPrompt ? ", with the opening message" : ""). It "
-          + "appears in armada_get_fleet within a few seconds."
+          + "\(started.account)\(message). \(appears)"
         return envelope(
           [
             "started": [
@@ -678,10 +687,11 @@ public enum Tools {
               "vendor": .string(started.vendor), "accountId": .string(started.accountID),
               "account": .string(started.account), "terminal": .string(started.terminal),
               "withPrompt": .bool(started.withPrompt),
+              "promptAwaitsSend": .bool(started.promptAwaitsSend),
             ],
             "note": .string(
-              "The terminal was asked to open. Armada does not own the session and has no id "
-                + "for it yet; look for a new session in this project in armada_get_fleet."),
+              "\(started.terminal) was asked to open. Armada does not own the session and has no "
+                + "id for it yet; look for a new session in this project in armada_get_fleet."),
           ], takenAt: snapshot.takenAt, isEntitled: snapshot.isEntitled, lede: lede)
       }
     }

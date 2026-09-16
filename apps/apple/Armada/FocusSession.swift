@@ -260,7 +260,7 @@ struct ExtensionTab {
   /// The scheme the host registers — `vscode`, `vscode-insiders`, `cursor` — read from
   /// its bundle rather than listed, for the reason `HostWindow` names no bundle
   /// identifier.
-  private static func urlScheme(of bundleURL: URL) -> String? {
+  static func urlScheme(of bundleURL: URL) -> String? {
     let types = Bundle(url: bundleURL)?.infoDictionary?["CFBundleURLTypes"] as? [[String: Any]]
     return types?.lazy.compactMap { ($0["CFBundleURLSchemes"] as? [String])?.first }.first
   }

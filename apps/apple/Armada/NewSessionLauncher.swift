@@ -28,16 +28,41 @@ final class NewSessionLauncher {
       stored: UserDefaults.standard.string(forKey: TerminalApp.defaultsKey) ?? "")
   }
 
+  /// Where a launch of `agent` goes: VS Code when chosen and able to take it, else the terminal.
+  func opensInVSCode(_ agent: NewSession.Agent, start: NewSession.Start = .fresh) -> Bool {
+    VSCodeLaunch.handles(agent, start: start, supervisor: false)
+  }
+
+  /// What to call that destination in a sentence.
+  func destinationName(for agent: NewSession.Agent) -> String {
+    opensInVSCode(agent) ? VSCodeLaunch.name : terminal.name
+  }
+
   func start(
     _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
   ) {
     trustIfSaved(agent, in: project)
-    if let message = NewSession.start(
-      agent, in: project, terminal: terminal, start: start,
+    if let message = launch(
+      agent, in: project, start: start, prompt: nil,
       completion: { [weak self] message in self?.failure = message })
     {
       failure = message
     }
+  }
+
+  /// The one fork in the road: VS Code for what `VSCodeLaunch` takes, the terminal for the rest.
+  private func launch(
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start, prompt: String?,
+    completion: @escaping @MainActor (String) -> Void
+  ) -> String? {
+    if case .claude(let folder) = agent, opensInVSCode(agent, start: start) {
+      return VSCodeLaunch.start(
+        folder, accountName: Accounts.shared.account(id: folder.path)?.displayName ?? folder.path,
+        in: project, prompt: prompt, completion: completion)
+    }
+    return NewSession.start(
+      agent, in: project, terminal: terminal, start: start, prompt: prompt,
+      completion: completion)
   }
 
   /// The same launch, from the menu bar panel, which has no alert of its own.
@@ -47,14 +72,23 @@ final class NewSessionLauncher {
   /// show it, which is precisely the button-that-does-nothing `NewSession` exists to
   /// prevent. Opening the main window gives the alert somewhere to land.
   ///
-  /// Only the synchronous half is caught here. A LaunchServices failure arrives after
-  /// this returns and shows the next time a pane is on screen, which is the same
-  /// deferral every other caller already lives with.
+  /// A failure that arrives later opens the main window too. For a terminal that is a rare
+  /// LaunchServices error; for VS Code it is most of them — a window that would not come to
+  /// the front, a folder in Restricted Mode — and each needs somewhere to be read.
   func startFromMenuBar(
     _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
   ) {
-    self.start(agent, in: project, start: start)
-    if failure != nil { AppDelegate.shared?.showMain() }
+    trustIfSaved(agent, in: project)
+    if let message = launch(
+      agent, in: project, start: start, prompt: nil,
+      completion: { [weak self] message in
+        self?.failure = message
+        AppDelegate.shared?.showMain()
+      })
+    {
+      failure = message
+      AppDelegate.shared?.showMain()
+    }
   }
 
   /// When an agent last started a session through `armada_start_session`, for its throttle.
@@ -68,8 +102,8 @@ final class NewSessionLauncher {
   /// answered and a pane is the one place left to say so.
   func startForAgent(_ agent: NewSession.Agent, in project: URL, prompt: String?) -> String? {
     trustIfSaved(agent, in: project)
-    let message = NewSession.start(
-      agent, in: project, terminal: terminal, prompt: prompt,
+    let message = launch(
+      agent, in: project, start: .fresh, prompt: prompt,
       completion: { [weak self] message in self?.failure = message })
     if message == nil { lastAgentLaunchAt = Date() }
     return message

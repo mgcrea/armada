@@ -72,7 +72,7 @@ struct SupervisorPane: View {
       Toggle(isOn: $allowWrites) {
         Text("Allow writes")
         Text(
-          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(launcher.terminal.name), optionally with an opening message. The session asks you for every permission as usual. Nothing else writes."
+          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message. The session asks you for every permission as usual. Nothing else writes."
         )
       }
       .disabled(!enabled)
