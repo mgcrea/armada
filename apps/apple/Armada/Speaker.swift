@@ -20,6 +20,11 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   /// The language replies are asked for. A fixed one is what a system voice falls back to, so an
   /// English answer is never read by the default voice of a French Mac.
   var replyLanguage: ReplyLanguage = .question
+  /// From 0 to 1, relative to the Mac's output volume. Kokoro follows a change straight away; a
+  /// system voice takes it from the next sentence, because an utterance keeps the volume it began with.
+  var volume: Float = 1 {
+    didSet { player.volume = volume }
+  }
 
   private let synthesizer = AVSpeechSynthesizer()
   /// The utterance being spoken and the sentence waiting on it. A stopped utterance's late cancel
@@ -45,6 +50,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   override init() {
     super.init()
     synthesizer.delegate = self
+    player.volume = volume
   }
 
   func speak(_ text: String) {
@@ -139,6 +145,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   private func say(_ text: String, choice: VoiceChoice, language: ReplyLanguage) async {
     let utterance = AVSpeechUtterance(string: text)
     utterance.voice = Self.voice(for: choice, language: language)
+    utterance.volume = volume
     await withCheckedContinuation { continuation in
       live[ObjectIdentifier(utterance)] = (utterance, continuation)
       synthesizer.speak(utterance)

@@ -16,7 +16,9 @@ struct VoicePane: View {
   @AppStorage(VoiceController.accountKey) private var accountID = ""
   @AppStorage(VoiceController.speaksKey) private var speaks = true
   @AppStorage(VoiceController.voiceKey) private var voiceID = ""
+  @AppStorage(VoiceController.volumeKey) private var volume = 1.0
   @AppStorage(VoiceController.replyLanguageKey) private var replyLanguageID = ""
+  @AppStorage(VoiceController.effortKey) private var effort = VoiceEffort.automatic
   @AppStorage(VoiceController.instructionsKey) private var instructions = VoiceBrief.defaultStyle
   @State private var shortcut = VoiceShortcut.shared
   @State private var accounts = Accounts.shared
@@ -154,6 +156,12 @@ struct VoicePane: View {
           Text(language.name).tag(language.code)
         }
       }
+      Picker("Effort", selection: $effort) {
+        Text("Account default").tag(VoiceEffort.automatic)
+        Text("Low").tag(VoiceEffort.low)
+        Text("Medium").tag(VoiceEffort.medium)
+        Text("High").tag(VoiceEffort.high)
+      }
       instructionsEditor
       Toggle("Speak replies", isOn: $speaks)
       Group {
@@ -168,14 +176,27 @@ struct VoicePane: View {
             }
           }
           Button {
-            preview.stop()
-            preview.voiceIdentifier = voiceID
-            preview.speak(Self.sample)
+            playPreview()
           } label: {
             Image(systemName: "play.circle")
           }
           .buttonStyle(.borderless)
           .help("Hear this voice")
+        }
+        LabeledContent("Volume") {
+          Slider(value: $volume, in: 0.1...1) {
+            Text("Volume")
+          } minimumValueLabel: {
+            Image(systemName: "speaker.fill")
+          } maximumValueLabel: {
+            Image(systemName: "speaker.wave.3.fill")
+          } onEditingChanged: { editing in
+            // Heard on release, at the level just set.
+            guard !editing else { return }
+            playPreview()
+          }
+          .labelsHidden()
+          .frame(maxWidth: 220)
         }
         kokoroRow
       }
@@ -187,7 +208,7 @@ struct VoicePane: View {
       Text("Answering")
     } footer: {
       Text(
-        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. Changing the language or the instructions starts a new conversation at your next question, because a conversation keeps the ones it began with. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
+        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. Changing the language or the instructions starts a new conversation at your next question, because a conversation keeps the ones it began with. Lower effort answers sooner and thinks less. A change applies from your next question, in the same conversation. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
       )
     }
   }
@@ -250,6 +271,14 @@ struct VoicePane: View {
         }
       }
     }
+  }
+
+  /// The sample, in the voice and at the volume picked, cutting off one still playing.
+  private func playPreview() {
+    preview.stop()
+    preview.voiceIdentifier = voiceID
+    preview.volume = Float(volume)
+    preview.speak(Self.sample)
   }
 
   /// System voices for the language replies are spoken in: the fixed one, or the system's.

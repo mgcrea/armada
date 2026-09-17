@@ -40,9 +40,11 @@ final class VoiceController {
   nonisolated static let accountKey = "armada.voiceAccount"
   nonisolated static let speaksKey = "armada.voiceSpeaks"
   nonisolated static let voiceKey = "armada.voiceIdentifier"
+  nonisolated static let volumeKey = "armada.voiceVolume"
   nonisolated static let replyLanguageKey = "armada.voiceReplyLanguage"
   nonisolated static let instructionsKey = "armada.voiceInstructions"
   nonisolated static let followUpKey = "armada.voiceFollowUp"
+  nonisolated static let effortKey = "armada.voiceEffort"
   /// Where conversation ids were kept before they lived in memory. Removed at launch.
   nonisolated static let legacySessionsKey = "armada.voiceSessions"
 
@@ -57,9 +59,17 @@ final class VoiceController {
   static var speaksReplies: Bool {
     UserDefaults.standard.object(forKey: speaksKey) as? Bool ?? true
   }
+  /// How loud replies are spoken, from 0.1 to 1. Unset is full volume.
+  static var volume: Float {
+    Float(UserDefaults.standard.object(forKey: volumeKey) as? Double ?? 1)
+  }
   static var followUp: VoiceFollowUp {
     UserDefaults.standard.string(forKey: followUpKey).flatMap(VoiceFollowUp.init(rawValue:))
       ?? .afterQuestion
+  }
+  static var effort: VoiceEffort {
+    UserDefaults.standard.string(forKey: effortKey).flatMap(VoiceEffort.init(rawValue:))
+      ?? .automatic
   }
   static var voiceChoice: VoiceChoice {
     VoiceChoice(storageValue: UserDefaults.standard.string(forKey: voiceKey))
@@ -104,6 +114,9 @@ final class VoiceController {
   /// Whether the running `claude` was allowed `armada_start_session`. Also fixed at launch, so
   /// flipping Allow writes takes effect the same way, at the next question.
   @ObservationIgnored private var processCanStartSessions: Bool?
+  /// The effort the running `claude` was started with. Not part of the brief, so a change starts a
+  /// new process that resumes the same conversation.
+  @ObservationIgnored private var processEffort: VoiceEffort?
   /// Bumped for every process started or stopped, so a late event or exit from the one before
   /// is recognised and dropped.
   @ObservationIgnored private var generation = 0
@@ -286,6 +299,7 @@ final class VoiceController {
     case .speak(let sentence):
       speaker.voiceIdentifier = UserDefaults.standard.string(forKey: Self.voiceKey)
       speaker.replyLanguage = Self.replyLanguage
+      speaker.volume = Self.volume
       speaker.speak(sentence)
     case .stopSpeaking: speaker.stop()
     case .scheduleDismiss:
@@ -413,10 +427,11 @@ final class VoiceController {
     let language = Self.replyLanguage
     let canStartSessions = MCPServerController.allowsWrites
     let style = Self.instructions
+    let effort = Self.effort
     let brief = VoiceBrief.text(
       replyingIn: language, canStartSessions: canStartSessions, style: style)
     if let process, process.isRunning, processFolder == folder.path, processBrief == brief,
-      processCanStartSessions == canStartSessions
+      processCanStartSessions == canStartSessions, processEffort == effort
     {
       return
     }
@@ -457,13 +472,14 @@ final class VoiceController {
         executable: executable,
         arguments: SupervisorArguments.arguments(
           mcpConfig: config.path(percentEncoded: false), resume: resume, replyLanguage: language,
-          canStartSessions: canStartSessions, style: style),
+          canStartSessions: canStartSessions, style: style, effort: effort),
         environment: SupervisorArguments.environment(from: ClaudeControl.environment(for: folder)),
         directory: directory))
     self.process = process
     processFolder = folder.path
     processBrief = brief
     processCanStartSessions = canStartSessions
+    processEffort = effort
     sawEvent = false
     resumed = resume != nil
   }
@@ -474,6 +490,7 @@ final class VoiceController {
     processFolder = nil
     processBrief = nil
     processCanStartSessions = nil
+    processEffort = nil
     generation += 1
   }
 

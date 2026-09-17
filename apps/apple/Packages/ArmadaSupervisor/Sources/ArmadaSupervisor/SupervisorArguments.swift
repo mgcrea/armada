@@ -52,7 +52,8 @@ public enum SupervisorArguments {
 
   public static func arguments(
     mcpConfig: String, resume sessionID: String?, replyLanguage: ReplyLanguage = .question,
-    canStartSessions: Bool = false, style: String = VoiceBrief.defaultStyle
+    canStartSessions: Bool = false, style: String = VoiceBrief.defaultStyle,
+    effort: VoiceEffort = .automatic
   ) -> [String] {
     let allowed = readTools + (canStartSessions ? [startTool] : [])
     let denied = (canStartSessions ? [] : [startTool]) + deniedTools
@@ -73,6 +74,7 @@ public enum SupervisorArguments {
       "--append-system-prompt",
       VoiceBrief.text(replyingIn: replyLanguage, canStartSessions: canStartSessions, style: style),
     ]
+    if let level = effort.level { arguments += ["--effort", level] }
     if let sessionID { arguments += ["--resume", sessionID] }
     return arguments
   }
@@ -113,6 +115,18 @@ public enum SupervisorArguments {
     data.append(0x0A)
     return data
   }
+}
+
+/// How hard the model thinks before it answers, passed as `--effort`. `automatic` passes no flag,
+/// so the account's own default applies, as it did before there was a choice.
+public enum VoiceEffort: String, CaseIterable, Sendable {
+  case automatic
+  case low
+  case medium
+  case high
+
+  /// The `--effort` value, or nil for no flag.
+  public var level: String? { self == .automatic ? nil : rawValue }
 }
 
 /// The system prompt appended for voice. Short on purpose: it rides on every turn.

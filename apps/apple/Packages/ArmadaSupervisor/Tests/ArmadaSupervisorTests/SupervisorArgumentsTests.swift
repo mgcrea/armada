@@ -103,6 +103,16 @@ struct SupervisorArgumentsTests {
     #expect(brief == VoiceBrief.text(replyingIn: .question, style: "Be brief."))
   }
 
+  @Test("effort is passed only when one is chosen")
+  func effort() {
+    #expect(!argv.contains("--effort"))
+    for effort in VoiceEffort.allCases where effort != .automatic {
+      let chosen = SupervisorArguments.arguments(
+        mcpConfig: "/tmp/x.json", resume: "5f401944", effort: effort)
+      #expect(value(after: "--effort", in: chosen) == effort.rawValue)
+    }
+  }
+
   @Test("a question survives quotes and newlines, one line per frame")
   func userFrame() throws {
     let data = SupervisorArguments.userFrame("What did \"Bastion\" say?\nAnd why?")
