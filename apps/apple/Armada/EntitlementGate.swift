@@ -36,6 +36,7 @@ final class EntitlementMonitor {
     if current.isEntitled {
       Accounts.shared.start()
       CodexAccounts.shared.start()
+      GrokAccounts.shared.start()
       // After the accounts, whose folders it reads.
       UsageIndex.shared.start()
       // After the accounts too: it edits each one's settings.json to match the switch.
@@ -44,6 +45,7 @@ final class EntitlementMonitor {
       UsageIndex.shared.stop()
       Accounts.shared.stop()
       CodexAccounts.shared.stop()
+      GrokAccounts.shared.stop()
     }
     MouseTap.shared.sync()
     // After the watchers, for the same reason as the tap: an unlicensed Armada holds no

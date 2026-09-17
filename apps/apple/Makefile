@@ -232,6 +232,7 @@ UNIT_SRC := \
 	Armada/ContextWindow.swift \
 	Armada/CodexContext.swift \
 	Armada/CodexRollout.swift \
+	Armada/GrokFiles.swift \
 	Armada/SessionOrder.swift \
 	Armada/Changelog.swift \
 	Armada/HostWindow.swift \

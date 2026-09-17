@@ -33,6 +33,7 @@ struct UnitCheck {
     changelog()
     hostWindow()
     codexRollout()
+    grokFiles()
     licenseKey()
     projects()
     usageLedger()
@@ -847,6 +848,83 @@ struct UnitCheck {
   }
 
   // MARK: - CodexRollout
+
+  static func grokFiles() {
+    section("GrokFiles")
+    // Shapes from grok 1.0.34, 2026-09-17. See docs/grok-sessions.md.
+    let active = GrokFiles.activeSessions(
+      Data(
+        #"[{"session_id":"01A0AED0-C99B-7CD1-A1AC-B6FD20AC67A6","pid":1623,"cwd":"/work/cadence","opened_at":"2026-09-17T10:01:54.041918Z"},{"session_id":"x","pid":0}]"#
+          .utf8))
+    check(
+      "active sessions keep a real pid, lowercase the id, and drop the rest",
+      active == [
+        GrokFiles.ActiveSession(
+          sessionId: "01a0aed0-c99b-7cd1-a1ac-b6fd20ac67a6", pid: 1623, cwd: "/work/cadence")
+      ])
+
+    let summary = GrokFiles.summary(
+      Data(
+        #"{"info":{"id":"01a0af67-f521-75d2-b771-920a03e5fdf9","cwd":"/work/armada"},"session_summary":"","created_at":"2026-09-17T12:47:00.906515Z","last_active_at":"2026-09-17T12:47:11.224707Z","current_model_id":"grok-4.6","generated_title":"French Greeting"}"#
+          .utf8))
+    check(
+      "a TUI summary gives its title, model, folder and six-digit dates",
+      summary?.title == "French Greeting" && summary?.model == "grok-4.6"
+        && summary?.projectName == "armada" && summary?.kind == nil
+        && summary?.createdAt != nil && summary?.updatedAt != nil)
+    let headless = GrokFiles.summary(
+      Data(#"{"info":{"id":"a","cwd":"/w/p"},"session_summary":"","session_kind":"headless"}"#.utf8)
+    )
+    check(
+      "an empty session_summary is no title, and headless is read",
+      headless?.title == nil && headless?.kind == "headless")
+
+    func tail(_ updates: [String]) -> GrokFiles.UpdatesTail {
+      GrokFiles.updatesTail(
+        Data(
+          updates.map { #"{"timestamp":1789648307,"method":"m","params":{"update":\#($0)}}"# }
+            .joined(separator: "\n").utf8), droppingFirstLine: false)
+    }
+    let prompt = #"{"sessionUpdate":"user_message_chunk"}"#
+    let tool = #"{"sessionUpdate":"tool_call_update","status":"completed"}"#
+    let stopHook = #"{"sessionUpdate":"hook_execution","event_name":"stop"}"#
+    let completed = #"{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}"#
+    let endHook = #"{"sessionUpdate":"hook_execution","event_name":"session_end"}"#
+    let background = #"{"sessionUpdate":"background_tasks","tasks":[]}"#
+    let promptHook = #"{"sessionUpdate":"hook_execution","event_name":"user_prompt_submit"}"#
+    check(
+      "a tool call with no turn_completed is a running turn", tail([prompt, tool]).isTurnRunning)
+    check(
+      "hooks after turn_completed do not reopen the turn",
+      !tail([prompt, tool, stopHook, completed, endHook, stopHook, background]).isTurnRunning)
+    check(
+      "a prompt hook after a finished turn opens the next",
+      tail([prompt, completed, promptHook]).isTurnRunning)
+    check(
+      "another turn_ update also ends a turn",
+      !tail([prompt, #"{"sessionUpdate":"turn_cancelled"}"#]).isTurnRunning)
+    check(
+      "the timestamp is epoch seconds",
+      tail([prompt]).lastEventAt == Date(timeIntervalSince1970: 1_789_648_307))
+
+    let usage = GrokFiles.usage(
+      Data(
+        #"{"sessionId":"a","session":{"totalTokens":72175,"costUsdTicks":196472400,"turnCount":2}}"#
+          .utf8))
+    check(
+      "usage.json gives tokens, turns and dollars from ticks",
+      usage?.totalTokens == 72175 && usage?.turnCount == 2
+        && abs((usage?.costUSD ?? 0) - 0.01964724) < 1e-9)
+    let context = GrokFiles.context(
+      Data(#"{"turnCount":2,"contextTokensUsed":11790,"contextWindowTokens":500000}"#.utf8))
+    expectEqual(
+      "signals.json gives the context Grok measured", context,
+      GrokFiles.Context(used: 11790, window: 500000))
+    check(
+      "session directories are UUIDs",
+      GrokFiles.isSessionId("01a0af59-ee50-7b73-a473-2f2bcf56012e")
+        && !GrokFiles.isSessionId("session_search.sqlite"))
+  }
 
   static func codexRollout() {
     section("CodexRollout")

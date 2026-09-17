@@ -15,6 +15,7 @@ enum SidebarItem: Hashable {
   case usage
   case account(String)
   case codex(String)
+  case grok(String)
   /// Every saved project, in one pane of its own. The project selected in it is that
   /// pane's to keep, as a session is an account pane's.
   case projects
@@ -30,12 +31,14 @@ enum SidebarItem: Hashable {
   private static let projectsToken = "projects"
   private static let voiceToken = "voice"
   private static let codexPrefix = "codex:"
+  private static let grokPrefix = "grok:"
 
   var stored: String {
     switch self {
     case .usage: Self.usageToken
     case .account(let id): id
     case .codex(let id): Self.codexPrefix + id
+    case .grok(let id): Self.grokPrefix + id
     case .projects: Self.projectsToken
     case .voice: Self.voiceToken
     }
@@ -50,6 +53,8 @@ enum SidebarItem: Hashable {
       self = .voice
     } else if stored.hasPrefix(Self.codexPrefix) {
       self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
+    } else if stored.hasPrefix(Self.grokPrefix) {
+      self = .grok(String(stored.dropFirst(Self.grokPrefix.count)))
     } else if stored.hasPrefix("/") {
       self = .account(stored)
     } else {
@@ -61,6 +66,7 @@ enum SidebarItem: Hashable {
 struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var grok = GrokAccounts.shared
   @State private var monitor = EntitlementMonitor.shared
 
   /// What the sidebar had selected last time.
@@ -121,6 +127,14 @@ struct MainWindowView: View {
             }
           }
         }
+        if !grok.isEmpty {
+          Section("Grok Build") {
+            ForEach(grok.all) { account in
+              GrokSidebarRow(account: account)
+                .tag(SidebarItem.grok(account.id))
+            }
+          }
+        }
       }
       .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
       .safeAreaInset(edge: .bottom) {
@@ -154,6 +168,11 @@ struct MainWindowView: View {
             CodexPaneView(account: account)
               .id(account.id)
           }
+        case .grok(let id):
+          if let account = grok.account(id: id) {
+            GrokPaneView(account: account)
+              .id(account.id)
+          }
         case .projects:
           ProjectsPaneView()
         case .voice:
@@ -163,7 +182,7 @@ struct MainWindowView: View {
             Label("No agents found", systemImage: "folder.badge.questionmark")
           } description: {
             Text(
-              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex. None of them has a sessions folder yet."
+              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok. None of them has a sessions folder yet."
             )
           }
         }
@@ -180,11 +199,14 @@ struct MainWindowView: View {
     case .usage: .usage
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
+    case .grok(let id) where grok.account(id: id) != nil: .grok(id)
     case .projects: .projects
     case .voice where voiceEnabled: .voice
     // A Codex home is a real fallback, not a consolation prize: someone may run
     // Codex and no Claude Code at all, and the window should open on their work.
-    default: accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }
+    default:
+      accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }
+        ?? grok.all.first.map { .grok($0.id) }
     }
   }
 
