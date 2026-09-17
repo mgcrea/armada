@@ -1342,6 +1342,55 @@ struct UnitCheck {
       "and a default window refuses a custom account",
       !EditorLaunch.hostsAgree([nil], configDirectory: "/Users/me/.claude-b"))
 
+    section("EditorLaunch.windowAgrees")
+    let silhouette = EditorLaunch.ExtensionHost(
+      configDirectory: nil, folder: "/Users/me/Projects/silhouette")
+    let contour = EditorLaunch.ExtensionHost(
+      configDirectory: "/Users/me/.claude-b", folder: "/Users/me/Projects/contour")
+    let untraced = EditorLaunch.ExtensionHost(configDirectory: "/Users/me/.claude-b", folder: nil)
+    check(
+      "another window's account does not matter once the project's is found",
+      EditorLaunch.windowAgrees(
+        [silhouette, contour, untraced], folder: "/Users/me/Projects/silhouette/",
+        configDirectory: nil))
+    check(
+      "the project's own window on another account refuses",
+      !EditorLaunch.windowAgrees(
+        [silhouette, contour], folder: "/Users/me/Projects/contour", configDirectory: nil))
+    check(
+      "a window not found falls back to every host",
+      !EditorLaunch.windowAgrees(
+        [silhouette, untraced], folder: "/Users/me/Projects/armada", configDirectory: nil))
+    check(
+      "and every host agreeing is still enough",
+      EditorLaunch.windowAgrees(
+        [untraced], folder: "/Users/me/Projects/armada", configDirectory: "/Users/me/.claude-b/"))
+
+    section("EditorLaunch.hostStorages")
+    let exthostLog = """
+      2026-09-15 10:53:06.335 [info] Extension host with pid 74130 started
+      2026-09-15 10:53:06.335 [info] Skipping acquiring lock for /Users/me/Library/Application Support/Code/User/workspaceStorage/2a5aabf5f6b4d17ed931fec20b4c7124.
+      2026-09-15 10:53:06.362 [info] ExtensionService#_doActivateExtension vscode.git, startup: true
+      2026-09-15 15:09:17.809 [info] Extension host with pid 60747 started
+      2026-09-15 15:09:17.809 [info] Skipping acquiring lock for /Users/me/Library/Application Support/Code/User/workspaceStorage/88d27e154ede36be86209016cf4fd2e2.
+      2026-09-15 15:09:18.000 [info] something mentioning /User/workspaceStorage/ffff later
+      2026-09-15 16:00:00.000 [info] Extension host with pid 61000 started
+      """
+    expectEqual(
+      "each host of a reloaded window keeps its own storage, and only its first",
+      EditorLaunch.hostStorages(log: exthostLog),
+      [74130: "2a5aabf5f6b4d17ed931fec20b4c7124", 60747: "88d27e154ede36be86209016cf4fd2e2"])
+
+    section("EditorLaunch.workspaceFolder")
+    expectEqual(
+      "a folder window's path, decoded",
+      EditorLaunch.workspaceFolder(Data(#"{ "folder": "file:///Users/me/My%20App" }"#.utf8)),
+      "/Users/me/My App")
+    expectEqual(
+      "a multi-root workspace is no folder",
+      EditorLaunch.workspaceFolder(
+        Data(#"{ "workspace": "file:///Users/me/a.code-workspace" }"#.utf8)), nil)
+
     section("EditorLaunch.settingsSetConfigDirectory")
     check(
       "the setting naming the folder is found",

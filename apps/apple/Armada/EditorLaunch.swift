@@ -63,16 +63,79 @@ nonisolated enum EditorLaunch {
   /// `hosts` holds each extension host's `CLAUDE_CONFIG_DIR`, nil where it is unset. **A window
   /// keeps the environment it was opened with**: measured 2026-09-16, asking for a folder that
   /// is already open, with `--new-window` or without, only brings the old window forward, and
-  /// its extension host keeps the variable it started with. Armada cannot tell which host draws
-  /// which window, so the check is on all of them, and a single disagreeing window is enough to
-  /// refuse. That errs on the side of saying no, which is the side a wrong account is on.
+  /// its extension host keeps the variable it started with. This is the check for when Armada
+  /// cannot tell which host draws the project's window, so it is on all of them, and a single
+  /// disagreeing window is enough to refuse. That errs on the side of saying no, which is the
+  /// side a wrong account is on. `windowAgrees` asks it only when it has to.
   static func hostsAgree(_ hosts: [String?], configDirectory: String?) -> Bool {
-    func normalized(_ value: String?) -> String? {
-      guard let value, !value.isEmpty else { return nil }
-      return value.count > 1 && value.hasSuffix("/") ? String(value.dropLast()) : value
+    let wanted = normalizedPath(configDirectory)
+    return hosts.allSatisfy { normalizedPath($0) == wanted }
+  }
+
+  /// One VS Code window's extension host: the account it runs Claude Code on, nil for the
+  /// default folder, and the folder the window shows, nil when Armada could not find it.
+  struct ExtensionHost: Equatable {
+    var configDirectory: String?
+    var folder: String?
+  }
+
+  /// Whether the window showing `folder` runs Claude Code on `configDirectory`.
+  ///
+  /// **Only the project's own window decides, once it is found.** Measured 2026-09-16, with
+  /// Silhouette on the default account and Contour on another: every window was refused, because
+  /// `hostsAgree` saw Contour's host. When a host is traced to `folder`, the hosts traced there
+  /// are the ones asked, and the others' accounts do not matter. When none is, which of the rest
+  /// draws the window is unknown, and `hostsAgree` is asked of all of them, as before.
+  static func windowAgrees(_ hosts: [ExtensionHost], folder: String, configDirectory: String?)
+    -> Bool
+  {
+    let own = hosts.filter { traced($0, to: folder) }
+    return hostsAgree(
+      (own.isEmpty ? hosts : own).map(\.configDirectory), configDirectory: configDirectory)
+  }
+
+  /// Whether `host` was traced to the window showing `folder`.
+  static func traced(_ host: ExtensionHost, to folder: String) -> Bool {
+    host.folder != nil && normalizedPath(host.folder) == normalizedPath(folder)
+  }
+
+  /// The `workspaceStorage` folder name of each extension host a window's `exthost.log` names,
+  /// by pid.
+  ///
+  /// **The log is the one place a host names its window.** Read on 2026-09-16: every window's
+  /// `logs/<session>/window<n>/exthost/exthost.log` opens with `Extension host with pid <pid>
+  /// started`, and the next line names `…/User/workspaceStorage/<id>`, whose `workspace.json`
+  /// holds the folder. Reloading a window appends a second host's pair of lines to the same file,
+  /// so each host's storage is taken from the lines after its own, up to the next host's.
+  static func hostStorages(log: String) -> [Int32: String] {
+    let marker = "Extension host with pid "
+    var storages: [Int32: String] = [:]
+    var current: Int32?
+    for line in log.split(separator: "\n", omittingEmptySubsequences: true) {
+      if let range = line.range(of: marker) {
+        current = Int32(line[range.upperBound...].prefix(while: \.isNumber))
+        continue
+      }
+      guard let pid = current, let range = line.range(of: "/workspaceStorage/") else { continue }
+      let id = line[range.upperBound...].prefix(while: { $0.isLetter || $0.isNumber })
+      if !id.isEmpty { storages[pid] = String(id) }
+      current = nil
     }
-    let wanted = normalized(configDirectory)
-    return hosts.allSatisfy { normalized($0) == wanted }
+    return storages
+  }
+
+  /// The folder a `workspace.json` names, as a path. Nil for a multi-root `.code-workspace`,
+  /// whose window is not one folder, and for a window with no folder at all.
+  static func workspaceFolder(_ json: Data) -> String? {
+    guard let object = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
+      let uri = object["folder"] as? String, let url = URL(string: uri), url.isFileURL
+    else { return nil }
+    return url.standardizedFileURL.path(percentEncoded: false)
+  }
+
+  private static func normalizedPath(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value.count > 1 && value.hasSuffix("/") ? String(value.dropLast()) : value
   }
 
   /// Whether a VS Code `settings.json` sets `CLAUDE_CONFIG_DIR` for the extension.

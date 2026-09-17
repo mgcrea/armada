@@ -22,8 +22,9 @@ import os
 ///
 /// **The account is the hard part.** A window runs Claude Code with the environment it was
 /// opened with and keeps it. A window Armada opens gets the account stated outright, as a
-/// terminal script does; a window already open is used only when every VS Code window is on
-/// that account. See `EditorLaunch.hostsAgree`.
+/// terminal script does; a window already open is used only when its extension host is on that
+/// account, or, when Armada cannot find which host is the window's, when every host is. See
+/// `EditorLaunch.windowAgrees`.
 @MainActor
 enum VSCodeLaunch {
   static let bundleID = "com.microsoft.VSCode"
@@ -97,10 +98,14 @@ enum VSCodeLaunch {
       let open = HostWindow.windows(inApplication: running.processIdentifier, naming: projectName)
       if open.count > 1 { return ambiguous(projectName) }
       if let window = open.first {
+        let hosts = extensionHosts(of: running.processIdentifier)
         guard
-          EditorLaunch.hostsAgree(
-            extensionHostConfigDirectories(), configDirectory: configDirectory)
+          EditorLaunch.windowAgrees(hosts, folder: path, configDirectory: configDirectory)
         else {
+          if hosts.contains(where: { EditorLaunch.traced($0, to: path) }) {
+            return
+              "\(projectName) is already open in \(name) on another account than \(accountName), and a window keeps the account it was opened on, so Armada did not start the session there. Close \(projectName)'s window and try again, or turn off \(name) in Settings ▸ General to start in your terminal."
+          }
           return
             "\(projectName) is already open in \(name), and at least one \(name) window runs Claude Code on another account than \(accountName). A window keeps the account it was opened on and Armada cannot tell which one that is, so it did not start the session there. Close \(projectName)'s window and try again, or turn off \(name) in Settings ▸ General to start in your terminal."
         }
@@ -307,23 +312,79 @@ enum VSCodeLaunch {
     "More than one \(name) window is titled \(projectName), and Armada tells windows apart by their titles alone, so it did not guess. Close the other one, or start the session from your terminal."
   }
 
-  /// `CLAUDE_CONFIG_DIR` of every running VS Code extension host, nil where unset.
+  /// Every extension host of the VS Code running as `vscode`: its `CLAUDE_CONFIG_DIR`, and the
+  /// folder its window shows when its log says.
   ///
   /// One extension host per window, recognised by the variable VS Code sets on it
-  /// (`VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost`, read with `ps -E` on 2026-09-16) and
-  /// by its executable living inside VS Code's bundle, so Cursor's windows are not counted.
-  private static func extensionHostConfigDirectories() -> [String?] {
+  /// (`VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost`, read with `ps -E` on 2026-09-16), by
+  /// its executable living inside VS Code's bundle, so Cursor's windows are not counted, and by
+  /// VS Code's own process being its parent. The language servers a host starts inherit the
+  /// variable, and would otherwise count as windows with no folder Armada can find.
+  private static func extensionHosts(of vscode: pid_t) -> [EditorLaunch.ExtensionHost] {
     guard let bundle = applicationURL?.standardizedFileURL.path(percentEncoded: false) else {
       return []
     }
     let prefix = bundle.hasSuffix("/") ? bundle : bundle + "/"
-    return ProcessAncestry.allPIDs().compactMap { pid -> String?? in
-      guard ProcessAncestry.executablePath(of: pid)?.hasPrefix(prefix) == true,
+    let hosts = ProcessAncestry.allPIDs().compactMap { pid -> (pid_t, String?)? in
+      guard ProcessAncestry.parent(of: pid) == vscode,
+        ProcessAncestry.executablePath(of: pid)?.hasPrefix(prefix) == true,
         let environment = ProcessAncestry.environment(of: pid),
         environment["VSCODE_CRASH_REPORTER_PROCESS_TYPE"] == "extensionHost"
       else { return nil }
-      return .some(environment["CLAUDE_CONFIG_DIR"])
+      return (pid, environment["CLAUDE_CONFIG_DIR"])
     }
+    let folders = hostFolders(hosts.map(\.0))
+    return hosts.map { EditorLaunch.ExtensionHost(configDirectory: $0.1, folder: folders[$0.0]) }
+  }
+
+  /// The folder each of `pids` shows, for the hosts whose `exthost.log` says. See
+  /// `EditorLaunch.hostStorages`.
+  ///
+  /// Only logs written since the oldest of these hosts started are read: a host writes its first
+  /// line as it starts, so an older log belongs to a window that is gone. There are a few dozen
+  /// logs of a hundred kilobytes or so.
+  private static func hostFolders(_ pids: [pid_t]) -> [pid_t: String] {
+    guard !pids.isEmpty else { return [:] }
+    let fileManager = FileManager.default
+    let code = fileManager.homeDirectoryForCurrentUser.appending(
+      path: "Library/Application Support/Code", directoryHint: .isDirectory)
+    let logs = code.appending(path: "logs", directoryHint: .isDirectory)
+    let storage = code.appending(path: "User/workspaceStorage", directoryHint: .isDirectory)
+    let since =
+      (pids.compactMap(ProcessAncestry.startTime(of:)).min() ?? .distantPast)
+      .addingTimeInterval(-60)
+
+    var logsByAge: [(Date, URL)] = []
+    for session in (try? fileManager.contentsOfDirectory(atPath: logs.path)) ?? [] {
+      let sessionURL = logs.appending(path: session, directoryHint: .isDirectory)
+      for window in (try? fileManager.contentsOfDirectory(atPath: sessionURL.path)) ?? []
+      where window.hasPrefix("window") {
+        let log = sessionURL.appending(path: "\(window)/exthost/exthost.log")
+        guard
+          let modified = try? log.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate, modified >= since
+        else { continue }
+        logsByAge.append((modified, log))
+      }
+    }
+
+    // Oldest first, so a pid named again in a newer log, after the kernel reused it, is the
+    // newer log's.
+    var storages: [pid_t: String] = [:]
+    for (_, log) in logsByAge.sorted(by: { $0.0 < $1.0 }) {
+      guard let text = try? String(contentsOf: log, encoding: .utf8) else { continue }
+      storages.merge(EditorLaunch.hostStorages(log: text)) { _, newer in newer }
+    }
+
+    var folders: [pid_t: String] = [:]
+    for pid in pids {
+      guard let id = storages[pid],
+        let json = try? Data(contentsOf: storage.appending(path: "\(id)/workspace.json")),
+        let folder = EditorLaunch.workspaceFolder(json)
+      else { continue }
+      folders[pid] = folder
+    }
+    return folders
   }
 
   private static var hasClaudeExtension: Bool {
