@@ -633,5 +633,9 @@ audit`. Nothing below has been run end to end.
 - **A conversation lasts until Start a New Conversation, an account switch or a relaunch.** Its
   session id is held in memory, so the context grows with every question until one of those, and
   a relaunch never resumes a history the Voice pane no longer shows.
+- **Keep listening has no echo cancellation.** The microphone opens 300 ms after the speaker
+  reports the queue drained (`VoiceController.answerSettle`, untuned), and only then does the
+  6 s give-up start. A speaker loud enough to ring past that is heard as the start of an answer.
+  `VoiceTurn.listensForAnswer` is what turns an empty transcript into a quiet close.
 - **Debug and installed builds share the default shortcut.** Whichever registers second shows
   that another app already uses it.

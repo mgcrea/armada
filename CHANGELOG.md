@@ -12,6 +12,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
+- **Answer voice without pressing the shortcut again.** When a spoken reply ends with a
+  question, such as "Should I go ahead?", the card switches to Listening for your answer and you
+  can just reply. Say nothing and the card closes. Settings ▸ Voice ▸ Keep listening sets it to
+  Never, After a question (the default) or After every reply. It applies when you press to ask,
+  not when you hold.
 - **Choose the language voice answers in.** Settings ▸ Voice has an Answer in picker: the
   language you ask in, as before, or one language whatever you speak, such as English when you
   ask in French. Changing it starts a new conversation at your next question. The Voice picker
