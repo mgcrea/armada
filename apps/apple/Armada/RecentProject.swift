@@ -91,6 +91,21 @@ nonisolated struct RecentProject: Identifiable, Hashable, Sendable {
     return existing(candidates)
   }
 
+  /// Grok Build's, from the sessions `GrokWatcher` holds, for `CodexSession`'s reasons.
+  @MainActor
+  static func recent(in sessions: [GrokSession]) -> [RecentProject] {
+    var seen: Set<String> = []
+    let candidates =
+      sessions
+      .sorted { ($0.lastEventAt ?? .distantPast) > ($1.lastEventAt ?? .distantPast) }
+      .compactMap { session -> RecentProject? in
+        let path = session.summary.cwd
+        guard !path.isEmpty, !isTemporary(path), seen.insert(path).inserted else { return nil }
+        return RecentProject(path: path, lastStartedAt: session.lastEventAt)
+      }
+    return existing(candidates)
+  }
+
   /// The first `limit` candidates that are still directories on disk.
   private static func existing(_ candidates: [RecentProject]) -> [RecentProject] {
     let fileManager = FileManager.default

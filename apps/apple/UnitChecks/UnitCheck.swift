@@ -1088,6 +1088,9 @@ struct UnitCheck {
       Project(
         id: "B", path: "/work/site", name: "Marketing", agent: .codex(homeID: "/Users/me/.codex"),
         addedAt: added),
+      Project(
+        id: "C", path: "/work/cadence", name: nil, agent: .grok(homeID: "/Users/me/.grok"),
+        addedAt: added),
     ]
     let data = try? ProjectsFile.encode(saved)
     expectEqual("a list round-trips", data.flatMap { try? ProjectsFile.decode($0) }, saved)
@@ -1099,6 +1102,9 @@ struct UnitCheck {
       (try? ProjectsFile.decode(Data(#"{"v":2,"projects":[]}"#.utf8))) == nil)
     expectEqual("an unnamed project is called after its folder", saved[0].displayName, "armada")
     expectEqual("a named one by its name", saved[1].displayName, "Marketing")
+    check(
+      "a Grok Build project is stored as grok",
+      data.map { String(decoding: $0, as: UTF8.self).contains(#""g":"grok""#) } == true)
   }
 
   // MARK: - Usage ledger

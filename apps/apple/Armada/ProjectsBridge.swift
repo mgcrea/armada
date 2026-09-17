@@ -55,6 +55,15 @@ nonisolated struct ProjectsCapture: Sendable {
             state: session.state.rawValue, cwd: session.meta.cwd))
       }
     }
+    for account in GrokAccounts.shared.all {
+      names[account.id] = account.displayName
+      for session in account.sessions.liveSessions {
+        live.append(
+          Live(
+            id: session.id, vendor: "grok", name: session.displayName,
+            state: session.state.rawValue, cwd: session.summary.cwd))
+      }
+    }
     return ProjectsCapture(
       takenAt: now, isEntitled: EntitlementMonitor.shared.current.isEntitled,
       projects: ProjectStore.shared.projects, candidates: ProjectStore.shared.candidates,
@@ -73,11 +82,7 @@ nonisolated struct ProjectsCapture: Sendable {
       let exists =
         fileManager.fileExists(atPath: project.path, isDirectory: &isDirectory)
         && isDirectory.boolValue
-      let vendor =
-        switch project.agent {
-        case .claude: "claude"
-        case .codex: "codex"
-        }
+      let vendor = project.agent.vendorKey
       return ProjectsSnapshot.Project(
         id: project.id, name: project.displayName, path: project.path, exists: exists,
         defaultAgent: .init(

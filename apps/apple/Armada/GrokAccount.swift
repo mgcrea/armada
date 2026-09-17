@@ -40,6 +40,9 @@ final class GrokAccount: Identifiable {
 
   var displayName: String { home.displayName }
   var displayPath: String { home.displayPath }
+
+  /// The folders this home ran in lately, for New Session menus. See `CodexAccount.recentProjects`.
+  var recentProjects: [RecentProject] { RecentProject.recent(in: sessions.sessions) }
 }
 
 /// Every Grok Build home on this Mac. A singleton of its own, for `CodexAccounts`' reasons.

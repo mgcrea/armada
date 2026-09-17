@@ -32,12 +32,14 @@ nonisolated enum NewSession {
   enum Agent: Hashable, Sendable {
     case claude(ClaudeConfigFolder)
     case codex(CodexHome)
+    case grok(GrokHome)
 
     /// What the button says, and what an error message calls the missing binary.
     var commandName: String {
       switch self {
       case .claude: "claude"
       case .codex: "codex"
+      case .grok: "grok"
       }
     }
 
@@ -45,6 +47,7 @@ nonisolated enum NewSession {
       switch self {
       case .claude: "Claude Code"
       case .codex: "Codex"
+      case .grok: "Grok Build"
       }
     }
   }
@@ -151,8 +154,8 @@ nonisolated enum NewSession {
       return "\((path as NSString).abbreviatingWithTildeInPath) is not there any more."
     }
 
-    if supervisor != nil, case .codex = agent {
-      return "A supervisor session runs on Claude Code."
+    if supervisor != nil {
+      guard case .claude = agent else { return "A supervisor session runs on Claude Code." }
     }
 
     guard let binary = executable(for: agent) else {
@@ -195,6 +198,7 @@ nonisolated enum NewSession {
     switch agent {
     case .claude: ClaudeControl.executable()
     case .codex: CodexCLI.executable()
+    case .grok: GrokControl.executable()
     }
   }
 
@@ -269,6 +273,14 @@ nonisolated enum NewSession {
         // A top-level subcommand rather than a flag, and it takes the id positionally;
         // measured against codex-cli 0.153.4 on 2026-09-13.
         ["fork", quoted(sessionID)]
+      // Grok Build's flags, from `grok --help` on 1.0.34: `-s` names a new session and errors on
+      // one already in use, `--fork-session` needs `-r`, and a prompt is the trailing word.
+      case (.grok, .identified(let sessionID)):
+        ["--session-id", quoted(sessionID)]
+      case (.grok, .resume(let sessionID)):
+        ["--resume", quoted(sessionID)]
+      case (.grok, .fork(let sessionID)):
+        ["--resume", quoted(sessionID), "--fork-session"]
       }
     // The supervisor's flags, from `claude --help` on 2.1.269. Order matters for one reason:
     // `--mcp-config` and `--allowedTools` are variadic and swallow words until the next flag,
@@ -312,6 +324,11 @@ nonisolated enum NewSession {
       ["export CLAUDE_CONFIG_DIR=\(quoted(folder.path))"]
     case .codex(let home):
       ["export CODEX_HOME=\(quoted(home.path))"]
+    // As for Claude Code, unset for the default so a profile's `GROK_HOME` cannot redirect it.
+    case .grok(let home) where home.isDefault:
+      ["unset GROK_HOME"]
+    case .grok(let home):
+      ["export GROK_HOME=\(quoted(home.path))"]
     }
   }
 

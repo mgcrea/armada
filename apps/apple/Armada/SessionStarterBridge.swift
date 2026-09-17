@@ -13,8 +13,8 @@ import Foundation
 ///
 /// **Names the session when it can.** A fresh Claude Code session bound for a terminal gets an id
 /// minted here and passed as `--session-id`, so the agent can watch or close exactly the session
-/// it started. VS Code opens its tab through the extension's link, which takes no id, and Codex
-/// has no such flag; both still come back without one.
+/// it started. Grok Build takes the same (`--session-id`). VS Code opens its tab through the
+/// extension's link, which takes no id, and Codex has no such flag; both still come back without one.
 ///
 /// **Resumes only what nothing has open.** See `resume`.
 nonisolated struct SessionStarterBridge: SessionStarter {
@@ -38,7 +38,10 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     if let prompt = request.prompt, let refusal = Tools.promptRefusal(prompt) {
       return .refused(refusal)
     }
-    if let id = request.resume { return resume(id, prompt: request.prompt, now: now) }
+    if let id = request.resume {
+      if request.vendor == "grok" { return resumeGrok(id, prompt: request.prompt, now: now) }
+      return resume(id, prompt: request.prompt, now: now, fallBackToGrok: request.vendor == nil)
+    }
 
     let store = ProjectStore.shared
     guard let projectID = request.projectID, let project = store.project(id: projectID) else {
@@ -57,7 +60,13 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     if let refusal = throttled(now) { return .refused(refusal) }
     let sessionID: String?
     let start: NewSession.Start
-    if case .claude = agent, !launcher.opensInVSCode(agent) {
+    let takesID =
+      switch agent {
+      case .claude: !launcher.opensInVSCode(agent)
+      case .grok: true
+      case .codex: false
+      }
+    if takesID {
       let minted = UUID().uuidString.lowercased()
       sessionID = minted
       start = .identified(sessionID: minted)
@@ -75,10 +84,12 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       switch agent {
       case .claude(let folder): ("claude", folder.path)
       case .codex(let home): ("codex", home.id)
+      case .grok(let home): ("grok", home.id)
       }
     let account =
       Accounts.shared.account(id: accountID)?.displayName
-      ?? CodexAccounts.shared.account(id: accountID)?.displayName ?? accountID
+      ?? CodexAccounts.shared.account(id: accountID)?.displayName
+      ?? GrokAccounts.shared.account(id: accountID)?.displayName ?? accountID
     return .started(
       StartedSession(
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
@@ -107,7 +118,9 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// account is found by where the transcript is rather than by what the agent says. The folder
   /// must be inside a saved project, the same boundary a fresh start keeps.
   @MainActor
-  private static func resume(_ id: String, prompt: String?, now: Date) -> StartSessionOutcome {
+  private static func resume(
+    _ id: String, prompt: String?, now: Date, fallBackToGrok: Bool
+  ) -> StartSessionOutcome {
     let accounts = Accounts.shared.all
     for account in accounts {
       if let live = account.sessions.sessions.first(where: { $0.id == id }) {
@@ -125,6 +138,11 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       }
     }
     guard let (account, transcript) = found else {
+      // An id with no vendor named is looked for in Grok Build too: both mint UUIDs, and an
+      // agent resuming a session it read from the fleet should not have to know which kind.
+      if fallBackToGrok, GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil }) {
+        return resumeGrok(id, prompt: prompt, now: now)
+      }
       return .refused("No Claude Code account on this Mac has a transcript for session \(id).")
     }
 
@@ -169,6 +187,71 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         withPrompt: prompt != nil, sessionID: id, resumed: true))
   }
 
+  /// Continue a Grok Build session, under `resume`'s three checks.
+  ///
+  /// Open means listed as live by the watcher, or in `active_sessions.json` with a live pid, which
+  /// the watcher's state already reflects within a sweep; `recentWrite` covers the sweep's gap and a
+  /// headless `grok -p` that no list names. The folder is `summary.json`'s.
+  @MainActor
+  private static func resumeGrok(_ id: String, prompt: String?, now: Date) -> StartSessionOutcome {
+    let homes = GrokAccounts.shared.all
+    for account in homes {
+      if let live = account.sessions.sessions.first(where: { $0.id == id }), live.state.isLive {
+        return .refused(
+          "\(live.displayName) is still open in \(live.summary.projectName). Close it first, or "
+            + "start a fresh session.")
+      }
+    }
+    guard
+      let (account, directory) = homes.lazy.compactMap({ account in
+        account.home.sessionDirectory(id: id).map { (account, $0) }
+      }).first
+    else {
+      return .refused("No Grok Build home on this Mac has session \(id).")
+    }
+
+    let updates = directory.appending(path: "updates.jsonl").path(percentEncoded: false)
+    if let modified = try? FileManager.default.attributesOfItem(atPath: updates)[.modificationDate]
+      as? Date, now.timeIntervalSince(modified) < recentWrite
+    {
+      return .refused(
+        "Session \(id) wrote to its log \(max(0, Int(now.timeIntervalSince(modified)))) seconds "
+          + "ago, so something may still have it open. Try again in a minute.")
+    }
+    guard
+      let summary = (try? Data(contentsOf: directory.appending(path: "summary.json")))
+        .flatMap(GrokFiles.summary), !summary.cwd.isEmpty
+    else {
+      return .refused("Session \(id) records no folder to resume it in.")
+    }
+    let cwd = summary.cwd
+    guard let project = ProjectStore.shared.project(containing: cwd) else {
+      return .refused(
+        "Session \(id) ran in \((cwd as NSString).abbreviatingWithTildeInPath), which is not in "
+          + "a saved project. Only sessions in saved projects are resumed.")
+    }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      return .refused("\((cwd as NSString).abbreviatingWithTildeInPath) is not there any more.")
+    }
+
+    if let refusal = throttled(now) { return .refused(refusal) }
+    let launcher = NewSessionLauncher.shared
+    if let message = launcher.startForAgent(
+      .grok(account.home), in: URL(filePath: cwd, directoryHint: .isDirectory),
+      start: .resume(sessionID: id), prompt: prompt)
+    {
+      return .refused(message)
+    }
+    return .started(
+      StartedSession(
+        project: project.displayName, path: cwd, vendor: "grok", accountID: account.id,
+        account: account.displayName, terminal: launcher.terminal.name,
+        withPrompt: prompt != nil, sessionID: id, resumed: true))
+  }
+
   /// The `cwd` the transcript's entries carry, from the first one that has it.
   private static func recordedFolder(of transcript: URL) -> String? {
     guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
@@ -191,11 +274,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   private static func agent(for request: StartSessionRequest, project: Project) -> (
     NewSession.Agent?, String?
   ) {
-    let projectVendor =
-      switch project.agent {
-      case .claude: "claude"
-      case .codex: "codex"
-      }
+    let projectVendor = project.agent.vendorKey
     let vendor = request.vendor ?? projectVendor
 
     if let query = request.account?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -211,6 +290,16 @@ nonisolated struct SessionStarterBridge: SessionStarter {
           return (nil, noAccount(query, vendor: "Codex home", names: all.map(\.displayName)))
         }
         return (.codex(matches[0].home), nil)
+      }
+      if vendor == "grok" {
+        let all = GrokAccounts.shared.all
+        let matches = all.filter {
+          $0.id.lowercased() == lowered || $0.displayName.lowercased() == lowered
+        }
+        guard matches.count == 1 else {
+          return (nil, noAccount(query, vendor: "Grok Build home", names: all.map(\.displayName)))
+        }
+        return (.grok(matches[0].home), nil)
       }
       let all = Accounts.shared.all
       let matches = all.filter {
@@ -237,6 +326,12 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         return (nil, "There is no Codex home on this Mac.")
       }
       return (.codex(home.home), nil)
+    }
+    if vendor == "grok" {
+      guard let home = GrokAccounts.shared.all.first else {
+        return (nil, "There is no Grok Build home on this Mac.")
+      }
+      return (.grok(home.home), nil)
     }
     guard let account = Accounts.shared.all.first else {
       return (nil, "There is no Claude Code account on this Mac.")

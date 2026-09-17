@@ -11,6 +11,7 @@ struct ProjectSession: Identifiable {
   enum Source {
     case claude(Session, Account)
     case codex(CodexSession, CodexAccount)
+    case grok(GrokSession, GrokAccount)
   }
 
   let source: Source
@@ -19,6 +20,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(let session, _): "claude:" + session.id
     case .codex(let session, _): "codex:" + session.id
+    case .grok(let session, _): "grok:" + session.id
     }
   }
 
@@ -26,6 +28,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(let session, _): session.displayName
     case .codex(let session, _): session.displayName
+    case .grok(let session, _): session.displayName
     }
   }
 
@@ -33,6 +36,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(let session, _): session.registry.cwd
     case .codex(let session, _): session.meta.cwd
+    case .grok(let session, _): session.summary.cwd
     }
   }
 
@@ -40,6 +44,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(_, let account): account.displayName
     case .codex(_, let account): account.displayName
+    case .grok(_, let account): account.displayName
     }
   }
 
@@ -47,6 +52,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(let session, _): session.lastActivity
     case .codex(let session, _): session.lastActivity
+    case .grok(let session, _): session.lastEventAt ?? session.summary.updatedAt
     }
   }
 
@@ -56,6 +62,7 @@ struct ProjectSession: Identifiable {
     switch source {
     case .claude(let session, _): session.state != .idle
     case .codex(let session, _): session.state == .working
+    case .grok(let session, _): session.state == .working
     }
   }
 
@@ -66,6 +73,8 @@ struct ProjectSession: Identifiable {
       MainWindowRoute.shared.open(.account(account.id), session: session.id)
     case .codex(let session, let account):
       MainWindowRoute.shared.open(.codex(account.id), session: session.id)
+    case .grok(let session, let account):
+      MainWindowRoute.shared.open(.grok(account.id), session: session.id)
     }
   }
 
@@ -88,6 +97,11 @@ struct ProjectSession: Identifiable {
       for session in account.sessions.liveSessions
       where !session.isSubagent && belongs(session.meta.cwd) {
         found.append(ProjectSession(source: .codex(session, account)))
+      }
+    }
+    for account in GrokAccounts.shared.all {
+      for session in account.sessions.liveSessions where belongs(session.summary.cwd) {
+        found.append(ProjectSession(source: .grok(session, account)))
       }
     }
     return found.sorted {
@@ -426,6 +440,7 @@ struct ProjectDetail: View {
   @State private var launcher = NewSessionLauncher.shared
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var grok = GrokAccounts.shared
   @State private var name = ""
 
   var body: some View {
@@ -467,7 +482,7 @@ struct ProjectDetail: View {
         // so there is no one-click launch, only the choice.
         Menu("Start a Session") { otherAgents }
           .fixedSize()
-          .disabled(accounts.all.isEmpty && codex.all.isEmpty)
+          .disabled(accounts.all.isEmpty && codex.all.isEmpty && grok.all.isEmpty)
         Text(
           "The account this project starts on is not on this Mac. Choose another under Project."
         )
@@ -493,6 +508,11 @@ struct ProjectDetail: View {
         launcher.start(.codex(account.home), in: project.url)
       }
     }
+    ForEach(grok.all) { account in
+      Button("Grok Build on \(account.displayName)") {
+        launcher.start(.grok(account.home), in: project.url)
+      }
+    }
   }
 
   // MARK: Live sessions
@@ -511,6 +531,7 @@ struct ProjectDetail: View {
               switch session.source {
               case .claude(let claude, _): StateDot(state: claude.state)
               case .codex(let codex, _): CodexStateDot(state: codex.state)
+              case .grok(let grok, _): GrokStateDot(state: grok.state)
               }
               VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayName)
@@ -578,6 +599,10 @@ struct ProjectDetail: View {
         ForEach(codex.all) { account in
           Text("Codex on \(account.displayName)")
             .tag(ProjectAgent.codex(homeID: account.id))
+        }
+        ForEach(grok.all) { account in
+          Text("Grok Build on \(account.displayName)")
+            .tag(ProjectAgent.grok(homeID: account.id))
         }
         if store.resolve(project.agent) == nil {
           Text("\(project.agent.vendorName), an account not on this Mac").tag(project.agent)

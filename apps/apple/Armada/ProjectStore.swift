@@ -133,6 +133,7 @@ final class ProjectStore {
     switch agent {
     case .claude(let id): Accounts.shared.account(id: id).map { .claude($0.folder) }
     case .codex(let id): CodexAccounts.shared.account(id: id).map { .codex($0.home) }
+    case .grok(let id): GrokAccounts.shared.account(id: id).map { .grok($0.home) }
     }
   }
 
@@ -141,6 +142,7 @@ final class ProjectStore {
     switch agent {
     case .claude(let id): Accounts.shared.account(id: id)?.displayName
     case .codex(let id): CodexAccounts.shared.account(id: id)?.displayName
+    case .grok(let id): GrokAccounts.shared.account(id: id)?.displayName
     }
   }
 
@@ -149,6 +151,7 @@ final class ProjectStore {
   var defaultNewAgent: ProjectAgent? {
     if let account = Accounts.shared.all.first { return .claude(accountID: account.id) }
     if let home = CodexAccounts.shared.all.first { return .codex(homeID: home.id) }
+    if let home = GrokAccounts.shared.all.first { return .grok(homeID: home.id) }
     return nil
   }
 
@@ -164,6 +167,11 @@ final class ProjectStore {
     for account in CodexAccounts.shared.all {
       found += account.recentProjects.map {
         ProjectSuggestion(recent: $0, agent: .codex(homeID: account.id))
+      }
+    }
+    for account in GrokAccounts.shared.all {
+      found += account.recentProjects.map {
+        ProjectSuggestion(recent: $0, agent: .grok(homeID: account.id))
       }
     }
     var seen: Set<String> = []
@@ -256,6 +264,7 @@ extension NewSession.Agent {
     switch self {
     case .claude(let folder): .claude(accountID: folder.path)
     case .codex(let home): .codex(homeID: home.id)
+    case .grok(let home): .grok(homeID: home.id)
     }
   }
 }

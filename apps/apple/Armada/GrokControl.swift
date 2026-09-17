@@ -91,10 +91,7 @@ nonisolated enum GrokControl {
 
   static func environment(for home: GrokHome) -> [String: String] {
     var environment = ProcessInfo.processInfo.environment
-    let fallback = GrokHome(
-      base: FileManager.default.homeDirectoryForCurrentUser.appending(
-        path: ".grok", directoryHint: .isDirectory))
-    if home.path == fallback.path {
+    if home.isDefault {
       environment.removeValue(forKey: "GROK_HOME")
     } else {
       environment["GROK_HOME"] = home.path

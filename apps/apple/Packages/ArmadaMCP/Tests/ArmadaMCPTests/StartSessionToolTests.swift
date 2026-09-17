@@ -89,12 +89,30 @@ struct StartSessionToolTests {
     #expect(starter.requests.isEmpty)
   }
 
-  @Test("A vendor that is neither claude nor codex is refused")
+  @Test("A vendor that is not claude, codex or grok is refused")
   func refusedVendor() async {
     let starter = FakeSessionStarter()
     let result = await call(["project": "armada", "vendor": "gemini"], starter: starter)
     #expect(result.isError)
     #expect(starter.requests.isEmpty)
+  }
+
+  @Test("Grok Build is a vendor to start on")
+  func grokVendor() async {
+    let starter = FakeSessionStarter()
+    let result = await call(["project": "armada", "vendor": "grok"], starter: starter)
+    #expect(!result.isError)
+    #expect(starter.requests.first?.vendor == "grok")
+  }
+
+  @Test("A Grok Build session can be resumed by id")
+  func resumeGrok() async {
+    let starter = FakeSessionStarter()
+    let id = "01a0af67-f521-75d2-b771-920a03e5fdf9"
+    let result = await call(["resume": .string(id), "vendor": "grok"], starter: starter)
+    #expect(!result.isError)
+    #expect(starter.requests.first?.resume == id)
+    #expect(starter.requests.first?.vendor == "grok")
   }
 
   @Test("The app's refusal comes back as the tool's error, word for word")

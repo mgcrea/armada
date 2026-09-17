@@ -660,11 +660,11 @@ public enum Tools {
         name: "armada_start_session",
         title: "Start a session",
         description:
-          "Open a fresh Claude Code or Codex session in one of the person's saved projects, in "
-          + "their terminal or VS Code as they chose, on the project's own account or the one "
-          + "named, optionally with an opening message. Or pass `resume` with a Claude Code "
-          + "session id that is no longer open, such as one armada_close_session closed, to "
-          + "continue it in a terminal where it ran. The session asks the person for "
+          "Open a fresh Claude Code, Codex or Grok Build session in one of the person's saved "
+          + "projects, in their terminal or VS Code as they chose, on the project's own account or "
+          + "the one named, optionally with an opening message. Or pass `resume` with a Claude "
+          + "Code or Grok Build session id that is no longer open, such as one "
+          + "armada_close_session closed, to continue it in a terminal where it ran. The session asks the person for "
           + "permissions as usual and appears in armada_get_fleet within a few seconds; "
           + "`sessionId` is its id when Armada knows it. Saved projects only.",
         properties: [
@@ -673,7 +673,7 @@ public enum Tools {
             "description": "A saved project's id, path or exact name, from armada_get_projects.",
           ],
           "vendor": [
-            "type": "string", "enum": ["claude", "codex"],
+            "type": "string", "enum": ["claude", "codex", "grok"],
             "description": "Default: the project's own agent.",
           ],
           "account": [
@@ -686,7 +686,8 @@ public enum Tools {
           ],
           "resume": [
             "type": "string",
-            "description": "A Claude Code session id to continue. Replaces project and account.",
+            "description":
+              "A Claude Code or Grok Build session id to continue. Replaces project and account.",
           ],
         ],
         gate: .requiresWrites,
@@ -696,8 +697,8 @@ public enum Tools {
       guard snapshot.isEntitled else { return .failure(notEntitled) }
 
       let vendor = arguments["vendor"]?.stringValue
-      if let vendor, vendor != "claude", vendor != "codex" {
-        return .failure("`vendor` is claude or codex, not \"\(vendor)\".")
+      if let vendor, !["claude", "codex", "grok"].contains(vendor) {
+        return .failure("`vendor` is claude, codex or grok, not \"\(vendor)\".")
       }
       let prompt = arguments["prompt"]?.stringValue
       if let prompt, let refusal = promptRefusal(prompt) { return .failure(refusal) }
@@ -710,8 +711,8 @@ public enum Tools {
             "Pass `resume` on its own, without `project` or `account`: a resumed session runs "
               + "where it ran before, on the account that holds its transcript.")
         }
-        guard vendor == nil || vendor == "claude" else {
-          return .failure("Only a Claude Code session can be resumed here.")
+        guard vendor != "codex" else {
+          return .failure("Only a Claude Code or Grok Build session can be resumed here.")
         }
         // It reaches a script, quoted, but a session id has exactly one shape.
         guard UUID(uuidString: resume) != nil else {
@@ -736,7 +737,12 @@ public enum Tools {
       case .refused(let message):
         return .failure(message)
       case .started(let started):
-        let vendorName = started.vendor == "codex" ? "Codex" : "Claude Code"
+        let vendorName =
+          switch started.vendor {
+          case "codex": "Codex"
+          case "grok": "Grok Build"
+          default: "Claude Code"
+          }
         let message =
           started.promptAwaitsSend
           ? ", with the opening message typed into its input but not sent"

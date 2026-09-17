@@ -87,6 +87,32 @@ enum ForkAvailability {
   }
 }
 
+extension ForkAvailability {
+  /// `grok --resume <id> --fork-session` reads `updates.jsonl`, so a session opened and never
+  /// prompted has nothing to copy. An ended session forks like a live one, as with Codex.
+  @MainActor
+  static func grok(_ session: GrokSession, in account: GrokAccount) -> ForkAvailability {
+    let updates = session.directory.appending(path: "updates.jsonl", directoryHint: .notDirectory)
+    guard session.scannedSize > 0
+      || FileManager.default.fileExists(atPath: updates.path(percentEncoded: false))
+    else {
+      return .unavailable(
+        "This session has never been prompted, so there is no conversation to fork.")
+    }
+    guard !session.summary.cwd.isEmpty else {
+      return .unavailable("This session records no folder, so there is nowhere to open a fork.")
+    }
+    return .available(
+      ForkTarget(
+        agent: .grok(account.home),
+        project: URL(filePath: session.summary.cwd, directoryHint: .isDirectory),
+        sessionID: session.id,
+        note:
+          "Grok Build opens a copy in a terminal and this session is not touched. It records this session as the copy's parent."
+      ))
+  }
+}
+
 /// "Fork Session", or why this one cannot be.
 ///
 /// **"Fork" is both vendors' own word** — `--fork-session`, `codex fork`, and Codex's

@@ -79,6 +79,26 @@ nonisolated struct GrokHome: Sendable, Hashable {
 
   var id: String { path }
 
+  /// `~/.grok`, the home a launch reaches with no `GROK_HOME` set.
+  var isDefault: Bool {
+    let fallback = FileManager.default.homeDirectoryForCurrentUser.appending(
+      path: ".grok", directoryHint: .isDirectory)
+    return path == GrokHome(base: fallback).path
+  }
+
+  /// The session directory for an id, wherever its project folder is. Nil when no project holds it.
+  func sessionDirectory(id: String) -> URL? {
+    let fileManager = FileManager.default
+    let projects = (try? fileManager.contentsOfDirectory(at: sessionsDir, includingPropertiesForKeys: nil)) ?? []
+    for project in projects where project.hasDirectoryPath {
+      let candidate = project.appending(path: id, directoryHint: .isDirectory)
+      if fileManager.fileExists(atPath: candidate.appending(path: "summary.json").path(percentEncoded: false)) {
+        return candidate
+      }
+    }
+    return nil
+  }
+
   /// `~/.grok` reads as "Grok Build"; anything else keeps its folder name.
   var displayName: String {
     let last = base.lastPathComponent

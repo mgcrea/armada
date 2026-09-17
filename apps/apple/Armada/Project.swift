@@ -10,11 +10,13 @@ import Foundation
 nonisolated enum ProjectAgent: Hashable, Sendable {
   case claude(accountID: String)
   case codex(homeID: String)
+  case grok(homeID: String)
 
   var accountID: String {
     switch self {
     case .claude(let id): id
     case .codex(let id): id
+    case .grok(let id): id
     }
   }
 
@@ -22,6 +24,16 @@ nonisolated enum ProjectAgent: Hashable, Sendable {
     switch self {
     case .claude: "Claude Code"
     case .codex: "Codex"
+    case .grok: "Grok Build"
+    }
+  }
+
+  /// The vendor's key in `projects.json` and in every MCP payload.
+  var vendorKey: String {
+    switch self {
+    case .claude: "claude"
+    case .codex: "codex"
+    case .grok: "grok"
     }
   }
 }
@@ -104,13 +116,9 @@ nonisolated enum ProjectsFile {
 
   static func encode(_ projects: [Project]) throws -> Data {
     let entries = projects.map { project in
-      let agent: String
-      switch project.agent {
-      case .claude: agent = "claude"
-      case .codex: agent = "codex"
-      }
       return Entry(
-        id: project.id, p: project.path, n: project.name, g: agent, a: project.agent.accountID,
+        id: project.id, p: project.path, n: project.name, g: project.agent.vendorKey,
+        a: project.agent.accountID,
         t: project.addedAt)
     }
     return try encoder.encode(File(v: version, projects: entries))
@@ -124,6 +132,7 @@ nonisolated enum ProjectsFile {
       switch entry.g {
       case "claude": agent = .claude(accountID: entry.a)
       case "codex": agent = .codex(homeID: entry.a)
+      case "grok": agent = .grok(homeID: entry.a)
       default: throw DecodeError.unknownAgent(entry.g)
       }
       return Project(id: entry.id, path: entry.p, name: entry.n, agent: agent, addedAt: entry.t)

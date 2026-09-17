@@ -21,6 +21,7 @@ struct GrokPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .newSessionFailureAlert()
     .onReceive(clock) { now = $0 }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
@@ -57,6 +58,27 @@ struct GrokPaneView: View {
       List(account.sessions.sessions, selection: $selection) { session in
         GrokSessionRow(session: session, now: now)
           .tag(session.id)
+      }
+      // Ordered as in `CodexPaneView`, so the menu a person learns is the same in every pane.
+      .contextMenu(forSelectionType: String.self) { ids in
+        if let id = ids.first, ids.count == 1,
+          let session = account.sessions.sessions.first(where: { $0.id == id }),
+          !session.summary.cwd.isEmpty
+        {
+          Button("New Session in \(session.summary.projectName)") {
+            NewSessionLauncher.shared.start(
+              .grok(account.home),
+              in: URL(filePath: session.summary.cwd, directoryHint: .isDirectory))
+          }
+          if let target = ForkAvailability.grok(session, in: account).target {
+            Button("Fork Session") {
+              NewSessionLauncher.shared.start(
+                target.agent, in: target.project, start: target.start)
+            }
+          }
+          Divider()
+          ProjectContextButton(path: session.summary.cwd, agent: .grok(homeID: account.id))
+        }
       }
     }
   }

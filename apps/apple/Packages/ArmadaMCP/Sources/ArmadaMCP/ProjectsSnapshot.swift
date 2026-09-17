@@ -75,7 +75,7 @@ public struct ProjectsSnapshot: Sendable {
 
   /// The agent and account a project starts on.
   public struct Agent: Sendable {
-    /// `claude` or `codex`.
+    /// `claude`, `codex` or `grok`.
     public let vendor: String
     public let accountID: String
     /// Nil when that account is not on this Mac any more.
