@@ -42,10 +42,13 @@ final class VoiceController {
   nonisolated static let voiceKey = "armada.voiceIdentifier"
   nonisolated static let replyLanguageKey = "armada.voiceReplyLanguage"
   nonisolated static let instructionsKey = "armada.voiceInstructions"
+  nonisolated static let followUpKey = "armada.voiceFollowUp"
   /// Where conversation ids were kept before they lived in memory. Removed at launch.
   nonisolated static let legacySessionsKey = "armada.voiceSessions"
 
   static let dismissDelay: Duration = .seconds(6)
+  /// How long after a reply is spoken before the microphone opens for an answer. Untuned.
+  static let answerSettle: Duration = .milliseconds(300)
 
   static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
   static var mode: VoiceMode {
@@ -53,6 +56,10 @@ final class VoiceController {
   }
   static var speaksReplies: Bool {
     UserDefaults.standard.object(forKey: speaksKey) as? Bool ?? true
+  }
+  static var followUp: VoiceFollowUp {
+    UserDefaults.standard.string(forKey: followUpKey).flatMap(VoiceFollowUp.init(rawValue:))
+      ?? .afterQuestion
   }
   static var voiceChoice: VoiceChoice {
     VoiceChoice(storageValue: UserDefaults.standard.string(forKey: voiceKey))
@@ -159,7 +166,7 @@ final class VoiceController {
     speaker.stop()
     dismissal?.cancel()
     overlay.hide()
-    turn = VoiceTurn(mode: Self.mode, speaksReplies: Self.speaksReplies)
+    turn = VoiceTurn(mode: Self.mode, speaksReplies: Self.speaksReplies, followUp: Self.followUp)
     stopProcess()
   }
 
@@ -174,7 +181,7 @@ final class VoiceController {
       } else if !transcript.isEmpty {
         transcript
       } else {
-        finishing ? "…" : "Listening…"
+        finishing ? "…" : turn.listensForAnswer ? "Listening for your answer…" : "Listening…"
       }
     case .thinking, .answering: question
     case .failed(let message): message
@@ -183,6 +190,9 @@ final class VoiceController {
 
   var detail: String? {
     switch turn.phase {
+    // What you are answering stays on the card while you answer it.
+    case .listening(finishing: false) where turn.listensForAnswer && !reply.isEmpty:
+      reply
     case .listening(finishing: false):
       turn.mode == .press
         ? "Pause, or press \(VoiceShortcut.Chord.stored.display) again, to send."
@@ -236,6 +246,7 @@ final class VoiceController {
     case .idle, .failed:
       turn.mode = Self.mode
       turn.speaksReplies = Self.speaksReplies
+      turn.followUp = Self.followUp
     default: break
     }
     let unfinished: Bool
@@ -294,10 +305,14 @@ final class VoiceController {
   private func beginQuestion() {
     dismissal?.cancel()
     transcript = ""
-    question = ""
-    reply = ""
-    toolLabel = nil
     level = -160
+    let answering = turn.listensForAnswer
+    // An answer keeps the reply it answers on the card. `ask` clears it once the answer is sent.
+    if !answering {
+      question = ""
+      reply = ""
+      toolLabel = nil
+    }
     if let problem = prerequisiteProblem() {
       dispatch(.failure(problem.localizedDescription))
       return
@@ -309,6 +324,11 @@ final class VoiceController {
     starting = Task { [weak self] in
       guard let self else { return }
       do {
+        // Nothing cancels echo, so a microphone opened by the reply ending waits out the last of
+        // the voice rather than hearing it as the start of an answer.
+        if answering {
+          try await Task.sleep(for: Self.answerSettle)
+        }
         try await capture.start(hints: hints)
       } catch {
         dispatch(.failure(error.localizedDescription))
