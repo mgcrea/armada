@@ -158,6 +158,8 @@ private struct VoiceCard: View {
             copyButton(reply)
             closeButton
           }
+        } else if voice.turn.isStoppable, VoiceShortcut.shared.holdsStopKey {
+          stopHint
         }
       }
       .padding(14)
@@ -196,6 +198,20 @@ private struct VoiceCard: View {
     .buttonStyle(.borderless)
     .foregroundStyle(copied ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
     .accessibilityLabel(copied ? "Copied" : "Copy reply")
+  }
+
+  /// Not a button: the card takes no clicks until the reply is in. It says which key stops voice.
+  private var stopHint: some View {
+    Text("esc")
+      .font(.caption2.weight(.medium))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1)
+      .overlay {
+        RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(.secondary.opacity(0.5))
+      }
+      .help("Esc stops voice")
+      .accessibilityLabel("Press Escape to stop")
   }
 
   private var closeButton: some View {

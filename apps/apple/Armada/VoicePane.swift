@@ -122,8 +122,8 @@ struct VoicePane: View {
     } footer: {
       Text(
         mode == .press
-          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it. Keep listening opens the microphone again once a reply is spoken, so you can answer it without the shortcut, and closes it if you say nothing."
-          : "Hold the shortcut while you ask and let go to send. Pressing while it answers stops it. The microphone opens only while you hold the shortcut, so Keep listening is off."
+          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it, and Esc stops it at any point, a question included. Keep listening opens the microphone again once a reply is spoken, so you can answer it without the shortcut, and closes it if you say nothing."
+          : "Hold the shortcut while you ask and let go to send. Pressing while it answers stops it, and Esc stops it at any point. The microphone opens only while you hold the shortcut, so Keep listening is off."
       )
     }
   }

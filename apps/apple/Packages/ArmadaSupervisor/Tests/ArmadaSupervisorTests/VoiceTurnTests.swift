@@ -91,6 +91,58 @@ struct VoiceTurnTests {
     #expect(turn.handle(.dismissTimerFired) == [], "a stale timer must not hide a new question")
   }
 
+  @Test("the stop key cancels a question, interrupts a reply and stops speech, and never asks one")
+  func stop() {
+    var listening = VoiceTurn(mode: .press)
+    _ = listening.handle(.shortcutDown)
+    #expect(listening.handle(.stop) == [.cancelCapture, .hide])
+    #expect(listening.phase == .idle)
+    #expect(listening.handle(.transcriptFinal("late")) == [], "a late transcript is not sent")
+    #expect(listening.handle(.stop) == [], "idle, the stop key starts nothing")
+
+    var thinking = VoiceTurn(mode: .press)
+    _ = run(&thinking, [.shortcutDown, .speechEnded, .transcriptFinal("hi")])
+    #expect(thinking.handle(.stop) == [.interrupt, .hide])
+
+    var streaming = VoiceTurn(mode: .press)
+    _ = run(&streaming, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One.")])
+    #expect(streaming.handle(.stop) == [.interrupt, .stopSpeaking, .hide])
+
+    var speaking = VoiceTurn(mode: .press)
+    _ = run(
+      &speaking,
+      [
+        .shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One."),
+        .turnEnded(error: nil),
+      ])
+    #expect(speaking.handle(.stop) == [.stopSpeaking, .hide])
+    #expect(speaking.phase == .idle)
+  }
+
+  @Test("the stop key is held only while voice listens, thinks or speaks")
+  func stoppable() {
+    var turn = VoiceTurn(mode: .press)
+    #expect(!turn.isStoppable)
+    _ = turn.handle(.shortcutDown)
+    #expect(turn.isStoppable)
+    _ = run(&turn, [.speechEnded, .transcriptFinal("hi")])
+    #expect(turn.isStoppable)
+    _ = run(&turn, [.sentence("One."), .turnEnded(error: nil)])
+    #expect(turn.isStoppable, "still speaking")
+    _ = turn.handle(.speechFinished)
+    #expect(!turn.isStoppable, "only waiting to hide")
+
+    var silent = VoiceTurn(mode: .press, speaksReplies: false)
+    _ = run(&silent, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One.")])
+    #expect(silent.isStoppable, "the reply is still coming")
+    _ = silent.handle(.turnEnded(error: nil))
+    #expect(!silent.isStoppable)
+
+    var failed = VoiceTurn(mode: .hold)
+    _ = run(&failed, [.shortcutDown, .shortcutUp, .transcriptFinal("")])
+    #expect(!failed.isStoppable)
+  }
+
   @Test("closing the card once the reply is in stops speech and hides, without interrupting")
   func close() {
     var turn = VoiceTurn(mode: .press)

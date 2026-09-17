@@ -24,7 +24,9 @@ public enum VoiceFollowUp: String, CaseIterable, Sendable {
 ///
 /// **Pressing again always wins.** A press while the answer is still coming or still being
 /// spoken cuts it off and hides the overlay. A press once the answer is finished and the
-/// overlay is only waiting to hide starts a follow-up question instead.
+/// overlay is only waiting to hide starts a follow-up question instead. The stop key does the
+/// first without the second: it stops whatever voice is doing, a question included, and never
+/// starts one.
 ///
 /// **A reply can listen for its answer.** With `followUp` set, a reply that is over opens the
 /// microphone again instead of waiting to hide. Silence then closes the card quietly: nobody
@@ -58,6 +60,8 @@ public struct VoiceTurn: Equatable, Sendable {
     case dismissTimerFired
     /// The card's close button, which it shows only once the reply is in.
     case closed
+    /// The stop key, held only while `isStoppable`.
+    case stop
   }
 
   public enum Effect: Equatable, Sendable {
@@ -87,6 +91,16 @@ public struct VoiceTurn: Equatable, Sendable {
     self.mode = mode
     self.speaksReplies = speaksReplies
     self.followUp = followUp
+  }
+
+  /// Voice is listening, thinking or speaking, so the stop key has something to stop. Not while
+  /// the card only waits to hide, when the key goes back to the app you are in.
+  public var isStoppable: Bool {
+    switch phase {
+    case .listening, .thinking: true
+    case .answering(let replyDone, let speechDone): !(replyDone && speechDone)
+    case .idle, .failed: false
+    }
   }
 
   public mutating func handle(_ event: Event) -> [Effect] {
@@ -208,8 +222,20 @@ public struct VoiceTurn: Equatable, Sendable {
       phase = .failed(message)
       return [.scheduleDismiss]
 
+    case (.listening, .stop):
+      phase = .idle
+      return [.cancelCapture, .hide]
+
+    case (.thinking, .stop):
+      phase = .idle
+      return [.interrupt, .hide]
+
+    case (.answering(replyDone: false, _), .stop):
+      phase = .idle
+      return [.interrupt, .stopSpeaking, .hide]
+
     // The reply is complete, so there is nothing to interrupt: only the voice to stop.
-    case (.answering(replyDone: true, _), .closed):
+    case (.answering(replyDone: true, _), .closed), (.answering(replyDone: true, _), .stop):
       phase = .idle
       return [.stopSpeaking, .hide]
 

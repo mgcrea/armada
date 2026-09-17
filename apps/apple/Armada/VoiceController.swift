@@ -125,6 +125,7 @@ final class VoiceController {
     speaker.onFinished = { [weak self] in self?.dispatch(.speechFinished) }
     VoiceShortcut.shared.onPress = { [weak self] in self?.dispatch(.shortcutDown) }
     VoiceShortcut.shared.onRelease = { [weak self] in self?.dispatch(.shortcutUp) }
+    VoiceShortcut.shared.onStop = { [weak self] in self?.dispatch(.stop) }
   }
 
   // MARK: - Switching on and off
@@ -167,6 +168,7 @@ final class VoiceController {
     dismissal?.cancel()
     overlay.hide()
     turn = VoiceTurn(mode: Self.mode, speaksReplies: Self.speaksReplies, followUp: Self.followUp)
+    VoiceShortcut.shared.setStopKey(false)
     stopProcess()
   }
 
@@ -255,6 +257,7 @@ final class VoiceController {
     default: unfinished = false
     }
     for effect in turn.handle(event) { perform(effect) }
+    VoiceShortcut.shared.setStopKey(turn.isStoppable)
     if unfinished, !exchanges.isEmpty {
       switch turn.phase {
       case .failed(let message): exchanges[exchanges.count - 1].problem = message
