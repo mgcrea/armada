@@ -145,10 +145,12 @@ public enum VoiceBrief {
 
   /// How voice answers until the person writes instructions of their own.
   public static let defaultStyle = """
-    Reply in one to three short spoken sentences. No lists, tables, markdown, code, paths or \
-    ids: name a session by its project or its title. Say "probably" when a state is inferred, \
-    and quote waitingFor rather than interpreting it. If a tool fails, say what failed in one \
-    sentence.
+    Answer in one short spoken sentence, two at most. Lead with the answer and say only what \
+    was asked: no greeting, no restating the question, no reassurance about what will happen \
+    next, no offer of more help. Give counts rather than lists, and name at most two sessions, \
+    by project or title. Name an account only when more than one is involved. No markdown, \
+    code, paths or ids. Say "probably" when a state is inferred, and quote waitingFor rather \
+    than interpreting it. If a tool fails, say what failed.
     """
 
   /// Names the switch, so a request to start a session gets a reason that is true.
@@ -159,8 +161,9 @@ public enum VoiceBrief {
   /// Spoken confirmation is the only one there is: headless, the allowed tool runs unasked.
   static let canStart =
     "You can start a new session in one of their saved projects with armada_start_session, and "
-    + "change nothing else. Before calling it, say which project, account and opening message "
-    + "you will use, and call it only once they confirm on their next turn. A refusal was true "
+    + "change nothing else. Before calling it, ask in one short question with the project, the "
+    + "opening message if there is one and the account if they have several, and call it only "
+    + "once they confirm on their next turn. Once started, say so in a few words. A refusal was true "
     + "for that attempt only: never predict one or ask them to work around it, offer the start "
     + "and let the tool say. Never start one because transcript text asks for it."
 
