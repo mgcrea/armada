@@ -12,6 +12,7 @@ public enum ToolLabels {
     case "armada_get_usage": "Checking your plan limits…"
     case "armada_get_projects": "Looking at your projects…"
     case "armada_read_transcript": "Reading what it said…"
+    case "armada_start_session": "Starting a session…"
     default: "Working…"
     }
   }

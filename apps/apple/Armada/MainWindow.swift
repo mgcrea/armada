@@ -18,6 +18,8 @@ enum SidebarItem: Hashable {
   /// Every saved project, in one pane of its own. The project selected in it is that
   /// pane's to keep, as a session is an account pane's.
   case projects
+  /// The voice conversation's questions and replies. Listed only while voice is on.
+  case voice
 
   /// Where the window's selection is stored, and the one thing the menu bar panel
   /// has to write to steer the sidebar. The key keeps its original name so an
@@ -26,6 +28,7 @@ enum SidebarItem: Hashable {
 
   private static let usageToken = "usage"
   private static let projectsToken = "projects"
+  private static let voiceToken = "voice"
   private static let codexPrefix = "codex:"
 
   var stored: String {
@@ -34,6 +37,7 @@ enum SidebarItem: Hashable {
     case .account(let id): id
     case .codex(let id): Self.codexPrefix + id
     case .projects: Self.projectsToken
+    case .voice: Self.voiceToken
     }
   }
 
@@ -42,6 +46,8 @@ enum SidebarItem: Hashable {
       self = .usage
     } else if stored == Self.projectsToken {
       self = .projects
+    } else if stored == Self.voiceToken {
+      self = .voice
     } else if stored.hasPrefix(Self.codexPrefix) {
       self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
     } else if stored.hasPrefix("/") {
@@ -66,6 +72,7 @@ struct MainWindowView: View {
   /// `MainWindowRoute` writes this same key to steer the sidebar from the menu bar
   /// panel, which is why it is a named constant rather than a literal here.
   @AppStorage(SidebarItem.defaultsKey) private var storedAccount: String = ""
+  @AppStorage(VoiceController.enabledKey) private var voiceEnabled = false
 
   var body: some View {
     // Asked once, across the top of the window, and gone for good once answered
@@ -92,6 +99,10 @@ struct MainWindowView: View {
           // beside it needs the pane's width, not the sidebar's.
           Label("Projects", systemImage: "folder")
             .tag(SidebarItem.projects)
+          if voiceEnabled {
+            Label("Voice", systemImage: "waveform")
+              .tag(SidebarItem.voice)
+          }
         }
         Section("Claude Code") {
           ForEach(accounts.all) { account in
@@ -145,6 +156,8 @@ struct MainWindowView: View {
           }
         case .projects:
           ProjectsPaneView()
+        case .voice:
+          VoiceConversationView()
         case nil:
           ContentUnavailableView {
             Label("No agents found", systemImage: "folder.badge.questionmark")
@@ -168,6 +181,7 @@ struct MainWindowView: View {
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
     case .projects: .projects
+    case .voice where voiceEnabled: .voice
     // A Codex home is a real fallback, not a consolation prize: someone may run
     // Codex and no Claude Code at all, and the window should open on their work.
     default: accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }

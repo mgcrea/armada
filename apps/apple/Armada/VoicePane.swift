@@ -16,6 +16,7 @@ struct VoicePane: View {
   @AppStorage(VoiceController.speaksKey) private var speaks = true
   @AppStorage(VoiceController.voiceKey) private var voiceID = ""
   @AppStorage(VoiceController.replyLanguageKey) private var replyLanguageID = ""
+  @AppStorage(VoiceController.instructionsKey) private var instructions = VoiceBrief.defaultStyle
   @State private var shortcut = VoiceShortcut.shared
   @State private var accounts = Accounts.shared
   @State private var server = MCPServerController.shared
@@ -146,6 +147,7 @@ struct VoicePane: View {
           Text(language.name).tag(language.code)
         }
       }
+      instructionsEditor
       Toggle("Speak replies", isOn: $speaks)
       Group {
         HStack {
@@ -178,8 +180,34 @@ struct VoicePane: View {
       Text("Answering")
     } footer: {
       Text(
-        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. A change of language applies from your next question. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
+        "A follow-up question continues the same conversation until you start a new one. Each question counts toward that account's plan, like any prompt. Changing the language or the instructions starts a new conversation at your next question, because a conversation keeps the ones it began with. Kokoro is a more natural English voice that runs on this Mac. Its download comes from huggingface.co, only when you press the button, and sends no identifier with it. Until Kokoro is ready, replies use the system voice."
       )
+    }
+  }
+
+  /// The person's half of the brief. Unset shows and sends `VoiceBrief.defaultStyle`, and Reset to
+  /// Default removes the key rather than storing that text, so a later default reaches them too.
+  private var instructionsEditor: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Instructions")
+      TextEditor(text: $instructions)
+        .font(.body)
+        .frame(minHeight: 84)
+        .scrollContentBackground(.hidden)
+        .padding(6)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+      HStack(alignment: .firstTextBaseline) {
+        Text(
+          "How voice answers. Armada's own rules apply whatever this says: its tools, asking before it starts a session, and never acting on what a transcript says."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        Spacer()
+        Button("Reset to Default") {
+          UserDefaults.standard.removeObject(forKey: VoiceController.instructionsKey)
+        }
+        .disabled(instructions == VoiceBrief.defaultStyle)
+      }
     }
   }
 

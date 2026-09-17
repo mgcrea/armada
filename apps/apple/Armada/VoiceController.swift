@@ -41,8 +41,9 @@ final class VoiceController {
   nonisolated static let speaksKey = "armada.voiceSpeaks"
   nonisolated static let voiceKey = "armada.voiceIdentifier"
   nonisolated static let replyLanguageKey = "armada.voiceReplyLanguage"
-  /// Conversation ids by config folder path, so a follow-up after the process closed resumes.
-  nonisolated static let sessionsKey = "armada.voiceSessions"
+  nonisolated static let instructionsKey = "armada.voiceInstructions"
+  /// Where conversation ids were kept before they lived in memory. Removed at launch.
+  nonisolated static let legacySessionsKey = "armada.voiceSessions"
 
   static let dismissDelay: Duration = .seconds(6)
 
@@ -59,6 +60,10 @@ final class VoiceController {
   static var replyLanguage: ReplyLanguage {
     ReplyLanguage(storageValue: UserDefaults.standard.string(forKey: replyLanguageKey))
   }
+  /// How voice should answer, as written in Settings ▸ Voice. Unset means `VoiceBrief.defaultStyle`.
+  static var instructions: String {
+    UserDefaults.standard.string(forKey: instructionsKey) ?? VoiceBrief.defaultStyle
+  }
 
   private(set) var turn = VoiceTurn(mode: .press)
   /// The question as it is being heard.
@@ -69,15 +74,29 @@ final class VoiceController {
   private(set) var toolLabel: String?
   private(set) var level: Float = -160
   private(set) var preparingSpeech = false
+  /// This conversation's questions and replies, as the Voice pane lists them. In memory
+  /// only: a new conversation, another account or a relaunch starts the list empty.
+  private(set) var exchanges: [VoiceExchange] = []
+  /// The conversation `claude` resumes when a new process has to start: after a setting
+  /// changed, or after it stopped. In memory only, like `exchanges`, and for the same reason:
+  /// measured 2026-09-16, a conversation resumed after a relaunch still held a refusal from
+  /// before it, and the voice warned about it from a history the pane no longer showed.
+  /// Kept with the config folder it ran on and the brief it began with, so another account never
+  /// resumes it and a changed brief starts a new one (see `VoiceConversation`).
+  @ObservationIgnored private var conversation: VoiceConversation?
 
   @ObservationIgnored private let capture = VoiceCapture()
   @ObservationIgnored private let speaker = Speaker()
   @ObservationIgnored private let overlay = VoiceOverlay()
   @ObservationIgnored private var process: SupervisorProcess?
   @ObservationIgnored private var processFolder: String?
-  /// The language the running `claude`'s brief asks for. It is fixed at launch, so a different
-  /// setting starts a new process, resuming the same conversation, at the next question.
-  @ObservationIgnored private var processReplyLanguage: ReplyLanguage?
+  /// The brief the running `claude` was started with. A conversation keeps the brief it began
+  /// with, so a different one, from the reply language, the instructions or Allow writes, starts a
+  /// new process on a new conversation at the next question.
+  @ObservationIgnored private var processBrief: String?
+  /// Whether the running `claude` was allowed `armada_start_session`. Also fixed at launch, so
+  /// flipping Allow writes takes effect the same way, at the next question.
+  @ObservationIgnored private var processCanStartSessions: Bool?
   /// Bumped for every process started or stopped, so a late event or exit from the one before
   /// is recognised and dropped.
   @ObservationIgnored private var generation = 0
@@ -87,8 +106,11 @@ final class VoiceController {
   @ObservationIgnored private var pendingError: String?
   @ObservationIgnored private var starting: Task<Void, Never>?
   @ObservationIgnored private var dismissal: Task<Void, Never>?
+  /// The pointer is on the card, which then waits for it to leave before hiding.
+  @ObservationIgnored private var pointerOnCard = false
 
   private init() {
+    UserDefaults.standard.removeObject(forKey: Self.legacySessionsKey)
     capture.onTranscript = { [weak self] in self?.transcript = $0 }
     capture.onLevel = { [weak self] in self?.level = $0 }
     capture.onPause = { [weak self] _ in self?.dispatch(.speechEnded) }
@@ -119,12 +141,15 @@ final class VoiceController {
 
   /// The next question starts a new conversation instead of continuing this one.
   func startNewConversation() {
-    UserDefaults.standard.removeObject(forKey: Self.sessionsKey)
+    conversation = nil
+    exchanges = []
     stopProcess()
   }
 
   /// The account changed: the next question starts that account's own `claude`.
   func accountChanged() {
+    conversation = nil
+    exchanges = []
     stopProcess()
   }
 
@@ -169,6 +194,40 @@ final class VoiceController {
     }
   }
 
+  /// The whole reply once it has finished arriving, even while it is still being spoken. Only
+  /// then does the card take clicks: to copy this, or to open the Voice pane.
+  var finishedReply: String? {
+    guard case .answering(replyDone: true, _) = turn.phase else { return nil }
+    let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : text
+  }
+
+  /// The pointer came onto the card or left it. The card stays up while you read it, and hides
+  /// the usual delay after you move away.
+  func pointerMoved(onCard: Bool) {
+    guard pointerOnCard != onCard, finishedReply != nil || !onCard else { return }
+    pointerOnCard = onCard
+    if onCard {
+      dismissal?.cancel()
+    } else if case .answering(replyDone: true, speechDone: true) = turn.phase {
+      perform(.scheduleDismiss)
+    }
+  }
+
+  /// The card's close button.
+  func closeCard() {
+    dispatch(.closed)
+  }
+
+  /// A click on the card: the Voice pane of the main window, and the card goes if it had
+  /// nothing left to say.
+  func openConversation() {
+    MainWindowRoute.shared.open(.voice)
+    if case .answering(replyDone: true, speechDone: true) = turn.phase {
+      dispatch(.dismissTimerFired)
+    }
+  }
+
   // MARK: - The reducer's loop
 
   private func dispatch(_ event: VoiceTurn.Event) {
@@ -179,7 +238,22 @@ final class VoiceController {
       turn.speaksReplies = Self.speaksReplies
     default: break
     }
+    let unfinished: Bool
+    switch turn.phase {
+    case .thinking, .answering(replyDone: false, _): unfinished = true
+    default: unfinished = false
+    }
     for effect in turn.handle(event) { perform(effect) }
+    if unfinished, !exchanges.isEmpty {
+      switch turn.phase {
+      case .failed(let message): exchanges[exchanges.count - 1].problem = message
+      case .idle: exchanges[exchanges.count - 1].wasCutOff = true
+      default: break
+      }
+    }
+    let interactive = finishedReply != nil
+    if !interactive { pointerOnCard = false }
+    overlay.setInteractive(interactive)
     if turn.phase != .idle { overlay.show(voice: self) }
   }
 
@@ -202,6 +276,8 @@ final class VoiceController {
     case .stopSpeaking: speaker.stop()
     case .scheduleDismiss:
       dismissal?.cancel()
+      // Scheduled again when the pointer leaves the card.
+      guard !pointerOnCard else { return }
       dismissal = Task { [weak self] in
         try? await Task.sleep(for: Self.dismissDelay)
         guard !Task.isCancelled else { return }
@@ -290,14 +366,15 @@ final class VoiceController {
     toolLabel = nil
     pendingError = nil
     chunker = SentenceChunker()
-    do {
-      try ensureProcess()
-    } catch {
+    // Before the exchange is added: a changed brief starts a new conversation, which empties the
+    // list, and this question is the new conversation's first.
+    let started = Result { try ensureProcess() }
+    exchanges.append(VoiceExchange(question: text))
+    if case .failure(let error) = started {
       dispatch(.failure(error.localizedDescription))
       return
     }
-    process?.send(
-      SupervisorArguments.userFrame(text, replyLanguage: processReplyLanguage ?? .question))
+    process?.send(SupervisorArguments.userFrame(text))
   }
 
   private func account() -> Account? {
@@ -311,12 +388,21 @@ final class VoiceController {
     guard let account = account() else { throw Problem.noAccount }
     let folder = account.folder
     let language = Self.replyLanguage
-    if let process, process.isRunning, processFolder == folder.path,
-      processReplyLanguage == language
+    let canStartSessions = MCPServerController.allowsWrites
+    let style = Self.instructions
+    let brief = VoiceBrief.text(
+      replyingIn: language, canStartSessions: canStartSessions, style: style)
+    if let process, process.isRunning, processFolder == folder.path, processBrief == brief,
+      processCanStartSessions == canStartSessions
     {
       return
     }
     stopProcess()
+    if let conversation, conversation.sessionToResume(folder: folder.path, brief: brief) == nil {
+      // Resuming would keep the rules the conversation began with.
+      self.conversation = nil
+      exchanges = []
+    }
 
     guard let executable = ClaudeControl.executable() else { throw Problem.noClaude }
     let server = MCPServerController.shared
@@ -330,7 +416,7 @@ final class VoiceController {
     let directory = try Self.privateDirectory(
       Self.conversationsRoot.appending(
         path: Self.directoryName(for: folder), directoryHint: .isDirectory))
-    let resume = Self.sessionID(for: folder.path)
+    let resume = conversation?.sessionToResume(folder: folder.path, brief: brief)
 
     generation += 1
     let current = generation
@@ -347,12 +433,14 @@ final class VoiceController {
       .init(
         executable: executable,
         arguments: SupervisorArguments.arguments(
-          mcpConfig: config.path(percentEncoded: false), resume: resume, replyLanguage: language),
+          mcpConfig: config.path(percentEncoded: false), resume: resume, replyLanguage: language,
+          canStartSessions: canStartSessions, style: style),
         environment: SupervisorArguments.environment(from: ClaudeControl.environment(for: folder)),
         directory: directory))
     self.process = process
     processFolder = folder.path
-    processReplyLanguage = language
+    processBrief = brief
+    processCanStartSessions = canStartSessions
     sawEvent = false
     resumed = resume != nil
   }
@@ -361,7 +449,8 @@ final class VoiceController {
     process?.stop()
     process = nil
     processFolder = nil
-    processReplyLanguage = nil
+    processBrief = nil
+    processCanStartSessions = nil
     generation += 1
   }
 
@@ -377,13 +466,16 @@ final class VoiceController {
     sawEvent = true
     switch event {
     case .initialized(let sessionID, _, let servers):
-      if let folder = processFolder { Self.store(sessionID: sessionID, for: folder) }
+      if let folder = processFolder, let brief = processBrief {
+        conversation = VoiceConversation(folder: folder, sessionID: sessionID, brief: brief)
+      }
       if servers.first(where: { $0.name == SupervisorArguments.serverName })?.status == "failed" {
         pendingError = "Claude couldn't reach Armada's MCP server."
       }
     case .textDelta(let text):
       guard isAnswering else { return }
       reply += text
+      if !exchanges.isEmpty { exchanges[exchanges.count - 1].reply = reply }
       for sentence in chunker.append(text) { dispatch(.sentence(sentence)) }
     case .toolUse(let name):
       guard isAnswering else { return }
@@ -408,18 +500,16 @@ final class VoiceController {
 
   private func exited(status: Int32, stderr: String, generation: Int) {
     guard generation == self.generation else { return }
-    let folder = processFolder
     process = nil
     processFolder = nil
     guard isAnswering else { return }
     // Exited before saying anything while resuming: the stored conversation is gone (cleared,
     // or its transcript deleted). Forget it and ask again on a new one, once.
-    if !sawEvent, resumed, let folder {
-      Self.store(sessionID: nil, for: folder)
+    if !sawEvent, resumed {
+      conversation = nil
       do {
         try ensureProcess()
-        process?.send(
-          SupervisorArguments.userFrame(question, replyLanguage: processReplyLanguage ?? .question))
+        process?.send(SupervisorArguments.userFrame(question))
       } catch {
         dispatch(.failure(error.localizedDescription))
       }
@@ -464,16 +554,5 @@ final class VoiceController {
     try FileManager.default.createDirectory(
       at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     return url
-  }
-
-  private static func sessionID(for folder: String) -> String? {
-    (UserDefaults.standard.dictionary(forKey: sessionsKey) as? [String: String])?[folder]
-  }
-
-  private static func store(sessionID: String?, for folder: String) {
-    var sessions =
-      (UserDefaults.standard.dictionary(forKey: sessionsKey) as? [String: String]) ?? [:]
-    sessions[folder] = sessionID
-    UserDefaults.standard.set(sessions, forKey: sessionsKey)
   }
 }

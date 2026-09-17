@@ -25,7 +25,7 @@ struct SupervisorArgumentsTests {
     #expect(argv.contains("--disable-slash-commands"))
   }
 
-  @Test("voice may call the read tools and is denied the one that starts sessions")
+  @Test("with writes off, voice may call the read tools and is denied starting and closing")
   func tools() {
     let allowed = value(after: "--allowedTools", in: argv)?.split(separator: ",").map(String.init)
     #expect(
@@ -34,8 +34,29 @@ struct SupervisorArgumentsTests {
         "mcp__armada__armada_get_session", "mcp__armada__armada_get_usage",
         "mcp__armada__armada_get_projects", "mcp__armada__armada_read_transcript",
       ])
-    #expect(value(after: "--disallowedTools", in: argv) == "mcp__armada__armada_start_session")
-    #expect(allowed?.contains { $0.contains("start_session") } == false)
+    #expect(
+      value(after: "--disallowedTools", in: argv)
+        == "mcp__armada__armada_start_session,mcp__armada__armada_close_session,mcp__armada__armada_send_message"
+    )
+    #expect(
+      allowed?.contains { $0.contains("start_session") || $0.contains("close_session") } == false)
+  }
+
+  @Test("with writes on, voice may also start a session, and closing stays denied")
+  func startTool() throws {
+    let writes = SupervisorArguments.arguments(
+      mcpConfig: "/tmp/x.json", resume: nil, canStartSessions: true)
+    let allowed = value(after: "--allowedTools", in: writes)?.split(separator: ",").map(String.init)
+    #expect(allowed?.last == "mcp__armada__armada_start_session")
+    #expect(allowed?.count == SupervisorArguments.readTools.count + 1)
+    #expect(allowed?.contains { $0.contains("close_session") } == false)
+    #expect(
+      value(after: "--disallowedTools", in: writes)
+        == "mcp__armada__armada_close_session,mcp__armada__armada_send_message")
+    let brief = try #require(value(after: "--append-system-prompt", in: writes))
+    #expect(brief != VoiceBrief.text)
+    #expect(brief.contains("armada_start_session"))
+    #expect(!VoiceBrief.text.contains("armada_start_session"))
   }
 
   @Test("nothing that skips permissions or sign-in is ever passed")
@@ -74,17 +95,12 @@ struct SupervisorArgumentsTests {
     #expect(brief == VoiceBrief.text + " " + sentence)
   }
 
-  @Test("a fixed reply language rides on the question as well, the question's own adds nothing")
-  func userFrameLanguage() throws {
-    let plain = SupervisorArguments.userFrame("Tu es là ?")
-    #expect(try content(of: plain) == "Tu es là ?")
-    let english = SupervisorArguments.userFrame("Tu es là ?", replyLanguage: .fixed("en"))
-    #expect(try content(of: english) == "Tu es là ?\n\n(Reply in English.)")
-  }
-
-  private func content(of frame: Data) throws -> String? {
-    let object = try JSONSerialization.jsonObject(with: frame) as? [String: Any]
-    return (object?["message"] as? [String: Any])?["content"] as? String
+  @Test("the person's instructions reach the brief")
+  func instructions() throws {
+    let custom = SupervisorArguments.arguments(
+      mcpConfig: "/tmp/x.json", resume: nil, style: "Be brief.")
+    let brief = try #require(value(after: "--append-system-prompt", in: custom))
+    #expect(brief == VoiceBrief.text(replyingIn: .question, style: "Be brief."))
   }
 
   @Test("a question survives quotes and newlines, one line per frame")
@@ -125,7 +141,7 @@ struct SupervisorArgumentsTests {
       ToolLabels.label(for: "mcp__armada__armada_needs_attention") == "Checking who needs you…")
     #expect(ToolLabels.label(for: "armada_get_usage") == "Checking your plan limits…")
     #expect(ToolLabels.label(for: "something_new") == "Working…")
-    for tool in SupervisorArguments.readTools {
+    for tool in SupervisorArguments.readTools + [SupervisorArguments.startTool] {
       #expect(ToolLabels.label(for: tool) != "Working…", "\(tool) has no label")
     }
   }

@@ -91,6 +91,23 @@ struct VoiceTurnTests {
     #expect(turn.handle(.dismissTimerFired) == [], "a stale timer must not hide a new question")
   }
 
+  @Test("closing the card once the reply is in stops speech and hides, without interrupting")
+  func close() {
+    var turn = VoiceTurn(mode: .press)
+    _ = run(
+      &turn, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One.")])
+    #expect(turn.handle(.closed) == [], "the card has no close button while the reply is coming")
+    _ = turn.handle(.turnEnded(error: nil))
+    #expect(turn.handle(.closed) == [.stopSpeaking, .hide])
+    #expect(turn.phase == .idle)
+    #expect(turn.handle(.dismissTimerFired) == [])
+
+    var finished = VoiceTurn(mode: .press, speaksReplies: false)
+    _ = run(
+      &finished, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .turnEnded(error: nil)])
+    #expect(finished.handle(.closed) == [.stopSpeaking, .hide])
+  }
+
   @Test("with speech off, sentences only show and the reply ending schedules the hide")
   func silent() {
     var turn = VoiceTurn(mode: .press, speaksReplies: false)

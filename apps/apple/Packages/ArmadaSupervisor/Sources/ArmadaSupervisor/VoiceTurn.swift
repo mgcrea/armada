@@ -43,6 +43,8 @@ public struct VoiceTurn: Equatable, Sendable {
     case speechFinished
     case failure(String)
     case dismissTimerFired
+    /// The card's close button, which it shows only once the reply is in.
+    case closed
   }
 
   public enum Effect: Equatable, Sendable {
@@ -135,6 +137,11 @@ public struct VoiceTurn: Equatable, Sendable {
     case (.idle, .failure(let message)):
       phase = .failed(message)
       return [.scheduleDismiss]
+
+    // The reply is complete, so there is nothing to interrupt: only the voice to stop.
+    case (.answering(replyDone: true, _), .closed):
+      phase = .idle
+      return [.stopSpeaking, .hide]
 
     case (.failed, .dismissTimerFired),
       (.answering(replyDone: true, speechDone: true), .dismissTimerFired):
