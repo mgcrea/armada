@@ -233,6 +233,8 @@ UNIT_SRC := \
 	Armada/CodexContext.swift \
 	Armada/CodexRollout.swift \
 	Armada/GrokFiles.swift \
+	Armada/PanelVisibility.swift \
+	Armada/MenuBarHalo.swift \
 	Armada/SessionOrder.swift \
 	Armada/Changelog.swift \
 	Armada/HostWindow.swift \

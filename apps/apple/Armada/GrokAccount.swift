@@ -102,5 +102,6 @@ final class GrokAccounts {
   }
 
   var workingCount: Int { all.reduce(0) { $0 + $1.sessions.workingCount } }
+  var awaitingInputCount: Int { all.reduce(0) { $0 + $1.sessions.awaitingInputCount } }
   var liveCount: Int { all.reduce(0) { $0 + $1.sessions.liveSessions.count } }
 }

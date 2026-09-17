@@ -34,7 +34,7 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
   /// part that over-fires: an unanswered `tool_use` is a long-running tool as
   /// often as a prompt. See `SessionState` and `Accounts.blockedSessionCount`.
   case blocked
-  /// The above, plus a Codex session holding its lock with the turn finished.
+  /// The above, plus a Codex or Grok Build session that is open with its turn finished.
   ///
   /// The widest rung and the least selective: `CodexSessionState.awaitingInput`
   /// means "the process is alive and not busy", which is every Codex session you
@@ -52,7 +52,7 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
     case .never: "Never"
     case .working: "While a session is working"
     case .blocked: "…or a session is waiting on me"
-    case .waiting: "…or a Codex session is sitting at a finished turn"
+    case .waiting: "…or a Codex or Grok session is sitting at a finished turn"
     }
   }
 
@@ -62,14 +62,16 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
   /// four numbers — it is the one piece of this feature worth being able to reason
   /// about without a running app.
   func isLit(
-    claudeWorking: Int, claudeBlocked: Int, codexWorking: Int, codexAwaitingInput: Int
+    claudeWorking: Int, claudeBlocked: Int, codexWorking: Int, codexAwaitingInput: Int,
+    grokWorking: Int = 0, grokAwaitingInput: Int = 0
   ) -> Bool {
+    let working = claudeWorking > 0 || codexWorking > 0 || grokWorking > 0
     switch self {
-    case .never: false
-    case .working: claudeWorking > 0 || codexWorking > 0
-    case .blocked: claudeWorking > 0 || codexWorking > 0 || claudeBlocked > 0
+    case .never: return false
+    case .working: return working
+    case .blocked: return working || claudeBlocked > 0
     case .waiting:
-      claudeWorking > 0 || codexWorking > 0 || claudeBlocked > 0 || codexAwaitingInput > 0
+      return working || claudeBlocked > 0 || codexAwaitingInput > 0 || grokAwaitingInput > 0
     }
   }
 }

@@ -34,6 +34,7 @@ struct UnitCheck {
     hostWindow()
     codexRollout()
     grokFiles()
+    panelVisibility()
     licenseKey()
     projects()
     usageLedger()
@@ -849,6 +850,40 @@ struct UnitCheck {
   }
 
   // MARK: - CodexRollout
+
+  static func panelVisibility() {
+    section("PanelVisibility")
+    let claude = "/Users/me/.claude"
+    let grok = "/Users/me/.grok"
+    let hidden = PanelVisibility.setting(grok, shown: false, in: "")
+    check(
+      "hiding stores the id, and nothing else is hidden",
+      PanelVisibility.hidden(stored: hidden) == [grok])
+    check(
+      "hiding twice stores it once",
+      PanelVisibility.setting(grok, shown: false, in: hidden) == hidden)
+    let both = PanelVisibility.setting(claude, shown: false, in: hidden)
+    check(
+      "showing one again leaves the other hidden",
+      PanelVisibility.hidden(stored: PanelVisibility.setting(grok, shown: true, in: both))
+        == [claude])
+    check("nothing stored hides nothing", PanelVisibility.hidden(stored: "").isEmpty)
+
+    section("MenuBarHalo with Grok")
+    check(
+      "a working Grok session lights the default halo",
+      MenuBarHalo.working.isLit(
+        claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+        grokWorking: 1))
+    check(
+      "an idle open Grok session lights only the widest rung",
+      !MenuBarHalo.blocked.isLit(
+        claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+        grokAwaitingInput: 1)
+        && MenuBarHalo.waiting.isLit(
+          claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+          grokAwaitingInput: 1))
+  }
 
   static func grokFiles() {
     section("GrokFiles")

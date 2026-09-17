@@ -55,6 +55,7 @@ struct ArmadaApp: App {
 private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var grok = GrokAccounts.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
   @AppStorage(MenuBarLimit.defaultsKey) private var storedLimit = ""
 
@@ -90,7 +91,7 @@ private struct MenuBarLabel: View {
   /// Across every account and every vendor: the menu bar answers "is anything of
   /// mine moving", which is neither a per-organization nor a per-vendor question.
   private var isWorking: Bool {
-    accounts.workingSessionCount > 0 || codex.workingCount > 0
+    accounts.workingSessionCount > 0 || codex.workingCount > 0 || grok.workingCount > 0
   }
 
   private var isHaloLit: Bool {
@@ -98,7 +99,9 @@ private struct MenuBarLabel: View {
       claudeWorking: accounts.writingSessionCount,
       claudeBlocked: accounts.blockedSessionCount,
       codexWorking: codex.workingCount,
-      codexAwaitingInput: codex.awaitingInputCount)
+      codexAwaitingInput: codex.awaitingInputCount,
+      grokWorking: grok.workingCount,
+      grokAwaitingInput: grok.awaitingInputCount)
   }
 
   /// The halo wins over the fill: a lit halo always draws the filled rig, whether
@@ -242,6 +245,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct StatusMenu: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var grok = GrokAccounts.shared
+  @AppStorage(PanelVisibility.defaultsKey) private var storedHidden = ""
   @State private var monitor = EntitlementMonitor.shared
 
   /// The panel's clock, and the fix for the bug this panel had the longest: every
@@ -325,22 +330,42 @@ struct StatusMenu: View {
       if !monitor.current.isEntitled {
         Divider()
         LockedCard(compact: true)
-      } else if accounts.all.isEmpty && codex.isEmpty {
+      } else if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty {
         Divider()
-        Text("No Claude Code or Codex folder found")
+        Text("No Claude Code, Codex or Grok Build folder found")
           .font(.callout)
           .foregroundStyle(.secondary)
       } else {
+        let hidden = PanelVisibility.hidden(stored: storedHidden)
+        let claudeShown = accounts.all.filter { !hidden.contains($0.id) }
+        let codexShown = codex.all.filter { !hidden.contains($0.id) }
+        let grokShown = grok.all.filter { !hidden.contains($0.id) }
         // Once there are two vendors on the panel every block needs its name, or
-        // the second one reads as more rows of the first.
-        let showsNames = accounts.all.count + codex.all.count > 1
-        ForEach(accounts.all) { account in
+        // the second one reads as more rows of the first. Counted over what is shown.
+        let shownCount = claudeShown.count + codexShown.count + grokShown.count
+        let showsNames = shownCount > 1
+        if shownCount == 0 {
+          Divider()
+          PanelRow(help: "Choose which accounts this panel shows") {
+            MenuBarPanel.dismiss()
+            AppDelegate.shared?.showSettings(.general)
+          } label: {
+            Text("Every account is hidden from this panel")
+              .font(.callout)
+              .foregroundStyle(.secondary)
+          }
+        }
+        ForEach(claudeShown) { account in
           Divider()
           AccountSummary(account: account, showsName: showsNames, now: now)
         }
-        ForEach(codex.all) { account in
+        ForEach(codexShown) { account in
           Divider()
           CodexSummary(account: account, showsName: showsNames, now: now)
+        }
+        ForEach(grokShown) { account in
+          Divider()
+          GrokSummary(account: account, showsName: showsNames, now: now)
         }
       }
 

@@ -10,6 +10,7 @@ struct GrokPaneView: View {
   @State private var selection: String?
   @State private var now = Date()
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+  @State private var route = MainWindowRoute.shared
 
   var body: some View {
     HSplitView {
@@ -24,6 +25,14 @@ struct GrokPaneView: View {
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
     }
+    .onAppear { applyRoute() }
+    .onChange(of: route.token) { applyRoute() }
+  }
+
+  /// Take the session the menu bar panel asked for, if it asked for one here.
+  private func applyRoute() {
+    guard let id = route.takeSession(in: .grok(account.id)) else { return }
+    selection = id
   }
 
   private var sessions: some View {
@@ -66,6 +75,89 @@ struct GrokPaneView: View {
     let recent = total == 1 ? "1 recent session" : "\(total) recent sessions"
     let head = account.planLabel.map { "\($0) · " } ?? ""
     return live == 0 ? "\(head)\(recent)" : "\(head)\(live) live · \(recent)"
+  }
+}
+
+/// One Grok Build home's block in the menu bar popover: live sessions and the allowance.
+///
+/// `CodexSummary`'s shape, line for line, so the blocks read as the same thing for another
+/// vendor. A row opens Armada's pane rather than a host window; focusing the terminal a TUI
+/// session runs in is not wired up for Grok yet.
+struct GrokSummary: View {
+  let account: GrokAccount
+  let showsName: Bool
+  let now: Date
+
+  private static let visibleSessions = 3
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      PanelRow(help: "Show \(account.displayName) in Armada") {
+        MenuBarPanel.dismiss()
+        MainWindowRoute.shared.open(.grok(account.id))
+      } label: {
+        if showsName {
+          HStack(spacing: 6) {
+            GrokIconView(size: 14)
+            Text(account.displayName)
+              .font(.subheadline.weight(.medium))
+              .lineLimit(1)
+            Text("• \(summary)")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+            Spacer(minLength: 4)
+            if let plan = account.planLabel {
+              Text(plan)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+          }
+        } else {
+          Text(summary)
+            .font(.callout)
+            .foregroundStyle(live.isEmpty ? .secondary : .primary)
+        }
+      }
+
+      ForEach(live.prefix(Self.visibleSessions)) { session in
+        PanelRow(help: "Show \(session.displayName) in Armada") {
+          MenuBarPanel.dismiss()
+          MainWindowRoute.shared.open(.grok(account.id), session: session.id)
+        } label: {
+          HStack(spacing: 6) {
+            GrokStateDot(state: session.state)
+            Text(session.displayName)
+              .font(.caption)
+              .lineLimit(1)
+            Spacer(minLength: 0)
+          }
+        }
+      }
+      if live.count > Self.visibleSessions {
+        Text("and \(live.count - Self.visibleSessions) more")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      if let usage = account.usage {
+        CompactUsage(
+          label: usage.length == .sevenDay ? "7d" : "Plan", window: usage.usage, forecast: nil,
+          now: now
+        )
+        .padding(.top, 2)
+      }
+    }
+  }
+
+  private var live: [GrokSession] { account.sessions.liveSessions }
+
+  private var summary: String {
+    let recent = account.sessions.sessions.count
+    if live.isEmpty {
+      return recent == 0 ? "No recent sessions" : "Nothing running, \(recent) today"
+    }
+    return live.count == 1 ? "1 session open" : "\(live.count) sessions open"
   }
 }
 
@@ -245,6 +337,7 @@ struct GrokStateDot: View {
 /// One Grok Build home in the sidebar. The badge counts live sessions, as `CodexSidebarRow`'s does.
 struct GrokSidebarRow: View {
   let account: GrokAccount
+  @State private var hovering = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -258,7 +351,9 @@ struct GrokSidebarRow: View {
             .foregroundStyle(.secondary)
         }
       }
+      .help(account.displayPath)
       Spacer(minLength: 4)
+      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
       if account.sessions.workingCount > 0 {
         Circle()
           .fill(GrokSessionState.working.tint)
@@ -267,7 +362,7 @@ struct GrokSidebarRow: View {
       }
     }
     .badge(account.sessions.liveSessions.count)
-    .help(account.displayPath)
+    .onHover { hovering = $0 }
   }
 }
 

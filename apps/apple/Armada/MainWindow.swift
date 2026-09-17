@@ -117,6 +117,7 @@ struct MainWindowView: View {
           ForEach(accounts.all) { account in
             AccountSidebarRow(account: account)
               .tag(SidebarItem.account(account.id))
+              .contextMenu { PanelVisibilityToggle(accountID: account.id) }
           }
           // A button in the list rather than a toolbar item: it sits under the accounts it
           // adds to, which is where somebody looking for it looks. Untagged, so it is never
@@ -138,6 +139,7 @@ struct MainWindowView: View {
             ForEach(codex.all) { account in
               CodexSidebarRow(account: account)
                 .tag(SidebarItem.codex(account.id))
+                .contextMenu { PanelVisibilityToggle(accountID: account.id) }
             }
           }
         }
@@ -146,6 +148,7 @@ struct MainWindowView: View {
             ForEach(grok.all) { account in
               GrokSidebarRow(account: account)
                 .tag(SidebarItem.grok(account.id))
+                .contextMenu { PanelVisibilityToggle(accountID: account.id) }
             }
           }
         }
@@ -241,6 +244,7 @@ struct MainWindowView: View {
 /// how many sessions it has.
 struct AccountSidebarRow: View {
   let account: Account
+  @State private var hovering = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -254,7 +258,9 @@ struct AccountSidebarRow: View {
             .foregroundStyle(.secondary)
         }
       }
+      .help(account.displayPath)
       Spacer(minLength: 4)
+      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
       // A dot rather than a second number: the count is already the badge, and
       // what you want at a glance is whether anything in there is moving.
       if workingCount > 0 {
@@ -265,7 +271,7 @@ struct AccountSidebarRow: View {
       }
     }
     .badge(account.sessions.sessions.count)
-    .help(account.displayPath)
+    .onHover { hovering = $0 }
   }
 
   private var workingCount: Int {
@@ -282,6 +288,7 @@ struct AccountSidebarRow: View {
 /// most prominent wrong number in the window.
 struct CodexSidebarRow: View {
   let account: CodexAccount
+  @State private var hovering = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -295,7 +302,9 @@ struct CodexSidebarRow: View {
             .foregroundStyle(.secondary)
         }
       }
+      .help(account.displayPath)
       Spacer(minLength: 4)
+      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
       if account.sessions.workingCount > 0 {
         Circle()
           .fill(CodexSessionState.working.tint)
@@ -304,6 +313,6 @@ struct CodexSidebarRow: View {
       }
     }
     .badge(account.sessions.liveSessions.count)
-    .help(account.displayPath)
+    .onHover { hovering = $0 }
   }
 }
