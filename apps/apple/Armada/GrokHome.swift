@@ -39,21 +39,25 @@ nonisolated struct GrokHome: Sendable, Hashable {
     return GrokHome(base: home.appending(path: ".grok", directoryHint: .isDirectory))
   }
 
-  /// The default home plus whatever `GROK_HOME` points at, each counted only when it is xAI's.
+  /// The default home, whatever `GROK_HOME` points at, and the homes somebody added through
+  /// Armada (`AddedHomes`), each counted only when it is xAI's. Grok Build writes both markers
+  /// at its first launch (measured 2026-09-17 on 1.0.34), so an added home needs no looser
+  /// rule than `CodexHome.discoverAll` gives its own.
   ///
   /// **Another tool uses the same folder.** The community `superagent-ai/grok-cli` also
   /// installs a `grok` binary and keeps `~/.grok/user-settings.json`. xAI's home has
   /// `version.json` or `config.toml`, and a `sessions/` to read.
   static func discoverAll(
     environment: [String: String] = ProcessInfo.processInfo.environment,
-    home: URL = FileManager.default.homeDirectoryForCurrentUser
+    home: URL = FileManager.default.homeDirectoryForCurrentUser,
+    added: [String] = AddedHomes.paths(for: .grok)
   ) -> [GrokHome] {
     var found: [GrokHome] = []
     var seen: Set<String> = []
     for candidate in [
       GrokHome(base: home.appending(path: ".grok", directoryHint: .isDirectory)),
       resolved(environment: environment, home: home),
-    ] {
+    ] + added.map({ GrokHome(base: URL(filePath: $0, directoryHint: .isDirectory)) }) {
       let key = candidate.path
       guard !seen.contains(key), candidate.isGrokBuild else { continue }
       seen.insert(key)

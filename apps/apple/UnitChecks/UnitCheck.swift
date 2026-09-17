@@ -43,6 +43,7 @@ struct UnitCheck {
     projectStats()
     launchScript()
     newAccount()
+    addedHomes()
     editorLaunch()
     claudeTrust()
     messageHook()
@@ -1441,7 +1442,9 @@ struct UnitCheck {
     let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
     let taken = "/Users/someone/.claude-work"
     func named(_ typed: String) -> NewAccount.Check {
-      NewAccount.check(typed, home: home) { $0.path(percentEncoded: false) == taken + "/" }
+      NewAccount.check(typed, for: .claude, home: home) {
+        $0.path(percentEncoded: false) == taken + "/"
+      }
     }
     expectEqual("nothing typed is not an error", named(""), .empty)
     expectEqual("nor is only whitespace", named("  "), .empty)
@@ -1468,6 +1471,72 @@ struct UnitCheck {
       named(String(repeating: "a", count: 40)),
       .ready(folderName: ".claude-" + String(repeating: "a", count: 40)))
     check("forty-one are not", isRefused(named(String(repeating: "a", count: 41))))
+  }
+
+  static func addedHomes() {
+    section("NewAccount, other agents")
+    let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+    func named(_ typed: String, _ vendor: NewAccount.Vendor) -> NewAccount.Check {
+      NewAccount.check(typed, for: vendor, home: home) { _ in false }
+    }
+    expectEqual("Codex gets its own stem", named("acme", .codex), .ready(folderName: ".codex-acme"))
+    expectEqual(
+      "and forgives its own prefix", named("codex-acme", .codex), .ready(folderName: ".codex-acme"))
+    expectEqual("Grok Build likewise", named(".grok-acme", .grok), .ready(folderName: ".grok-acme"))
+    expectEqual(
+      "another agent's prefix is kept as part of the name", named("claude-acme", .codex),
+      .ready(folderName: ".codex-claude-acme"))
+
+    section("AddedHomes")
+    let suite = "armada.unit-check.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    AddedHomes.add("/h/.codex-a", for: .codex, in: defaults)
+    AddedHomes.add("/h/.codex-a", for: .codex, in: defaults)
+    AddedHomes.add("/h/.codex-b", for: .codex, in: defaults)
+    expectEqual(
+      "a home is remembered once, in order", AddedHomes.paths(for: .codex, in: defaults),
+      ["/h/.codex-a", "/h/.codex-b"])
+    expectEqual("and per agent", AddedHomes.paths(for: .grok, in: defaults), [])
+    AddedHomes.remove("/h/.codex-a", for: .codex, in: defaults)
+    expectEqual(
+      "and forgotten on request", AddedHomes.paths(for: .codex, in: defaults), ["/h/.codex-b"])
+
+    section("CodexHome.discoverAll, GrokHome.discoverAll with added homes")
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appending(
+      path: "armada-unit-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? fileManager.removeItem(at: root) }
+    func make(_ relative: String) {
+      let url = root.appending(path: relative)
+      try? fileManager.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      if relative.hasSuffix("/") {
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+      } else {
+        fileManager.createFile(atPath: url.path(percentEncoded: false), contents: Data("{}".utf8))
+      }
+    }
+    make(".codex/sessions/")
+    make(".codex-fresh/version.json")
+    make(".codex-empty/")
+    make(".codex-unlisted/sessions/")
+    make(".grok-work/version.json")
+    make(".grok-work/sessions/")
+    make(".grok-other/user-settings.json")
+    make(".grok-other/sessions/")
+    func path(_ name: String) -> String { root.appending(path: name).path(percentEncoded: false) }
+    let codex = CodexHome.discoverAll(
+      environment: [:], home: root,
+      added: [path(".codex-fresh"), path(".codex-empty"), path(".codex-missing")]
+    ).map { URL(filePath: $0.path).lastPathComponent }
+    expectEqual(
+      "an added Codex home counts with version.json alone; nothing is found by its name",
+      codex, [".codex", ".codex-fresh"])
+    let grok = GrokHome.discoverAll(
+      environment: [:], home: root, added: [path(".grok-work"), path(".grok-other")]
+    ).map { URL(filePath: $0.path).lastPathComponent }
+    expectEqual("an added Grok home still has to be xAI's", grok, [".grok-work"])
   }
 
   static func isRefused(_ check: NewAccount.Check) -> Bool {

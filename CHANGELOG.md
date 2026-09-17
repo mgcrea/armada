@@ -12,11 +12,12 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
-- **Add a Claude account from Armada.** Add Account… sits under your accounts in the main
-  window's sidebar and in Settings ▸ General. Give the account a name, and Armada opens Claude
-  Code in your terminal on a new `~/.claude-<name>` folder, where you sign in with Anthropic's own
-  sign-in. Armada never sees your credentials. The account appears as soon as Claude Code starts,
-  and a folder you create yourself from a shell now shows up without relaunching Armada.
+- **Add an account from Armada, for Claude Code, Codex or Grok Build.** Add Account is pinned to
+  the bottom of the main window's sidebar, and sits in Settings ▸ General too. Pick the agent and
+  give the account a name, and Armada opens that agent in your terminal on a new folder, such as
+  `~/.codex-work`, where you sign in with its own sign-in. Armada never sees your credentials.
+  The account appears as soon as the agent starts. A Claude Code folder you create yourself from
+  a shell now shows up without relaunching Armada.
 - **Set how loud replies are spoken.** Settings ▸ Voice has a Volume slider under Voice, for both
   the system voices and Kokoro. Letting go of it plays a sample at the new level.
 - **Stop voice with Esc.** While voice is listening, thinking or speaking, Esc stops it and closes

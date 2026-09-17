@@ -76,21 +76,32 @@ nonisolated struct CodexHome: Sendable, Hashable {
   /// (`docs/codex-sessions.md`), so a `~/.codex-*` scan would be inventing one —
   /// and inventing one is how you get a row for somebody's backup directory.
   ///
-  /// So: the default home, plus whatever `CODEX_HOME` points at. A home counts
-  /// only if it has a `sessions/`, which is what separates a real home from a
-  /// folder that merely has the name.
+  /// So: the default home, plus whatever `CODEX_HOME` points at, plus the homes somebody
+  /// added through Armada (`AddedHomes`), which are named rather than guessed. A home counts
+  /// only if it has a `sessions/`, which is what separates a real home from a folder that
+  /// merely has the name.
+  ///
+  /// **An added home also counts with only `version.json`.** Codex writes that at its first
+  /// launch and `sessions/` only once a session runs (measured 2026-09-17 on 0.154), so a home
+  /// somebody has just signed in to would otherwise stay missing until they used it. The
+  /// looser rule is for added homes alone: they were named by the person, so a stray
+  /// `version.json` in a folder of the right name is not a risk there.
   static func discoverAll(
     environment: [String: String] = ProcessInfo.processInfo.environment,
-    home: URL = FileManager.default.homeDirectoryForCurrentUser
+    home: URL = FileManager.default.homeDirectoryForCurrentUser,
+    added: [String] = AddedHomes.paths(for: .codex)
   ) -> [CodexHome] {
     let fileManager = FileManager.default
     var found: [CodexHome] = []
     var seen: Set<String> = []
 
-    func consider(_ candidate: CodexHome) {
+    func consider(_ candidate: CodexHome, versionIsEnough: Bool = false) {
       let key = candidate.base.standardizedFileURL.path(percentEncoded: false)
       guard !seen.contains(key) else { return }
-      guard fileManager.fileExists(atPath: candidate.sessionsDir.path(percentEncoded: false))
+      let marker = versionIsEnough ? candidate.versionJSON : nil
+      guard
+        fileManager.fileExists(atPath: candidate.sessionsDir.path(percentEncoded: false))
+          || marker.map({ fileManager.fileExists(atPath: $0.path(percentEncoded: false)) }) == true
       else { return }
       seen.insert(key)
       found.append(candidate)
@@ -98,8 +109,15 @@ nonisolated struct CodexHome: Sendable, Hashable {
 
     consider(CodexHome(base: home.appending(path: ".codex", directoryHint: .isDirectory)))
     consider(resolved(environment: environment, home: home))
+    for path in added {
+      consider(
+        CodexHome(base: URL(filePath: path, directoryHint: .isDirectory)), versionIsEnough: true)
+    }
     return found
   }
+
+  /// Written by Codex at its first launch, before any session. See `discoverAll`.
+  var versionJSON: URL { base.appending(path: "version.json", directoryHint: .notDirectory) }
 
   /// The path without a trailing slash — the persisted sidebar selection, and what
   /// `CODEX_HOME` is set to for anything Armada starts.

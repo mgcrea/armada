@@ -73,6 +73,18 @@ final class CodexAccounts {
     for account in all { account.start() }
   }
 
+  /// Pick up a home added since `start()`. Additions only, for `Accounts.rediscover()`'s
+  /// reasons; nothing while stopped.
+  func rediscover() {
+    guard isStarted else { return }
+    let known = Set(all.map(\.id))
+    let added = CodexHome.discoverAll().filter { !known.contains($0.id) }
+    guard !added.isEmpty else { return }
+    let accounts = added.map(CodexAccount.init(home:))
+    for account in accounts { account.start() }
+    all += accounts
+  }
+
   /// Stop every watcher and forget the homes. See `Accounts.stop()`.
   func stop() {
     for account in all { account.sessions.stop() }

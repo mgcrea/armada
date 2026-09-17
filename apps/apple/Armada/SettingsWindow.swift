@@ -149,7 +149,7 @@ struct GeneralPane: View {
   @State private var grok = GrokAccounts.shared
   @AppStorage(PanelVisibility.defaultsKey) private var storedHidden = ""
   @State private var monitor = EntitlementMonitor.shared
-  @State private var addingAccount = false
+  @State private var addingAccount: NewAccount.Vendor?
   @State private var launchAtLogin = LoginItem.isEnabled
   @State private var loginError: String?
   @State private var trust = AccessibilityTrust.shared
@@ -312,7 +312,8 @@ struct GeneralPane: View {
         if accounts.all.isEmpty {
           Text("No Claude config folder found").foregroundStyle(.secondary)
         }
-        Button("Add Account…") { addingAccount = true }
+        AddAccountMenu(adding: $addingAccount) { Text("Add Account") }
+          .fixedSize()
           .disabled(!monitor.current.isEntitled)
       } header: {
         Text("Claude accounts")
@@ -321,13 +322,13 @@ struct GeneralPane: View {
         // is the one thing a person will want to debug here — and the answer is
         // always the same: it has no sessions/ yet.
         Text(
-          "Found by looking for ~/.claude and any ~/.claude-<name> beside it that has a sessions folder. Each is a separate organization with its own sessions and its own plan limits. Add Account… opens Claude Code on a new folder so you can sign in there."
+          "Found by looking for ~/.claude and any ~/.claude-<name> beside it that has a sessions folder. Each is a separate organization with its own sessions and its own plan limits. Add Account opens Claude Code, Codex or Grok Build on a new folder so you can sign in there."
         )
       }
     }
     .formStyle(.grouped)
     .navigationTitle("General")
-    .sheet(isPresented: $addingAccount) { AddAccountSheet() }
+    .sheet(item: $addingAccount) { AddAccountSheet(vendor: $0) }
   }
 }
 

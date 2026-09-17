@@ -74,7 +74,26 @@ final class GrokAccounts {
     isStarted = true
     all = GrokHome.discoverAll().map(GrokAccount.init(home:))
     for account in all { account.start() }
-    guard !all.isEmpty else { return }
+    startProbing()
+  }
+
+  /// Pick up a home added since `start()`. Additions only, for `Accounts.rediscover()`'s
+  /// reasons; nothing while stopped. The probe clock starts here when the first home arrives,
+  /// since `start()` leaves it off on a Mac that had none.
+  func rediscover() {
+    guard isStarted else { return }
+    let known = Set(all.map(\.id))
+    let added = GrokHome.discoverAll().filter { !known.contains($0.id) }
+    guard !added.isEmpty else { return }
+    let accounts = added.map(GrokAccount.init(home:))
+    for account in accounts { account.start() }
+    all += accounts
+    probeAll()
+    startProbing()
+  }
+
+  private func startProbing() {
+    guard !all.isEmpty, probeTimer == nil else { return }
     probeAll()
     let probe = DispatchSource.makeTimerSource(queue: .main)
     probe.schedule(deadline: .now() + Self.probeInterval, repeating: Self.probeInterval)
