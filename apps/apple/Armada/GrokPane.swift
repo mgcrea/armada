@@ -3,8 +3,7 @@ import SwiftUI
 
 /// One Grok Build home: what its sessions have been doing.
 ///
-/// Laid out like `CodexPaneView`, a session list beside a detail, with no usage strip: Grok keeps
-/// its weekly allowance off disk, and an empty meter would suggest Armada simply has not read it.
+/// Laid out like `CodexPaneView`: the allowance strip and a session list, beside a detail.
 struct GrokPaneView: View {
   let account: GrokAccount
 
@@ -27,7 +26,14 @@ struct GrokPaneView: View {
     }
   }
 
-  @ViewBuilder private var sessions: some View {
+  private var sessions: some View {
+    VStack(spacing: 0) {
+      GrokUsageHeader(account: account, now: now)
+      sessionList
+    }
+  }
+
+  @ViewBuilder private var sessionList: some View {
     if account.sessions.sessions.isEmpty {
       ContentUnavailableView {
         Label(
@@ -58,7 +64,49 @@ struct GrokPaneView: View {
     let live = account.sessions.liveSessions.count
     let total = account.sessions.sessions.count
     let recent = total == 1 ? "1 recent session" : "\(total) recent sessions"
-    return live == 0 ? recent : "\(live) live · \(recent)"
+    let head = account.planLabel.map { "\($0) · " } ?? ""
+    return live == 0 ? "\(head)\(recent)" : "\(head)\(live) live · \(recent)"
+  }
+}
+
+/// The allowance, as `GrokControl` last read it.
+///
+/// One meter, because Grok has one window: a unified weekly (or, on some plans, monthly) credit
+/// allowance shared by every model. It is a live answer, like the Claude probe's, so its age
+/// shows in the corner the way `UsageHeader` shows one.
+struct GrokUsageHeader: View {
+  let account: GrokAccount
+  let now: Date
+
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
+
+  var body: some View {
+    UsageStrip {
+      if let usage = account.usage {
+        CompactMeter(
+          title: usage.length == .sevenDay ? "Weekly" : "Allowance",
+          subtitle: usage.length == .sevenDay ? "7 days" : LocalizedStringKey(usage.period ?? ""),
+          window: usage.usage,
+          forecast: usage.length.map {
+            UsageForecast(
+              window: usage.usage, length: $0,
+              profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
+              asOf: usage.observedAt, now: now)
+          } ?? nil,
+          now: now,
+          menuBarLimit: usage.length.map { MenuBarLimit(accountID: account.id, length: $0) })
+      } else {
+        Label("Reading usage…", systemImage: "gauge.with.dots.needle.bottom.50percent")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .help("Armada asks your own grok for the allowance every few minutes.")
+      }
+    } status: {
+      if let usage = account.usage {
+        StalenessBadge(fetchedAt: usage.observedAt, now: now, source: .live, style: .inline)
+      }
+    }
   }
 }
 
@@ -171,12 +219,10 @@ struct GrokOverview: View {
         LabeledContent("Live sessions", value: String(account.sessions.liveSessions.count))
         LabeledContent("Working", value: String(account.sessions.workingCount))
       }
-      Section {
-        Text(
-          "Grok Build keeps its weekly allowance to its own /usage screen and writes it nowhere Armada can read, so there are no plan limits here."
-        )
-        .font(.callout)
-        .foregroundStyle(.secondary)
+      if let plan = account.planLabel {
+        Section {
+          LabeledContent("Plan", value: plan)
+        }
       }
     }
     .formStyle(.grouped)
@@ -203,8 +249,15 @@ struct GrokSidebarRow: View {
   var body: some View {
     HStack(spacing: 8) {
       GrokIconView(size: 18)
-      Text(account.displayName)
-        .lineLimit(1)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(account.displayName)
+          .lineLimit(1)
+        if let plan = account.planLabel {
+          Text(plan)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+      }
       Spacer(minLength: 4)
       if account.sessions.workingCount > 0 {
         Circle()

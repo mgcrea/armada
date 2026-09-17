@@ -270,6 +270,7 @@ struct StatusMenu: View {
       accounts.refreshAll()
       accounts.probeAll()
       codex.refreshAll()
+      GrokAccounts.shared.probeAll()
     }
   }
 

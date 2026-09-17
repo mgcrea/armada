@@ -134,6 +134,49 @@ nonisolated enum GrokFiles {
     return Context(used: used, window: window)
   }
 
+  /// The account's allowance, as `grok agent stdio` answers the `x.ai/billing` request.
+  ///
+  /// Measured on 2026-09-17: `{"config": {"creditUsagePercent": 13.0, "currentPeriod": {"type":
+  /// "USAGE_PERIOD_TYPE_WEEKLY", "start", "end"}, "billingPeriodEnd", …}, "subscription_tier":
+  /// "X Premium"}`. The money fields beside it are not read.
+  struct Limits: Sendable, Hashable {
+    let utilization: Int
+    let resetsAt: Date?
+    /// `weekly` or `monthly`, from `USAGE_PERIOD_TYPE_*`.
+    let period: String?
+    let tier: String?
+    let observedAt: Date
+
+    var length: UsageWindowLength? { period == "weekly" ? .sevenDay : nil }
+
+    var usage: UsageWindow { UsageWindow(utilization: utilization, resetsAt: resetsAt) }
+
+    func window(_ length: UsageWindowLength) -> UsageWindow? {
+      self.length == length ? usage : nil
+    }
+
+    var asSnapshot: UsageSnapshot {
+      UsageSnapshot(
+        fiveHour: nil, sevenDay: window(.sevenDay), limits: [], fetchedAt: observedAt,
+        source: .live)
+    }
+  }
+
+  static func limits(_ result: [String: Any], observedAt: Date) -> Limits? {
+    guard let config = result["config"] as? [String: Any],
+      let percent = (config["creditUsagePercent"] as? NSNumber)?.doubleValue
+    else { return nil }
+    let current = config["currentPeriod"] as? [String: Any]
+    let period = (current?["type"] as? String).map {
+      $0.replacingOccurrences(of: "USAGE_PERIOD_TYPE_", with: "").lowercased()
+    }
+    let end = (current?["end"] as? String) ?? (config["billingPeriodEnd"] as? String)
+    let tier = (result["subscription_tier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    return Limits(
+      utilization: Int(percent.rounded()), resetsAt: end.flatMap(UsageSnapshot.parseTimestamp),
+      period: period, tier: tier, observedAt: observedAt)
+  }
+
   /// A session directory's name is its id, a UUID. Anything else under a project directory is
   /// not a session.
   static func isSessionId(_ name: String) -> Bool {

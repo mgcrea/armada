@@ -921,6 +921,24 @@ struct UnitCheck {
     expectEqual(
       "signals.json gives the context Grok measured", context,
       GrokFiles.Context(used: 11790, window: 500000))
+    let billing =
+      (try? JSONSerialization.jsonObject(
+        with: Data(
+          #"{"config":{"creditUsagePercent":13.4,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-09-15T21:25:12.584887+00:00","end":"2026-09-22T21:25:12.584887+00:00"},"onDemandCap":{"val":0},"isUnifiedBillingUser":true,"billingPeriodEnd":"2026-09-22T21:25:12.584887+00:00"},"subscription_tier":"X Premium"}"#
+            .utf8))) as? [String: Any] ?? [:]
+    let limits = GrokFiles.limits(billing, observedAt: Date(timeIntervalSince1970: 0))
+    check(
+      "the billing answer is a weekly window with its reset and tier",
+      limits?.utilization == 13 && limits?.length == .sevenDay && limits?.tier == "X Premium"
+        && limits?.resetsAt == UsageSnapshot.parseTimestamp("2026-09-22T21:25:12.584887+00:00")
+        && limits?.asSnapshot.sevenDay?.utilization == 13 && limits?.asSnapshot.fiveHour == nil)
+    let monthly = GrokFiles.limits(
+      ["config": ["creditUsagePercent": 40, "currentPeriod": ["type": "USAGE_PERIOD_TYPE_MONTHLY"]]],
+      observedAt: .now)
+    check(
+      "a monthly allowance has no weekly window to pace",
+      monthly?.period == "monthly" && monthly?.length == nil && monthly?.window(.sevenDay) == nil)
+    check("no credit percentage is no reading", GrokFiles.limits(["config": [:]], observedAt: .now) == nil)
     check(
       "session directories are UUIDs",
       GrokFiles.isSessionId("01a0af59-ee50-7b73-a473-2f2bcf56012e")

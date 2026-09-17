@@ -13,6 +13,7 @@ import SwiftUI
 struct UsagePaneView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
+  @State private var grok = GrokAccounts.shared
   @State private var history = UsageHistory.shared
   @State private var now = Date()
 
@@ -25,11 +26,11 @@ struct UsagePaneView: View {
 
   var body: some View {
     Group {
-      if accounts.all.isEmpty && codex.isEmpty {
+      if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty {
         ContentUnavailableView {
           Label("No agents found", systemImage: "folder.badge.questionmark")
         } description: {
-          Text("Armada looks for ~/.claude and any ~/.claude-<name> beside it, and for ~/.codex.")
+          Text("Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok.")
         }
       } else {
         ScrollView {
@@ -43,6 +44,9 @@ struct UsagePaneView: View {
             // as one budget.
             ForEach(codex.all) { account in
               CodexUsageCard(account: account, profile: profile, now: now)
+            }
+            ForEach(grok.all) { account in
+              GrokUsageCard(account: account, profile: profile, now: now)
             }
             PaceFooter(profile: profile)
           }
@@ -66,11 +70,15 @@ struct UsagePaneView: View {
   private var subtitle: String {
     let claude = accounts.all.count
     let codexCount = codex.all.count
-    if codexCount == 0 { return claude == 1 ? "1 account" : "\(claude) accounts" }
-    if claude == 0 { return codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes" }
-    let accountLabel = claude == 1 ? "1 Claude account" : "\(claude) Claude accounts"
-    let codexLabel = codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes"
-    return "\(accountLabel) · \(codexLabel)"
+    let grokCount = grok.all.count
+    if codexCount == 0 && grokCount == 0 {
+      return claude == 1 ? "1 account" : "\(claude) accounts"
+    }
+    return [
+      claude == 0 ? nil : claude == 1 ? "1 Claude account" : "\(claude) Claude accounts",
+      codexCount == 0 ? nil : codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes",
+      grokCount == 0 ? nil : grokCount == 1 ? "1 Grok Build home" : "\(grokCount) Grok Build homes",
+    ].compactMap { $0 }.joined(separator: " · ")
   }
 }
 
@@ -215,6 +223,54 @@ struct CodexUsageCard: View {
           menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
       },
     ].compactMap { $0 }
+  }
+}
+
+/// One Grok Build home's allowance, and its week so far.
+///
+/// `CodexUsageCard`'s shape with one row: Grok has a single credit allowance across every model,
+/// weekly on the plan measured. A monthly period has no `UsageWindowLength` to pace against, so
+/// it shows as a plain figure.
+struct GrokUsageCard: View {
+  let account: GrokAccount
+  let profile: PaceProfile
+  let now: Date
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 8) {
+        GrokIconView(size: 16)
+        Text(account.displayName).font(.headline)
+        if let plan = account.planLabel {
+          Text(plan).font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 12)
+        StalenessBadge(fetchedAt: account.usage?.observedAt, now: now, source: .live)
+      }
+
+      if let usage = account.usage {
+        if let window = usage.window(.sevenDay) {
+          WindowRow(
+            row: WindowRowModel(
+              id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: window,
+              length: .sevenDay, isBinding: false,
+              menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay)),
+            profile: profile, fetchedAt: usage.observedAt, now: now)
+          WeeklyChart(
+            accountID: account.id, window: window, profile: profile, fetchedAt: usage.observedAt,
+            now: now)
+        } else {
+          Text("\(usage.utilization)% of the \(usage.period ?? "current") allowance used")
+            .font(.callout)
+        }
+      } else {
+        Text("Reading usage…")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(16)
+    .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
   }
 }
 

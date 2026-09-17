@@ -2,8 +2,9 @@ import Foundation
 
 /// One Grok Build home, and everything Armada knows about it.
 ///
-/// Thinner than `CodexAccount`: Grok reports no plan limits anywhere on disk, and its identity
-/// lives only in `auth.json`, which Armada does not open. The row is labelled by its folder.
+/// Its limits come from `GrokControl`, which asks the person's own `grok`, since Grok writes them
+/// nowhere on disk. Its identity lives only in `auth.json`, which Armada does not open, so the
+/// row is labelled by its folder and its plan.
 @MainActor
 @Observable
 final class GrokAccount: Identifiable {
@@ -18,6 +19,24 @@ final class GrokAccount: Identifiable {
   }
 
   func start() { sessions.start() }
+
+  /// Nil until the first probe answers, and kept when a later one fails.
+  private(set) var usage: GrokFiles.Limits?
+
+  /// "X Premium", "SuperGrok": the tier the billing answer names.
+  var planLabel: String? { usage?.tier }
+
+  /// Off the main actor, cancellable before the process starts. See `Account.probeUsage`.
+  func probeUsage() async {
+    guard let limits = await Self.probe(home), !Task.isCancelled else { return }
+    usage = limits
+    UsageHistory.shared.record(limits.asSnapshot, for: home.id)
+  }
+
+  @concurrent
+  private nonisolated static func probe(_ home: GrokHome) async -> GrokFiles.Limits? {
+    GrokControl.limits(home: home)
+  }
 
   var displayName: String { home.displayName }
   var displayPath: String { home.displayPath }
@@ -38,17 +57,48 @@ final class GrokAccounts {
 
   private var isStarted = false
 
+  /// `Accounts.probeInterval`'s cadence. A weekly window moves a point in well over an hour, so
+  /// this is generous; the popover opening asks as well.
+  static let probeInterval: TimeInterval = 3 * 60
+  static let probeThrottle: TimeInterval = 20
+
+  private var probeTimer: DispatchSourceTimer?
+  private var lastProbe: [String: Date] = [:]
+  private var probes: [String: Task<Void, Never>] = [:]
+
   func start() {
     guard !isStarted else { return }
     isStarted = true
     all = GrokHome.discoverAll().map(GrokAccount.init(home:))
     for account in all { account.start() }
+    guard !all.isEmpty else { return }
+    probeAll()
+    let probe = DispatchSource.makeTimerSource(queue: .main)
+    probe.schedule(deadline: .now() + Self.probeInterval, repeating: Self.probeInterval)
+    probe.setEventHandler { MainActor.assumeIsolated { self.probeAll() } }
+    probe.resume()
+    probeTimer = probe
   }
 
   func stop() {
+    probeTimer?.cancel()
+    probeTimer = nil
+    for task in probes.values { task.cancel() }
+    probes = [:]
+    lastProbe = [:]
     for account in all { account.sessions.stop() }
     all = []
     isStarted = false
+  }
+
+  /// Ask every home for its allowance, throttled per home.
+  func probeAll() {
+    let now = Date()
+    for account in all
+    where now.timeIntervalSince(lastProbe[account.id] ?? .distantPast) >= Self.probeThrottle {
+      lastProbe[account.id] = now
+      probes[account.id] = Task { await account.probeUsage() }
+    }
   }
 
   var workingCount: Int { all.reduce(0) { $0 + $1.sessions.workingCount } }

@@ -7,7 +7,7 @@ import Foundation
 /// | live sessions | `sessions/<pid>.json` | a flock in `thread-writer-locks/` | `active_sessions.json`, TUI sessions only, with a pid |
 /// | transcripts | `projects/<enc-cwd>/<id>.jsonl` | `sessions/YYYY/MM/DD/rollout-*.jsonl` | `sessions/<enc-cwd>/<id>/updates.jsonl` |
 /// | titles | `ai-title` entries | `session_index.jsonl` | `generated_title` in the session's `summary.json` |
-/// | plan limits | `cachedUsageUtilization` | `token_count` events | none on disk |
+/// | plan limits | `cachedUsageUtilization` | `token_count` events | none on disk; `GrokControl` asks `grok agent stdio` |
 /// | turn boundaries | inferred | `task_complete` | `turn_completed` |
 ///
 /// Nothing here writes, and `auth.json` is never opened, for `CodexHome`'s reason. Measured

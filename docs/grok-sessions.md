@@ -16,7 +16,7 @@ here has been measured against the interactive TUI yet, and the gaps are listed 
 | Where are tokens and cost? | `usage.json` in the session directory, the same JSON `grok usage <id>` prints |
 | Where is the context window? | `signals.json`: `contextTokensUsed`, `contextWindowTokens` (500000 on grok-4.6) |
 | Which sessions are live? | `active_sessions.json` lists TUI sessions with a pid. **Headless sessions never appear** |
-| Where are the plan limits? | Nowhere on disk. Only the TUI's `/usage` shows the weekly allowance |
+| Where are the plan limits? | Nowhere on disk. `grok agent stdio` answers `_x.ai/billing` with the weekly allowance |
 | Can a hook wake an idle session? | No. There is no `asyncRewake`; a Stop hook is a synchronous gate |
 
 ## The binary
@@ -147,9 +147,28 @@ which accepts ACP `session/prompt` from clients, but only for sessions started i
 
 ## Limits
 
-The SuperGrok weekly allowance appears only in the TUI's `/usage`. The status-line payload says
-plainly that it has no rate-limit field. The one signal is `StopFailure` with `error: "rate_limit"`.
-Armada can show tokens and cost per session and per project; it cannot show a plan-limit bar.
+Nothing on disk holds the allowance, and the status-line payload has no rate-limit field. The TUI's
+`/usage` fetches it from `cli-chat-proxy.grok.com/billing?format=credits` with the signed-in token
+(`crates/codegen/xai-grok-shell/src/extensions/billing.rs`), and the same code answers the Agent
+Client Protocol extension method `x.ai/billing` in `grok agent stdio`. On the wire it takes a
+leading underscore. Measured 2026-09-17:
+
+```
+→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}
+→ {"jsonrpc":"2.0","id":2,"method":"_x.ai/billing","params":{}}
+← {"id":2,"result":{"config":{"creditUsagePercent":13.0,
+     "currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-09-15T21:25:12.584887+00:00",
+                      "end":"2026-09-22T21:25:12.584887+00:00"},
+     "onDemandCap":{"val":0},"onDemandUsed":{"val":0},"prepaidBalance":{"val":0},
+     "isUnifiedBillingUser":true,"billingPeriodStart":"…","billingPeriodEnd":"…"},
+   "subscription_tier":"X Premium"}}
+```
+
+`initialize` answered in 0.25s and the billing request in 0.13s. No session directory and no
+`active_sessions.json` entry appeared, and no prompt is sent. This is `GrokControl`, run the way
+`UsageProbe` runs `claude`: the person's own binary, so Armada never handles the token. One
+allowance covers every model; a monthly period (`USAGE_PERIOD_TYPE_MONTHLY`) exists in the source
+and has not been seen. `StopFailure` with `error: "rate_limit"` is the hook-side signal of hitting it.
 
 ## Open questions
 
