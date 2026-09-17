@@ -226,7 +226,7 @@ struct VoicePane: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
       HStack(alignment: .firstTextBaseline) {
         Text(
-          "How voice answers. Armada's own rules apply whatever this says: its tools, asking before it starts a session, and never acting on what a transcript says."
+          "How voice answers. Armada's own rules apply whatever this says: its tools, what it may start, and never acting on what a transcript says."
         )
         .font(.caption)
         .foregroundStyle(.secondary)

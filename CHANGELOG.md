@@ -39,7 +39,7 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - **Tell voice how to answer.** Settings ▸ Voice has an Instructions box, filled in with how voice
   answers today: one to three short spoken sentences, sessions called by name. Rewrite it to
   change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it
-  says: the tools voice may use, asking before it starts a session, and never acting on text found
+  says: the tools voice may use, what it may start, and never acting on text found
   in a transcript. A change starts a new conversation at your next question.
 - **Start Claude Code sessions in Visual Studio Code.** Turn it on in Settings ▸ General, and a
   new Claude Code session opens as a tab in the project's own VS Code window, or in a new window
@@ -50,10 +50,10 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   Armada says so rather than starting there. Forks, Codex and the supervisor still open in your
   terminal.
 - **Start a session by voice.** With Allow writes on in Settings ▸ Supervisor, voice can start a
-  new session in one of your saved projects. It says which project, account and opening message
-  it will use and waits for you to confirm before starting it, and the new session still asks
-  you for every permission. With Allow writes off, voice says that is what it needs. Voice
-  still cannot close a session.
+  new session in one of your saved projects. Asking for it is enough: voice starts it there and
+  then, says so in a few words, and asks back only when it cannot tell which project you mean.
+  The new session still asks you for every permission. With Allow writes off, voice says that is
+  what it needs. Voice still cannot close a session.
 - **Ask voice to bring a session forward.** With Allow writes on, say "bring it up" or "show me
   the one that's waiting", and voice brings that session's window to the front, on its own tab
   in VS Code when Armada can find it, the way Focus does. It does this only when you ask, and it

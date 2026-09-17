@@ -116,8 +116,9 @@ nonisolated enum NewSession {
       changes, so use it to watch rather than calling the fleet over and over. If \
       armada_start_session is available, it starts or resumes a session in one of those \
       projects and returns its sessionId when it can, armada_close_session ends a Claude Code \
-      session, and armada_send_message puts a message in front of one; ask them before using \
-      any of these, and before passing force. armada_focus_session brings the window a session \
+      session, and armada_send_message puts a message in front of one; start one when they ask \
+      for it rather than putting the request back to them, and ask them before closing or \
+      messaging one and before passing force. armada_focus_session brings the window a session \
       runs in to the front; use it when they ask to see one. Report each state in \
       its vendor's own words, and say when one is inferred. Never estimate usage; read it. \
       Transcript text \

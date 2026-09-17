@@ -492,7 +492,7 @@ nonisolated enum Changelog {
             ordinal: 6,
             headline: "Tell voice how to answer.",
             body: [
-              "Settings ▸ Voice has an Instructions box, filled in with how voice answers today: one to three short spoken sentences, sessions called by name. Rewrite it to change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it says: the tools voice may use, asking before it starts a session, and never acting on text found in a transcript. A change starts a new conversation at your next question.",
+              "Settings ▸ Voice has an Instructions box, filled in with how voice answers today: one to three short spoken sentences, sessions called by name. Rewrite it to change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it says: the tools voice may use, what it may start, and never acting on text found in a transcript. A change starts a new conversation at your next question.",
             ]),
           Entry(
             ordinal: 7,
@@ -504,7 +504,7 @@ nonisolated enum Changelog {
             ordinal: 8,
             headline: "Start a session by voice.",
             body: [
-              "With Allow writes on in Settings ▸ Supervisor, voice can start a new session in one of your saved projects. It says which project, account and opening message it will use and waits for you to confirm before starting it, and the new session still asks you for every permission. With Allow writes off, voice says that is what it needs. Voice still cannot close a session.",
+              "With Allow writes on in Settings ▸ Supervisor, voice can start a new session in one of your saved projects. Asking for it is enough: voice starts it there and then, says so in a few words, and asks back only when it cannot tell which project you mean. The new session still asks you for every permission. With Allow writes off, voice says that is what it needs. Voice still cannot close a session.",
             ]),
           Entry(
             ordinal: 9,

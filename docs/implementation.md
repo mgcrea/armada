@@ -42,8 +42,9 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   screen, Parakeet v3 (or Apple's dictation until Parakeet is downloaded) turns the question into
   text on the Mac, a headless `claude` Armada runs on
   the chosen account answers through the same MCP server (allowed `armada_start_session` only
-  while Allow writes is on, after confirming out loud), and the reply is spoken a sentence at
-  a time, in a system voice or in Kokoro once downloaded. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
+  while Allow writes is on, and it starts one when asked rather than confirming first), and the
+  reply is spoken a sentence at a time, in a system voice or in Kokoro once downloaded. Press or
+  hold, chosen in Settings. That `claude` has no built-in tools and only the six
   read tools, continues the conversation for follow-ups, and closes after five idle minutes.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
