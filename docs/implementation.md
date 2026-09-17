@@ -637,5 +637,13 @@ audit`. Nothing below has been run end to end.
   reports the queue drained (`VoiceController.answerSettle`, untuned), and only then does the
   6 s give-up start. A speaker loud enough to ring past that is heard as the start of an answer.
   `VoiceTurn.listensForAnswer` is what turns an empty transcript into a quiet close.
+- **Esc is a second hot key, held only while `VoiceTurn.isStoppable`.** `RegisterEventHotKey` on
+  the bare Escape key returned noErr on macOS 27 (checked 2026-09-17 with a standalone script),
+  but the app has not had Esc delivered end to end, nor has an Esc pressed in a Claude Code
+  terminal during a reply been tried. While held, it never reaches the frontmost app. If another
+  app holds Esc the registration fails quietly and the card shows no hint.
+- **Effort was not measured.** `--effort` changes restart `claude` on the same conversation with
+  `--resume`; that a resumed session takes the new level, and how much sooner Low answers, are
+  unmeasured. Latency on the default was 2 to 4 s to the first text, 7 s once, on Opus 5.
 - **Debug and installed builds share the default shortcut.** Whichever registers second shows
   that another app already uses it.

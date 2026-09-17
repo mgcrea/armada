@@ -12,6 +12,14 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
+- **Set how loud replies are spoken.** Settings ▸ Voice has a Volume slider under Voice, for both
+  the system voices and Kokoro. Letting go of it plays a sample at the new level.
+- **Stop voice with Esc.** While voice is listening, thinking or speaking, Esc stops it and closes
+  the card, and the card shows an esc key to say so. Armada takes Esc only for those seconds, so
+  an Esc meant for the app you are in stops voice instead. Pressing the shortcut still stops a reply.
+- **Choose how hard voice thinks.** Settings ▸ Voice has an Effort picker: Account default, as
+  before, or Low, Medium or High. A change applies from your next question and keeps the
+  conversation.
 - **Answer voice without pressing the shortcut again.** When a spoken reply ends with a
   question, such as "Should I go ahead?", the card switches to Listening for your answer and you
   can just reply. Say nothing and the card closes. Settings ▸ Voice ▸ Keep listening sets it to
@@ -60,6 +68,12 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   coming from an agent, not from you. It needs Allow writes, the supervisor asks you before each
   message, voice cannot send one, Codex sessions cannot be reached, and a message nothing picks up
   within an hour is dropped.
+
+### Changed
+
+- **Voice answers in a sentence, two at most.** It leads with the answer and leaves out the rest:
+  no restating the question, no "it should show up in a few seconds", no list of every session.
+  Before starting a session it asks one short question. Instructions you wrote yourself are kept.
 
 ## [1.1.0] - 2026-09-16
 
