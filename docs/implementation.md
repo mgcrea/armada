@@ -33,15 +33,16 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   (`ClaudeTrust`), so the session opens without the trust dialog; it is the one write to a
   vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
   builds in the background over every transcript and rollout (`usage-index.sqlite`).
-- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with six read
-  tools and, behind its Allow writes switch, `armada_start_session`; and
+- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with seven read
+  tools (one, `armada_wait`, a long poll) and, behind its Allow writes switch, `armada_start_session` and `armada_close_session`; and
   a Start Supervisor Session button that opens an ordinary Claude Code session with that
-  server attached, its read tools pre-allowed (never the start tool), and a brief. The session is the chat: ask it
+  server attached, its read tools pre-allowed (never the start or close tool), and a brief. The session is the chat: ask it
   which sessions need you, what one is doing, or how much plan is left.
 - **Voice**, opt-in (Settings ▸ Voice): a global shortcut opens a card at the top of the
   screen, Parakeet v3 (or Apple's dictation until Parakeet is downloaded) turns the question into
   text on the Mac, a headless `claude` Armada runs on
-  the chosen account answers through the same MCP server, and the reply is spoken a sentence at
+  the chosen account answers through the same MCP server (allowed `armada_start_session` only
+  while Allow writes is on, after confirming out loud), and the reply is spoken a sentence at
   a time, in a system voice or in Kokoro once downloaded. Press or hold, chosen in Settings. That `claude` has no built-in tools and only the six
   read tools, continues the conversation for follow-ups, and closes after five idle minutes.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
@@ -102,9 +103,13 @@ transcripts, separate rate limits.
 | `UsageIndex` | when a pass runs, and the snapshot and progress the views read |
 | `ProjectStats` / `ProjectUsageSection` | the ledger rolled up into projects, and how the pane shows it |
 | `ProjectsSnapshot` (package) / `ProjectsBridge` | `armada_get_projects`'s second hop: stored projects, ledger and live sessions copied in one main-actor hop, rolled up after it |
-| `SessionStarter` (package) / `SessionStarterBridge` | `armada_start_session`'s door: one main-actor hop that re-checks the project, resolves the account, throttles and launches |
+| `SessionStarter` (package) / `SessionStarterBridge` | `armada_start_session`'s door: one main-actor hop that re-checks the project, resolves the account, throttles and launches; mints the `--session-id` for a terminal launch, and for `resume` refuses a live or recently written session and finds the account and folder from the transcript |
+| `MessageSender` (package) / `MessageSenderBridge` | `armada_send_message`'s door: checks the switch, the session and its account's hook on the main actor, writes the labelled message into the session's inbox, and watches it for three seconds to say delivered or why it is queued |
+| `MessageHook` | the Stop hook's script and command, and the byte-level edit that adds or removes it in a `settings.json`; `make unit` runs the real script |
+| `MessageDelivery` / `SessionInbox` | Settings ▸ Supervisor ▸ Deliver messages: writes the script, syncs every account's `settings.json` to the switch at launch and on change; the inbox a message is written to, and whether a hook is listening |
+| `SessionCloser` (package) / `SessionCloserBridge` | `armada_close_session`'s door: one main-actor hop that re-checks the session's state and ties its pid to it by start time, then `SIGTERM`, a wait, and `SIGKILL` for one still there |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
-| `ArmadaMCP` (package) | the seven tools, `FleetSource` and its snapshot types, `SessionStarter`, the transcript condenser; `make -C apps/apple test` |
+| `ArmadaMCP` (package) | the ten tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
@@ -342,6 +347,12 @@ Each of these cost time here, and none is visible from the code that depends on 
   here: it is not a session you started. It is stopped by its pid, never by a pattern.
 - **`--safe-mode` is the obvious flag for the voice `claude` and the wrong one.** It drops
   `--mcp-config` too. `--setting-sources local` is what keeps the person's hooks out.
+- **A resumed `claude` keeps the system prompt its conversation began with.** A new
+  `--append-system-prompt` is ignored on `--resume` (measured on 2.1.273, see
+  claude-code-sessions.md), so a reply language, instructions or Allow writes changed during a
+  conversation never reached the model: French questions went on getting French answers.
+  `VoiceConversation` resumes only when the brief is unchanged, and otherwise the next question
+  starts a new conversation.
 - **The voice card must never become key.** The shortcut is pressed while typing somewhere
   else, and a panel that took focus would take the next keystroke. The panel settings are
   Cupertino's `DrivingOverlay`'s, where that was measured.
@@ -563,6 +574,16 @@ listener was driven over a real socket with that table; the rest is known and un
 - **A Claude context percentage can rest on a guess.** The limit comes from
   `ContextWindow.resolve`, and `limitNote` carries its explanation. An agent that drops the
   note reports an assumed 200k as fact.
+- **Messaging is measured in the terminal only.** The hook fires for VS Code sessions (the
+  2026-09-10 stream-json run), but whether the panel shows the turn a message starts is not
+  confirmed. A session reaches a message only while its hook runs: from the end of its first turn
+  after delivery was turned on, for up to 24 hours idle. Debug and installed builds each install
+  their own hook, so with both switched on a session runs two.
+- **Closing a VS Code session is unmeasured.** `armada_close_session` was driven end to end
+  on 2026-09-16 against Claude Code 2.1.273 sessions in a pty: busy refused without `force`,
+  closed with it in 0.66s with its running command gone, idle closed in 0.7s, a second close
+  inside five seconds refused. What the Claude Code panel in VS Code does when its CLI is ended
+  underneath it was not tried.
 - **The supervisor is Claude-only.** Codex takes an MCP server through `-c mcp_servers`, so a
   Codex supervisor is a launch-script change, not a server change.
 
@@ -580,8 +601,9 @@ audit`. Nothing below has been run end to end.
   room holds it open until the 45 s cap, and a quiet voice may be cut off.
 - **The microphone prompt is untested in the app bundle**, and so is whether an app, unlike the
   command-line spike, is also asked for speech recognition.
-- **Replies are spoken in the system language's voice**, whatever language the reply is in.
-  Kokoro reads English only, so a French answer read by Kokoro sounds wrong.
+- **Unless Answer in fixes a language, replies are spoken in the system language's voice**,
+  whatever language the reply is in. Kokoro reads English only, so a French answer read by Kokoro
+  sounds wrong.
 - **Kokoro has never read a live answer.** Its download, first load and playback are untested in
   the app, it offers one voice (`af_heart`), and what it adds to Armada's memory is unmeasured.
 - **Parakeet was measured on four recorded French questions**, against Apple's dictation, not on
@@ -593,7 +615,8 @@ audit`. Nothing below has been run end to end.
   `libtext_processing_rs`, the Rust text normaliser FluidAudio links, not from FluidAudio's own
   code, and the audit allows it by name.
 - **Only Claude answers.** A Mac with Codex accounts and no Claude account has no voice.
-- **A conversation lasts until Start a New Conversation.** Each account resumes its last
-  session id, so the context grows with every question.
+- **A conversation lasts until Start a New Conversation, an account switch or a relaunch.** Its
+  session id is held in memory, so the context grows with every question until one of those, and
+  a relaunch never resumes a history the Voice pane no longer shows.
 - **Debug and installed builds share the default shortcut.** Whichever registers second shows
   that another app already uses it.

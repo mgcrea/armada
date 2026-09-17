@@ -523,6 +523,7 @@ writing frames to one long-lived process. Armada's MCP endpoint answered 503 the
 | First turn, cold | first event at 1.0 s, first `text_delta` at 2.2 s, for a two-word answer |
 | Second turn, same process | first event at 5 ms, first `text_delta` at 1.9 s |
 | Resume in a new process | `--resume <session_id>` from the same working directory continues the conversation; first `text_delta` at 3.1 s |
+| `--append-system-prompt` on resume | Ignored: a resumed conversation keeps the system prompt it began with. Measured 2026-09-17 on 2.1.273 with canaries ("end every reply with PINEAPPLE"): a fresh session followed one every time, a session started with PINEAPPLE and resumed twice with BANANA said PINEAPPLE both times, and resumed forks of a conversation begun without it never did, in stream-json and text alike, with or without `--fork-session`. Voice starts a new conversation whenever its brief changes |
 | Interrupt | `{"type":"control_request","request_id":…,"request":{"subtype":"interrupt"}}` mid-turn gives a successful `control_response`, a `user` line reading `[Request interrupted by user]`, then `result` `error_during_execution` with `terminal_reason: aborted_streaming`, 6 ms after the request. The process stays up |
 | `--tools ""` | `init.tools` is empty: no built-in tool at all |
 | User settings | Loaded by default: a SessionStart hook from user settings ran (`system/hook_started` and `hook_response` before `init`). `--setting-sources local` keeps them out and keeps `--mcp-config` |

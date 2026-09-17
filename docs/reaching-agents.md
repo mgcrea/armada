@@ -66,6 +66,28 @@ stream-json --verbose --input-format stream-json`. Same test, with stdin held op
 
 Not yet confirmed: that the VS Code panel displays a turn that arrives this way.
 
+### What shipping it needed (2026-09-16, Claude Code 2.1.273)
+
+Measured in a pty against the user's default account, with the hook in a `--settings` file or a
+project's `.claude/settings.local.json`, before `armada_send_message` was built on it:
+
+- **The hook is a direct child of `claude`** and starts about 0.5s after a turn ends. A message
+  written to an idle session was answered 2.7s later, and the next run was waiting 0.5s after that
+  turn. Its input carries `session_id`, `transcript_path`, `cwd`, `stop_hook_active` and
+  `last_assistant_message`, among others.
+- **Settings are re-read live.** A Stop hook added to the project's settings while the session ran
+  fired at the next turn's end; removed, no run started at the next one.
+- **Runs pile up.** A run that got no message is still waiting after the person prompts normally,
+  and the next turn's end starts a second. Armada's script exits once a newer run has taken over.
+- **A `timeout` of 86400 is accepted**, and an expired run is terminated with nothing shown in the
+  session. **A quitting session signals its pending run**, which exits.
+- **The model sees the message as `Stop hook blocking error from command "Stop": <text>`** inside
+  a system reminder, after a "Stop hook feedback" notice, and acted on it.
+
+Through the shipped tool, the same day: a message sent before a session's first turn was queued
+and delivered as that turn ended; one sent to an idle session was picked up in 1.0s and answered;
+one run waited per session; and the run and the inbox were gone once the session quit.
+
 ### Rules that matter
 
 - **Claude follows requests delivered by a hook.** The same request through a channel was

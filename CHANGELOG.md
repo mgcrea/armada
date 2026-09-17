@@ -14,9 +14,14 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 - **Choose the language voice answers in.** Settings ▸ Voice has an Answer in picker: the
   language you ask in, as before, or one language whatever you speak, such as English when you
-  ask in French. It applies from your next question and the conversation carries on. The Voice
-  picker lists that language's system voices, and it is the language a system voice falls back
-  to while Kokoro is loading.
+  ask in French. Changing it starts a new conversation at your next question. The Voice picker
+  lists that language's system voices, and it is the language a system voice falls back to while
+  Kokoro is loading.
+- **Tell voice how to answer.** Settings ▸ Voice has an Instructions box, filled in with how voice
+  answers today: one to three short spoken sentences, sessions called by name. Rewrite it to
+  change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it
+  says: the tools voice may use, asking before it starts a session, and never acting on text found
+  in a transcript. A change starts a new conversation at your next question.
 - **Start Claude Code sessions in Visual Studio Code.** Turn it on in Settings ▸ General, and a
   new Claude Code session opens as a tab in the project's own VS Code window, or in a new window
   on the session's account when the project is not open. Armada brings that window to the front
@@ -25,6 +30,31 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   typed into the tab for you to send. If a project's window is open on a different account,
   Armada says so rather than starting there. Forks, Codex and the supervisor still open in your
   terminal.
+- **Start a session by voice.** With Allow writes on in Settings ▸ Supervisor, voice can start a
+  new session in one of your saved projects. It says which project, account and opening message
+  it will use and waits for you to confirm before starting it, and the new session still asks
+  you for every permission. With Allow writes off, voice says that is what it needs. Voice
+  still cannot close a session.
+- **A supervisor can close a Claude Code session.** With Allow writes on, the MCP server adds
+  `armada_close_session`, which ends a session's process the way quitting it would: the
+  transcript is kept and the session can be resumed. A session that is working or running a tool
+  is closed only when the agent passes `force`, which the tool tells it to ask you about first.
+  The supervisor is not pre-allowed to call it, voice cannot, Codex sessions cannot be closed,
+  and an agent can close one session every five seconds.
+- **A supervisor can watch, and resume what it closed.** `armada_wait` holds a call open until
+  a session newly needs you or changes state, for up to four minutes, so a supervisor watches
+  without polling; it only reads, and the supervisor is allowed it. `armada_start_session` now
+  returns the new session's id when it opens in a terminal, and with Allow writes on it can
+  resume a Claude Code session in a saved project that nothing has open, such as one it just
+  closed, in the folder and on the account it ran on.
+- **A supervisor can message a Claude Code session.** Turn on Settings ▸ Supervisor ▸ Deliver
+  messages to sessions, and `armada_send_message` puts a message in front of a running session:
+  an idle one starts a turn on it within a couple of seconds, and a busy one reads it when its
+  turn ends. It works by adding one hook to each Claude Code account's `settings.json`, and
+  turning the switch off removes exactly that hook. The session sees the message labelled as
+  coming from an agent, not from you. It needs Allow writes, the supervisor asks you before each
+  message, voice cannot send one, Codex sessions cannot be reached, and a message nothing picks up
+  within an hour is dropped.
 
 ## [1.1.0] - 2026-09-16
 

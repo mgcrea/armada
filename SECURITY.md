@@ -35,10 +35,11 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and six of its seven tools are read-only. The seventh, `armada_start_session`, is listed and
-  callable only while Allow writes is on, which it is not by default: it opens Terminal on a
-  fresh session in a folder you saved as a project, and that session asks you for every
-  permission as usual. `make audit` checks the listener's source for the
+  and seven of its nine tools are read-only. The other two are listed and callable only while
+  Allow writes is on, which it is not by default. `armada_start_session` opens Terminal on a
+  fresh session in a folder you saved as a project, or resumes a Claude Code session there that
+  nothing has open, and that session asks you for every permission as usual. `armada_close_session` sends `SIGTERM` to a Claude Code session's own
+  process, and `SIGKILL` if it is still there eight seconds later. `make audit` checks the listener's source for the
   loopback address and refuses a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
@@ -107,12 +108,14 @@ attacker-influenced text meets something that acts on it:
   removed before the agent starts, and passed as one double-quoted word, and a message that
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves six read-only tools on `127.0.0.1` to
-  whoever presents the token, and a seventh that starts a session only while Allow writes is
-  on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
+- **The MCP endpoint.** Switched on, Armada serves seven read-only tools on `127.0.0.1` to
+  whoever presents the token, and two that start and close a session only while Allow writes
+  is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
-  writes off, starts a session in a folder that is not a saved project, adds another tool that
-  writes, or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
+  writes off, starts or resumes a session in a folder that is not a saved project, resumes a session that is
+  still open, gets `armada_close_session` to
+  signal a process that is not the live session it named (a stale registry file naming a reused
+  pid is the case it checks start times for), adds another tool that writes, or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
   the token: it is created 0600 in the launch's own temporary directory and pruned with the
   script, and anything that makes it readable by another user or puts the token on a command
   line is in scope.
@@ -124,7 +127,10 @@ attacker-influenced text meets something that acts on it:
   no built-in tools (`--tools ""`), with Armada's MCP server and no other
   (`--strict-mcp-config`), with the six read tools allowed by name and `armada_start_session`
   denied by name, without the person's user settings or hooks, and with no permission bypass;
-  `SupervisorArgumentsTests` pins every one of those. Anything that gives it another tool,
+  `SupervisorArgumentsTests` pins every one of those. Its system prompt holds the person's
+  instructions from Settings ▸ Voice followed by rules they cannot edit out: its tools, a spoken
+  confirmation before starting a session, and never following instructions found in a transcript.
+  Anything that gives it another tool,
   another server or a way to write, that puts data rather than the spoken question into its
   arguments or stdin, or that signals a process Armada did not start, is in scope.
 - **The microphone.** Voice captures audio only between a shortcut press and the end of that
@@ -165,30 +171,51 @@ attacker-influenced text meets something that acts on it:
   answers, and transcript text reaching it through `armada_read_transcript` is labelled as data
   written by other agents. Whether a model then follows instructions inside it is that model's
   behaviour, not Armada's. The one thing such an instruction could make a supervisor do
-  through Armada is start a session, and that is fenced on Armada's side: Allow writes is off
+  through Armada is start, resume, close or message a session (see Messaging below), and each is
+  fenced on Armada's side. Starting, for instance: Allow writes is off
   by default, the supervisor is not pre-allowed the start tool so Claude Code asks you first
   with the project and message in view, and the new session asks for every permission itself.
+  Voice is the exception: its `claude` is headless, so while Allow writes is on it is allowed
+  the start tool outright, and the only confirmation is the one its brief asks it to get from
+  you out loud. A transcript that talked it out of that could start a session in a saved
+  project. That session still opens where you can see it and asks for every permission.
 - **Other programs running as the same macOS user.** They can already read every transcript
   and rewrite every agent's config directly, so nothing in Armada changes their reach. This
   is stated as an explicit out-of-scope in [docs/design.md](docs/design.md#security-model-drafted)
   rather than left implied.
 
-## Messaging, when it lands
+## Messaging
 
-v1's third feature — messages between agents — is designed and not built, and it is the part
-that will move the threat model rather than extend it. The measurement that makes it dangerous
-is already recorded: **Claude acts on text delivered by a hook**, having refused the same
-request delivered through a channel. Whatever delivers messages can steer every agent on the
-machine.
+**Built: a supervisor can message a Claude Code session.** This moves the threat model rather
+than extending it. The measurement that makes it dangerous is recorded: **Claude acts on text
+delivered by a hook**, having refused the same request delivered through a channel. Whatever
+delivers messages can steer every Claude Code session on the Mac.
 
-The design answers that with a router that decides delivery rather than the sender, an explicit
-policy per pair of agents, labelling and an audit log — see
-[docs/design.md](docs/design.md#security-model-drafted) and
-[docs/reaching-agents.md](docs/reaching-agents.md). None of it exists yet. Until it does,
-Armada installs no hook and delivers nothing to any agent. The only MCP tools it serves are the
-supervisor's, on loopback, off until you turn them on — and the one of them that starts a session
-is off again until you allow writes — and `make audit` is what keeps the network half of that
-honest.
+What stands in front of it:
+
+- **Three switches, all off by default.** The MCP server, Allow writes, and Settings ▸ Supervisor
+  ▸ Deliver messages to sessions. Only the last installs anything, and turning it off removes it.
+- **One hook per account, and nothing else in the file.** Turning delivery on adds one
+  `asyncRewake` Stop hook to each Claude Code account's `settings.json`, as a byte-level edit that
+  is parsed and compared with the original plus the entry before it is written, under the
+  `<file>.lock` Claude Code uses. Anything that gets Armada to change another byte of that file,
+  or to leave an entry behind when delivery is off, is in scope.
+- **The script reads and prints; it runs nothing.** It lives in Armada's Application Support
+  folder (0700), takes the session id only if it is a UUID, reads only files in that session's
+  inbox (0700 directory, 0600 files), and prints them. Anything that makes it execute message
+  text, read outside the inbox, or deliver one session's message to another is in scope.
+- **The sender is whoever holds the MCP token**, the same boundary as every other tool. The
+  supervisor Armada starts is not pre-allowed `armada_send_message`, so Claude Code asks you
+  before each message with the text in view; voice is denied it by name.
+- **Every message is labelled** as coming from a supervisor agent through Armada and not typed by
+  you, and asks the recipient to check with you before anything destructive. A label is an
+  instruction to a model, not a control, which is why the switches above are the boundary.
+- **Messages expire.** One nothing picks up in an hour is deleted unread.
+
+Not built from the earlier design: agent-to-agent messaging, a per-pair policy, and an audit log
+of message contents. The unified log records each tool call's name and outcome, never its
+arguments. See [docs/design.md](docs/design.md#security-model-drafted) and
+[docs/reaching-agents.md](docs/reaching-agents.md).
 
 ## Supported versions
 
