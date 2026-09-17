@@ -210,7 +210,7 @@ final class MouseTap {
 
     let held = flags.intersection(Self.watchedFlags)
     guard let binding = MouseBindingsStore.shared.binding(button: button, flags: held) else {
-      // The unbound case, and the common one: an unmodified side button is Back in
+      // The unbound case, and the common one: a side button nobody bound is Back in
       // every browser on the Mac and has to arrive untouched.
       return .pass
     }

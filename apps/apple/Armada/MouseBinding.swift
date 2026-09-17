@@ -80,11 +80,13 @@ enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
 
 /// The modifiers a binding fires on, as a closed list of combinations.
 ///
-/// **There is no "no modifier" case, and that is a safety property rather than an
-/// omission.** A bare side button is Back and Forward in every browser and editor on
-/// the Mac, and a binding that claimed it would break that everywhere, silently,
-/// for as long as the setting stayed on. Requiring a modifier is what lets the tap
-/// pass every unmodified press straight through.
+/// **`none` is allowed, and it is the one case that costs something elsewhere.** A
+/// bare side button is Back and Forward in every browser and editor on the Mac, and
+/// a binding that claims it takes that away everywhere for as long as the setting
+/// stays on. That is the reader's call to make — a middle button nobody uses, or a
+/// thumb button with no other job, is exactly what a bare binding is for — so the
+/// case exists, sits last in the picker, and the Mouse pane says what it replaces.
+/// Unbound presses, modified or not, still pass straight through.
 ///
 /// A closed list rather than a set of four toggles because the picker is then one
 /// control with readable rows. The combinations left out — anything with three
@@ -98,6 +100,7 @@ enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
   case optionShift
   case commandShift
   case controlOption
+  case none
 
   var id: String { rawValue }
 
@@ -111,6 +114,7 @@ enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
     case .optionShift: [.maskAlternate, .maskShift]
     case .commandShift: [.maskCommand, .maskShift]
     case .controlOption: [.maskControl, .maskAlternate]
+    case .none: []
     }
   }
 
@@ -127,8 +131,12 @@ enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
     case .optionShift: "⌥⇧"
     case .commandShift: "⇧⌘"
     case .controlOption: "⌃⌥"
+    case .none: ""
     }
   }
+
+  /// How the case reads in the picker, where an empty glyph would be a blank row.
+  var pickerLabel: String { self == .none ? "No modifier" : label }
 }
 
 /// One trigger and what it does.
@@ -158,7 +166,14 @@ struct MouseBinding: Codable, Hashable, Identifiable {
   /// likes, and guessing would be worse than asking.
   static let offeredButtons = [2, 3, 4]
 
-  var label: String { "\(modifiers.label) \(Self.buttonLabel(button))" }
+  var label: String {
+    modifiers == .none
+      ? Self.buttonLabel(button) : "\(modifiers.label) \(Self.buttonLabel(button))"
+  }
+
+  /// Whether this binding takes a button the rest of the Mac already uses on its own:
+  /// Back and Forward, which every browser and editor answers to.
+  var replacesSystemButton: Bool { modifiers == .none && (button == 3 || button == 4) }
 }
 
 /// The bindings, and whether they are live.

@@ -58,7 +58,7 @@ struct MousePane: View {
         // with no stated ceiling is the kind people deny — the same reasoning as the
         // Focus grant in General, and the ceiling here is genuinely narrow.
         Text(
-          "Armada sees your mouse's middle and extra buttons and the modifiers held with them — never your clicks, your pointer, or your typing. A button pressed on its own is left alone, so Back and Forward keep working. Bindings do nothing while a password field has focus, because macOS hides those presses from every application."
+          "Armada sees your mouse's middle and extra buttons and the modifiers held with them — never your clicks, your pointer, or your typing. A button pressed on its own is left alone unless a binding below uses it with no modifier. Bindings do nothing while a password field has focus, because macOS hides those presses from every application."
         )
       }
 
@@ -120,6 +120,18 @@ private struct MouseBindingRow: View {
   let onRemove: () -> Void
 
   var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      trigger
+      if !isCapturing, binding.replacesSystemButton {
+        // The one binding that costs something outside Armada, said where it is set.
+        Text("With no modifier, this button stops going Back or Forward in every app.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private var trigger: some View {
     HStack(spacing: 8) {
       if isCapturing {
         Text("Press a button…")
@@ -133,7 +145,7 @@ private struct MouseBindingRow: View {
           // Inline pickers render as checkmarked sections of the menu rather than as
           // submenus, so the whole trigger is set in one press without a hover-walk.
           Picker("Modifier", selection: $binding.modifiers) {
-            ForEach(MouseModifiers.allCases) { Text($0.label).tag($0) }
+            ForEach(MouseModifiers.allCases) { Text($0.pickerLabel).tag($0) }
           }
           .pickerStyle(.inline)
 
