@@ -118,7 +118,7 @@ final class MCPServerController {
       instructions: Tools.instructions,
       tools: Tools.table(
         source: FleetBridge(), starter: SessionStarterBridge(), closer: SessionCloserBridge(),
-        sender: MessageSenderBridge()))
+        sender: MessageSenderBridge(), focuser: SessionFocuserBridge()))
 
     let listener = LoopbackListener(
       server: server,

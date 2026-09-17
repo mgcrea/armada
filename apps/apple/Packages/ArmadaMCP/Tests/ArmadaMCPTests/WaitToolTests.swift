@@ -47,7 +47,7 @@ struct WaitToolTests {
   private func call(_ arguments: JSONValue, on source: any FleetSource) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(),
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(),
       waitPoll: .milliseconds(5)
     ).call(name: "armada_wait", arguments: arguments, allowWrites: false)
   }
@@ -59,7 +59,7 @@ struct WaitToolTests {
   func listing() throws {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
     let tool = try #require(table.listing(allowWrites: false).first { $0.name == "armada_wait" })
     #expect(tool.annotations.readOnlyHint)
     #expect(Tools.readToolNames.contains("armada_wait"))

@@ -10,11 +10,13 @@ import Foundation
 ///   a file or fetch a page.
 /// - `--strict-mcp-config` with the one `--mcp-config` file loads Armada's server and none
 ///   of the person's own.
-/// - `--allowedTools` names the read tools one by one, plus `armada_start_session` only while
-///   Settings ▸ Supervisor allows writes. `--disallowedTools` names `armada_close_session` and
-///   `armada_send_message` always, and the start tool whenever writes are off. Headless, an allowed tool runs without
-///   asking and a tool that is not allowed is denied, never asked about, so the brief makes voice
-///   say what it will start and wait for the person to confirm on their next question.
+/// - `--allowedTools` names the read tools one by one, plus `armada_start_session` and
+///   `armada_focus_session` only while Settings ▸ Supervisor allows writes. `--disallowedTools`
+///   names `armada_close_session` and `armada_send_message` always, and those two whenever writes
+///   are off. Headless, an allowed tool runs without asking and a tool that is not allowed is
+///   denied, never asked about, so the brief makes voice say what it will start and wait for the
+///   person to confirm on their next question. Bringing a window forward changes nothing, so it
+///   runs when asked, without that confirmation.
 /// - `--setting-sources local` keeps the person's user settings, and with them their hooks
 ///   and plugins, out of it. Measured 2026-09-15: with user settings a SessionStart hook ran
 ///   in the voice session. `--safe-mode` was tried first and also drops `--mcp-config`.
@@ -32,8 +34,10 @@ public enum SupervisorArguments {
     "armada_get_projects", "armada_read_transcript",
   ]
 
-  /// The write tool voice may call while Allow writes is on.
+  /// The write tools voice may call while Allow writes is on.
   public static let startTool = "armada_start_session"
+  public static let focusTool = "armada_focus_session"
+  public static let writeTools = [startTool, focusTool]
 
   /// Tools the server can offer that voice must never call, whatever Allow writes says.
   public static let deniedTools = ["armada_close_session", "armada_send_message"]
@@ -55,8 +59,8 @@ public enum SupervisorArguments {
     canStartSessions: Bool = false, style: String = VoiceBrief.defaultStyle,
     effort: VoiceEffort = .automatic
   ) -> [String] {
-    let allowed = readTools + (canStartSessions ? [startTool] : [])
-    let denied = (canStartSessions ? [] : [startTool]) + deniedTools
+    let allowed = readTools + (canStartSessions ? writeTools : [])
+    let denied = (canStartSessions ? [] : writeTools) + deniedTools
     var arguments = [
       "-p",
       "--input-format", "stream-json",
@@ -153,14 +157,17 @@ public enum VoiceBrief {
     than interpreting it. If a tool fails, say what failed.
     """
 
-  /// Names the switch, so a request to start a session gets a reason that is true.
+  /// Names the switch, so a request to start a session or bring one forward gets a reason that
+  /// is true rather than "I can't".
   static let readOnly =
-    "You cannot start, stop or change anything: starting a session by voice needs Allow writes "
-    + "turned on in Armada's Supervisor settings."
+    "You cannot start, stop, bring forward or change anything: starting a session or bringing its "
+    + "window to the front by voice needs Allow writes turned on in Armada's Supervisor settings."
 
   /// Spoken confirmation is the only one there is: headless, the allowed tool runs unasked.
   static let canStart =
-    "You can start a new session in one of their saved projects with armada_start_session, and "
+    "When they ask to see or bring up a session, call armada_focus_session without asking "
+    + "first, and never bring one forward they did not ask for. "
+    + "You can start a new session in one of their saved projects with armada_start_session, and "
     + "change nothing else. Before calling it, ask in one short question with the project, the "
     + "opening message if there is one and the account if they have several, and call it only "
     + "once they confirm on their next turn. Once started, say so in a few words. A refusal was true "

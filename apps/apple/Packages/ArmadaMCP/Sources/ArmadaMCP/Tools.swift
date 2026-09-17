@@ -3,8 +3,9 @@ import MCPKit
 
 /// Armada's tools.
 ///
-/// **Seven that read, and three that act: start, close and message a session.** Every definition is
-/// paid for in the client's context on every connect, so the reads are shaped around what a
+/// **Seven that read, and four that act: start, close, message and bring forward a session.**
+/// Every definition is paid for in the client's context on every connect, so the reads are shaped
+/// around what a
 /// supervisor actually asks — *what needs me*, *what is everything doing*, *what is this one
 /// doing*, *how much plan is left*, *what did it last say*, *where has the work gone* — rather than
 /// mirroring the app's types.
@@ -26,7 +27,8 @@ public enum Tools {
     the person has turned on Allow writes in Armada. The first opens a fresh session in one of \
     their saved projects, in their terminal or VS Code, and that session still asks them for \
     every permission. The second ends a Claude Code session's process. Ask the person before \
-    starting or closing one.
+    starting or closing one. armada_focus_session, behind the same switch, brings the window a \
+    session runs in to the front when the person asks to see it.
 
     How to read the answers:
 
@@ -93,7 +95,8 @@ public enum Tools {
 
   public static func table(
     source: any FleetSource, starter: any SessionStarter, closer: any SessionCloser,
-    sender: any MessageSender, waitPoll: Duration = defaultWaitPoll
+    sender: any MessageSender, focuser: any SessionFocuser,
+    waitPoll: Duration = defaultWaitPoll
   ) -> ToolTable {
     var table = ToolTable()
     add(needsAttention: &table, source: source)
@@ -106,6 +109,7 @@ public enum Tools {
     add(startSession: &table, source: source, starter: starter)
     add(closeSession: &table, source: source, closer: closer)
     add(sendMessage: &table, source: source, sender: sender)
+    add(focusSession: &table, source: source, focuser: focuser)
     return table
   }
 
@@ -1051,6 +1055,73 @@ public enum Tools {
             ]
           ], snapshot: snapshot, lede: "Queued for \(name) in \(project). \(reason)")
       }
+    }
+  }
+
+  // MARK: - armada_focus_session
+
+  private static func add(
+    focusSession table: inout ToolTable, source: any FleetSource, focuser: any SessionFocuser
+  ) {
+    table.add(
+      MCPTool(
+        name: "armada_focus_session",
+        title: "Bring a session forward",
+        description:
+          "Bring the window a Claude Code session runs in to the front, on the session's own tab "
+          + "in VS Code when Armada can find it. Nothing in the session changes. Use it when the "
+          + "person asks to see a session. Codex sessions, and sessions with no app window "
+          + "(tmux, ssh, headless), cannot be brought forward.",
+        properties: ["session": sessionArgument],
+        required: ["session"],
+        gate: .requiresWrites,
+        annotations: .mutating(destructive: false, idempotent: true, openWorld: false))
+    ) { arguments in
+      let snapshot = await source.snapshot()
+      guard snapshot.isEntitled else { return .failure(notEntitled) }
+
+      let session: FleetSnapshot.ClaudeSession
+      switch lookup(arguments["session"], in: snapshot) {
+      case .refused(let refusal):
+        return refusal
+      case .codex(let codex, _):
+        return .failure(
+          "\(codex.name) is a Codex session, and Armada cannot bring one forward: Codex keeps no "
+            + "record of which process a session runs in.")
+      case .claude(let found, _):
+        session = found
+      }
+
+      switch await focuser.focusSession(FocusSessionRequest(sessionID: session.id)) {
+      case .refused(let message):
+        return .failure(message)
+      case .focused(let focused):
+        return envelope(
+          [
+            "focused": object([
+              "id": .string(session.id), "name": .string(focused.name),
+              "project": .string(focused.project), "app": .string(focused.app),
+              "reach": .string(focused.reach.rawValue),
+              "accessibilityGranted": focused.accessibilityGranted ? .none : .bool(false),
+            ])
+          ], snapshot: snapshot, lede: focusLede(focused))
+      }
+    }
+  }
+
+  static func focusLede(_ focused: FocusedSession) -> String {
+    let what = "\(focused.name) in \(focused.project)"
+    switch focused.reach {
+    case .tab:
+      return "Brought \(what) forward on its tab in \(focused.app)."
+    case .window:
+      return "Brought \(what) forward in \(focused.app)."
+    case .application:
+      let why =
+        focused.accessibilityGranted
+        ? "no window of it is titled with the session's folder"
+        : "Armada has no Accessibility access to pick the window"
+      return "Brought \(focused.app) forward for \(what), but not a particular window: \(why)."
     }
   }
 

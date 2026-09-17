@@ -25,7 +25,7 @@ struct SupervisorArgumentsTests {
     #expect(argv.contains("--disable-slash-commands"))
   }
 
-  @Test("with writes off, voice may call the read tools and is denied starting and closing")
+  @Test("with writes off, voice may call the read tools and is denied every write")
   func tools() {
     let allowed = value(after: "--allowedTools", in: argv)?.split(separator: ",").map(String.init)
     #expect(
@@ -36,19 +36,26 @@ struct SupervisorArgumentsTests {
       ])
     #expect(
       value(after: "--disallowedTools", in: argv)
-        == "mcp__armada__armada_start_session,mcp__armada__armada_close_session,mcp__armada__armada_send_message"
+        == "mcp__armada__armada_start_session,mcp__armada__armada_focus_session,"
+        + "mcp__armada__armada_close_session,mcp__armada__armada_send_message"
     )
     #expect(
-      allowed?.contains { $0.contains("start_session") || $0.contains("close_session") } == false)
+      allowed?.contains {
+        $0.contains("start_session") || $0.contains("close_session") || $0.contains("focus_session")
+      } == false)
   }
 
-  @Test("with writes on, voice may also start a session, and closing stays denied")
+  @Test(
+    "with writes on, voice may also start and bring forward a session, and closing stays denied")
   func startTool() throws {
     let writes = SupervisorArguments.arguments(
       mcpConfig: "/tmp/x.json", resume: nil, canStartSessions: true)
     let allowed = value(after: "--allowedTools", in: writes)?.split(separator: ",").map(String.init)
-    #expect(allowed?.last == "mcp__armada__armada_start_session")
-    #expect(allowed?.count == SupervisorArguments.readTools.count + 1)
+    #expect(
+      allowed?.suffix(2) == [
+        "mcp__armada__armada_start_session", "mcp__armada__armada_focus_session",
+      ])
+    #expect(allowed?.count == SupervisorArguments.readTools.count + 2)
     #expect(allowed?.contains { $0.contains("close_session") } == false)
     #expect(
       value(after: "--disallowedTools", in: writes)
@@ -56,7 +63,10 @@ struct SupervisorArgumentsTests {
     let brief = try #require(value(after: "--append-system-prompt", in: writes))
     #expect(brief != VoiceBrief.text)
     #expect(brief.contains("armada_start_session"))
+    #expect(brief.contains("armada_focus_session"))
     #expect(!VoiceBrief.text.contains("armada_start_session"))
+    #expect(!VoiceBrief.text.contains("armada_focus_session"))
+    #expect(VoiceBrief.text.contains("bringing its window to the front"))
   }
 
   @Test("nothing that skips permissions or sign-in is ever passed")
@@ -151,7 +161,7 @@ struct SupervisorArgumentsTests {
       ToolLabels.label(for: "mcp__armada__armada_needs_attention") == "Checking who needs you…")
     #expect(ToolLabels.label(for: "armada_get_usage") == "Checking your plan limits…")
     #expect(ToolLabels.label(for: "something_new") == "Working…")
-    for tool in SupervisorArguments.readTools + [SupervisorArguments.startTool] {
+    for tool in SupervisorArguments.readTools + SupervisorArguments.writeTools {
       #expect(ToolLabels.label(for: tool) != "Working…", "\(tool) has no label")
     }
   }

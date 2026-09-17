@@ -154,7 +154,7 @@ enum FocusSession {
   /// watching it. It stays within `docs/design.md`'s "v1 watches; it doesn't launch
   /// agents" — the terminal is not the agent, and nothing here starts a session.
   @discardableResult
-  private static func reopen(_ host: SessionHost) -> Bool {
+  static func reopen(_ host: SessionHost) -> Bool {
     guard let url = host.bundleURL else { return false }
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.activates = true

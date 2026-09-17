@@ -273,6 +273,17 @@ Not covered: two different folders with the same name, one open and one not (the
 then makes two matching titles, and the launch refuses); Cursor and VS Code Insiders, whose
 bundle and `bin/` differ; an extension installed outside `~/.vscode/extensions`.
 
+## Focus from an agent
+
+`armada_focus_session`, behind Allow writes, reaches the same `FocusSession.focus` through
+`SessionFocuserBridge`, so voice can answer "show me that one". The difference from a click is
+that Armada is usually not frontmost: the person is in another app with only voice's
+non-activating card showing, so `yieldActivation` has nothing to give and the system may decline
+`activate(from:)`. The window raise still lands inside the host, behind whatever is in front. The
+bridge polls the frontmost application for half a second, and when the host has not come forward
+it calls `reopen` (LaunchServices activates regardless) and raises the matched window again,
+because LaunchServices brings the host's last-used window. Not yet measured on a live voice call.
+
 ## Two traps worth writing down
 
 **`NSRunningApplication` has no no-argument `activate()`.** That one is `NSApplication`'s.

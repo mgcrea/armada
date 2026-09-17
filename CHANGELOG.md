@@ -53,6 +53,13 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   it will use and waits for you to confirm before starting it, and the new session still asks
   you for every permission. With Allow writes off, voice says that is what it needs. Voice
   still cannot close a session.
+- **Ask voice to bring a session forward.** With Allow writes on, say "bring it up" or "show me
+  the one that's waiting", and voice brings that session's window to the front, on its own tab
+  in VS Code when Armada can find it, the way Focus does. It does this only when you ask, and it
+  needs the Accessibility permission Focus uses to pick the right window. The MCP server's new
+  `armada_focus_session` does the work, so a Terminal supervisor can use it too, after asking you.
+  Codex sessions and sessions running in tmux, over ssh or headless have no window to bring
+  forward.
 - **A supervisor can close a Claude Code session.** With Allow writes on, the MCP server adds
   `armada_close_session`, which ends a session's process the way quitting it would: the
   transcript is kept and the session can be resumed. A session that is working or running a tool

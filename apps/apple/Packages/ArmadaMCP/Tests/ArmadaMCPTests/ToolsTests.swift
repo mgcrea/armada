@@ -13,7 +13,7 @@ struct ToolsTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender()
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser()
     )
     .call(
       name: name, arguments: arguments, allowWrites: false)
@@ -26,12 +26,12 @@ struct ToolsTests {
   // MARK: - The listing
 
   @Test(
-    "Seven read-only tools always, and two more that start and close sessions only behind the switch"
+    "Seven read-only tools always, and four more that act on sessions only behind the switch"
   )
   func listing() {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
     let listed = table.listing(allowWrites: false)
     #expect(listed.count == 7)
     for tool in listed {
@@ -42,6 +42,7 @@ struct ToolsTests {
     #expect(
       withWrites == listed.map(\.name) + [
         "armada_start_session", "armada_close_session", "armada_send_message",
+        "armada_focus_session",
       ])
   }
 
@@ -49,7 +50,7 @@ struct ToolsTests {
   func descriptionBudget() {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
     for tool in table.listing(allowWrites: true) {
       let bytes = MCPJSON.string(tool.json).utf8.count
       #expect(bytes < 1_400, "\(tool.name) is \(bytes) bytes")
