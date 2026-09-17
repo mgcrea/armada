@@ -14,6 +14,7 @@ public enum TranscriptTail {
   public enum Vendor: Sendable {
     case claude
     case codex
+    case grok
   }
 
   public struct Read: Sendable {
@@ -96,9 +97,71 @@ public enum TranscriptTail {
           codexModel = model
         }
         entries += codex(object, model: codexModel, maxChars: maxChars)
+      case .grok:
+        grok(object, into: &entries, maxChars: maxChars)
       }
     }
     return entries
+  }
+
+  // MARK: - Grok Build
+
+  /// One line of a session's `updates.jsonl`, measured on grok 1.0.34 (docs/grok-sessions.md).
+  ///
+  /// **Messages arrive in chunks**, one `user_message_chunk` or `agent_message_chunk` per line, so
+  /// a chunk continuing the entry before it is appended to it rather than listed on its own. A tool
+  /// call is its `tool_call` line, and its result the `tool_call_update` that completes it.
+  static func grok(_ object: [String: Any], into entries: inout [Entry], maxChars: Int) {
+    guard let update = (object["params"] as? [String: Any])?["update"] as? [String: Any],
+      let kind = update["sessionUpdate"] as? String
+    else { return }
+    let at = (object["timestamp"] as? NSNumber).map {
+      Date(timeIntervalSince1970: $0.doubleValue).formatted(.iso8601)
+    }
+    let content = update["content"] as? [String: Any]
+    let model = (update["_meta"] as? [String: Any])?["modelId"] as? String
+
+    func appendChunk(_ entryKind: Entry.Kind, _ text: String?) {
+      guard let text, !text.isEmpty else { return }
+      if let last = entries.last, last.kind == entryKind, last.tool == nil, !last.truncated {
+        let joined = (last.text ?? "") + text
+        let (clipped, truncated) = clip(joined, to: maxChars)
+        entries[entries.count - 1] = Entry(
+          kind: entryKind, at: last.at, text: clipped, model: last.model ?? model,
+          truncated: truncated)
+      } else {
+        // Not `entry(…)`, which trims: a chunk's trailing space is the gap before the next one.
+        let (clipped, truncated) = clip(text, to: maxChars)
+        entries.append(
+          Entry(kind: entryKind, at: at, text: clipped, model: model, truncated: truncated))
+      }
+    }
+
+    switch kind {
+    case "user_message_chunk":
+      appendChunk(.user, content?["text"] as? String)
+    case "agent_message_chunk":
+      appendChunk(.assistant, content?["text"] as? String)
+    case "tool_call":
+      if let made = entry(
+        .toolUse, at: at, text: summary(update["rawInput"]), tool: update["title"] as? String,
+        min(maxChars, toolInputChars))
+      {
+        entries.append(made)
+      }
+    case "tool_call_update" where update["status"] as? String == "completed"
+      || update["status"] as? String == "failed":
+      let texts = blocks(update["content"]).compactMap {
+        (($0["content"] as? [String: Any])?["text"] as? String)
+      }
+      let text = texts.isEmpty ? resultText(update["rawOutput"]) : texts.joined(separator: "\n")
+      if let made = entry(.toolResult, at: at, text: text, maxChars) { entries.append(made) }
+    case "turn_completed":
+      entries.append(Entry(kind: .system, at: at, text: "Turn complete"))
+    default:
+      // Thoughts, hook runs, plans, background tasks: not the conversation.
+      return
+    }
   }
 
   // MARK: - Claude Code

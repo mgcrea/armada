@@ -106,7 +106,8 @@ nonisolated enum NewSession {
     static let sessionName = "Armada supervisor"
     static let openingPrompt = "Which of my sessions need me right now?"
     static let brief = """
-      You are supervising every Claude Code and Codex session on this Mac for the person you \
+      You are supervising every Claude Code, Codex and Grok Build session on this Mac for the \
+      person you \
       are talking to. Armada, the app that started you, answers questions about those \
       sessions through its armada_* tools: armada_needs_attention for what needs them, \
       armada_get_fleet for an overview, armada_get_session and armada_read_transcript to look \

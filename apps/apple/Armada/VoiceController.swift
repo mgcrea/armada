@@ -389,6 +389,12 @@ final class VoiceController {
         hints += [session.project, session.name, session.title ?? ""]
       }
     }
+    for account in snapshot.grok {
+      hints.append(account.name)
+      for session in account.sessions {
+        hints += [session.project, session.name, session.title ?? ""]
+      }
+    }
     var seen = Set<String>()
     return Array(
       hints.filter { !$0.isEmpty && $0.count <= 60 && seen.insert($0.lowercased()).inserted }

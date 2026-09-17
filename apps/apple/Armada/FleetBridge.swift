@@ -40,7 +40,8 @@ nonisolated struct FleetBridge: FleetSource {
       takenAt: now,
       isEntitled: EntitlementMonitor.shared.current.isEntitled,
       claude: Accounts.shared.all.map { claude($0, now: now) },
-      codex: CodexAccounts.shared.all.map { codex($0, now: now) })
+      codex: CodexAccounts.shared.all.map { codex($0, now: now) },
+      grok: GrokAccounts.shared.all.map { grok($0, now: now) })
   }
 
   // MARK: - Claude Code
@@ -142,6 +143,49 @@ nonisolated struct FleetBridge: FleetSource {
       context: context,
       totalTokens: session.totalTokens,
       rolloutPath: session.rollout.path(percentEncoded: false))
+  }
+
+  // MARK: - Grok Build
+
+  @MainActor
+  private static func grok(_ account: GrokAccount, now: Date) -> FleetSnapshot.GrokAccount {
+    FleetSnapshot.GrokAccount(
+      id: account.id,
+      name: account.displayName,
+      plan: account.planLabel,
+      usage: account.usage.map { usage($0.asSnapshot, correctedBy: nil, now: now) },
+      sessions: account.sessions.sessions.map(grokSession))
+  }
+
+  @MainActor
+  private static func grokSession(_ session: GrokSession) -> FleetSnapshot.GrokSession {
+    // Grok measures its own context in `signals.json` and splits nothing out, so the cache
+    // fields are zero rather than guessed.
+    let context = session.context.map {
+      FleetSnapshot.Context(
+        total: $0.used, limit: $0.window,
+        limitNote: "Grok Build records the window size and its use, so this is measured.",
+        cacheRead: 0, cacheCreation: 0, freshInput: 0, output: 0, at: session.lastEventAt,
+        hasCompacted: false)
+    }
+    return FleetSnapshot.GrokSession(
+      id: session.id,
+      pid: session.pid,
+      name: session.displayName,
+      title: session.summary.title,
+      project: session.summary.projectName,
+      cwd: session.summary.cwd,
+      state: session.state.rawValue,
+      stateLabel: session.state.label,
+      isLive: session.state.isLive,
+      isHeadless: session.isHeadless,
+      startedAt: session.summary.createdAt,
+      lastActivity: session.lastEventAt ?? session.summary.updatedAt,
+      model: session.summary.model,
+      context: context,
+      totalTokens: session.usage?.totalTokens,
+      costUSD: session.usage?.costUSD,
+      updatesPath: session.directory.appending(path: "updates.jsonl").path(percentEncoded: false))
   }
 
   // MARK: - Shared

@@ -43,12 +43,17 @@ public struct FleetSnapshot: Sendable {
   public let isEntitled: Bool
   public let claude: [ClaudeAccount]
   public let codex: [CodexAccount]
+  public let grok: [GrokAccount]
 
-  public init(takenAt: Date, isEntitled: Bool, claude: [ClaudeAccount], codex: [CodexAccount]) {
+  public init(
+    takenAt: Date, isEntitled: Bool, claude: [ClaudeAccount], codex: [CodexAccount],
+    grok: [GrokAccount] = []
+  ) {
     self.takenAt = takenAt
     self.isEntitled = isEntitled
     self.claude = claude
     self.codex = codex
+    self.grok = grok
   }
 
   /// One Claude config folder: an organization with its own sessions and plan limits.
@@ -197,6 +202,73 @@ public struct FleetSnapshot: Sendable {
     }
   }
 
+  /// One Grok Build home.
+  public struct GrokAccount: Sendable {
+    public let id: String
+    public let name: String
+    public let plan: String?
+    /// One weekly credit allowance across every model, asked of the person's own `grok`.
+    public let usage: Usage?
+    public let sessions: [GrokSession]
+
+    public init(id: String, name: String, plan: String?, usage: Usage?, sessions: [GrokSession]) {
+      self.id = id
+      self.name = name
+      self.plan = plan
+      self.usage = usage
+      self.sessions = sessions
+    }
+  }
+
+  public struct GrokSession: Sendable {
+    public let id: String
+    /// From `active_sessions.json`, while the session is open in a TUI. Nil for a headless run.
+    public let pid: Int32?
+    public let name: String
+    public let title: String?
+    public let project: String
+    public let cwd: String
+    /// `GrokSessionState.rawValue`: `working`, `awaitingInput` or `ended`.
+    public let state: String
+    public let stateLabel: String
+    public let isLive: Bool
+    /// A `grok -p` run rather than a TUI session.
+    public let isHeadless: Bool
+    public let startedAt: Date?
+    public let lastActivity: Date?
+    public let model: String?
+    public let context: Context?
+    /// Cumulative across the session, from its `usage.json`.
+    public let totalTokens: Int?
+    public let costUSD: Double?
+    public let updatesPath: String
+
+    public init(
+      id: String, pid: Int32?, name: String, title: String?, project: String, cwd: String,
+      state: String, stateLabel: String, isLive: Bool, isHeadless: Bool, startedAt: Date?,
+      lastActivity: Date?, model: String?, context: Context?, totalTokens: Int?, costUSD: Double?,
+      updatesPath: String
+    ) {
+      self.id = id
+      self.pid = pid
+      self.name = name
+      self.title = title
+      self.project = project
+      self.cwd = cwd
+      self.state = state
+      self.stateLabel = stateLabel
+      self.isLive = isLive
+      self.isHeadless = isHeadless
+      self.startedAt = startedAt
+      self.lastActivity = lastActivity
+      self.model = model
+      self.context = context
+      self.totalTokens = totalTokens
+      self.costUSD = costUSD
+      self.updatesPath = updatesPath
+    }
+  }
+
   /// How full a session's context window is.
   public struct Context: Sendable {
     public let total: Int
@@ -319,6 +391,17 @@ extension FleetSnapshot.ClaudeSession {
     case "working": 1
     case "runningTool": 2
     default: 4
+    }
+  }
+}
+
+extension FleetSnapshot.GrokSession {
+  /// Codex's placement, for Codex's reason: `awaitingInput` is open and not busy, not a request.
+  var rank: Int {
+    switch state {
+    case "working": 1
+    case "awaitingInput": 4
+    default: 5
     }
   }
 }

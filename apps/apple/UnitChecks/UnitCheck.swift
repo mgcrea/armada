@@ -883,7 +883,8 @@ struct UnitCheck {
         grokAwaitingInput: 1)
         && MenuBarHalo.waiting.isLit(
           claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
-          grokAwaitingInput: 1))
+          grokAwaitingInput: 1)
+    )
   }
 
   static func grokFiles() {
@@ -969,12 +970,18 @@ struct UnitCheck {
         && limits?.resetsAt == UsageSnapshot.parseTimestamp("2026-09-22T21:25:12.584887+00:00")
         && limits?.asSnapshot.sevenDay?.utilization == 13 && limits?.asSnapshot.fiveHour == nil)
     let monthly = GrokFiles.limits(
-      ["config": ["creditUsagePercent": 40, "currentPeriod": ["type": "USAGE_PERIOD_TYPE_MONTHLY"]]],
+      [
+        "config": [
+          "creditUsagePercent": 40, "currentPeriod": ["type": "USAGE_PERIOD_TYPE_MONTHLY"],
+        ]
+      ],
       observedAt: .now)
     check(
       "a monthly allowance has no weekly window to pace",
       monthly?.period == "monthly" && monthly?.length == nil && monthly?.window(.sevenDay) == nil)
-    check("no credit percentage is no reading", GrokFiles.limits(["config": [:]], observedAt: .now) == nil)
+    check(
+      "no credit percentage is no reading",
+      GrokFiles.limits(["config": [:]], observedAt: .now) == nil)
     check(
       "session directories are UUIDs",
       GrokFiles.isSessionId("01a0af59-ee50-7b73-a473-2f2bcf56012e")

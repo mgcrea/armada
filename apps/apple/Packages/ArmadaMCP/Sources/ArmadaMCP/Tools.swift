@@ -21,7 +21,8 @@ public enum Tools {
 
   /// Said once per client instead of once per tool description.
   public static let instructions = """
-    Armada is a menu bar app watching every Claude Code and Codex session on this Mac, across \
+    Armada is a menu bar app watching every Claude Code, Codex and Grok Build session on this \
+    Mac, across \
     every account. These tools read what it already holds, and none reaches the network. The \
     exceptions to reading are armada_start_session and armada_close_session, listed only when \
     the person has turned on Allow writes in Armada. The first opens a fresh session in one of \
@@ -32,14 +33,15 @@ public enum Tools {
 
     How to read the answers:
 
-    - `state` is each vendor's own vocabulary, and the two sets differ. Claude Code: waiting \
+    - `state` is each vendor's own vocabulary, and the sets differ. Claude Code: waiting \
     (stopped and wanting the person; `waitingFor` says why), working, runningTool, idle. \
-    Codex: working, awaitingInput, ended.
+    Codex and Grok Build: working, awaitingInput, ended.
     - Claude Code reports `waiting` itself. `runningTool` is inferred from an unanswered tool \
     call and is as often a long command as a prompt nobody answered, so say "probably" when \
     you relay it.
-    - Codex `awaitingInput` means open and not busy. It is not a request for attention, which \
-    is why armada_needs_attention leaves Codex out.
+    - Codex and Grok Build `awaitingInput` means open and not busy. It is not a request for \
+    attention, which is why armada_needs_attention leaves both out. A Grok Build session run \
+    headless (`headless: true`) is listed while it writes, and ends when its turn does.
     - `waitingFor` is display text. Quote it rather than interpreting it.
     - A null `usage` means Armada has not read that account's limits yet. It is not zero use.
     - A context `limit` is sometimes assumed from the model name; `limitNote` says when.
@@ -203,6 +205,7 @@ public enum Tools {
         ])
       }
       let openCodex = snapshot.codex.reduce(0) { $0 + $1.sessions.count { $0.isLive } }
+      let openGrok = snapshot.grok.reduce(0) { $0 + $1.sessions.count { $0.isLive } }
 
       let lede: String
       if found.isEmpty {
@@ -232,6 +235,13 @@ public enum Tools {
               "Codex does not report a session waiting on the person. Its awaitingInput means "
                 + "open and not busy, so every open Codex thread would qualify."),
           ],
+          "grok": [
+            "excluded": true,
+            "openSessions": .int(openGrok),
+            "reason": .string(
+              "Armada does not read a Grok Build session waiting on a permission yet. Its "
+                + "awaitingInput means open and not busy, as Codex's does."),
+          ],
         ], snapshot: snapshot, lede: lede)
     }
   }
@@ -244,19 +254,21 @@ public enum Tools {
         name: "armada_get_fleet",
         title: "Fleet overview",
         description:
-          "Every account and session Armada is watching, across Claude Code and Codex: each "
+          "Every account and session Armada is watching, across Claude Code, Codex and Grok "
+          + "Build: each "
           + "session's state, how full its context is and when it last moved, ordered by what "
           + "wants the person first, then by recency. Use the ids with the other tools.",
         properties: [
           "vendor": [
-            "type": "string", "enum": ["claude", "codex"],
-            "description": "Only this vendor. Default both.",
+            "type": "string", "enum": ["claude", "codex", "grok"],
+            "description": "Only this vendor. Default all.",
           ],
           "include_idle": [
             "type": "boolean", "description": "Include idle Claude Code sessions. Default true.",
           ],
           "include_ended": [
-            "type": "boolean", "description": "Include Codex sessions that ended. Default false.",
+            "type": "boolean",
+            "description": "Include Codex and Grok Build sessions that ended. Default false.",
           ],
           "include_subagents": [
             "type": "boolean", "description": "Include Codex subagents. Default false.",
@@ -276,7 +288,7 @@ public enum Tools {
       var runningTool = 0
       var working = 0
 
-      if vendor != "codex" {
+      if vendor == nil || vendor == "claude" {
         for account in snapshot.claude {
           accounts.append(
             object([
@@ -300,7 +312,7 @@ public enum Tools {
           }
         }
       }
-      if vendor != "claude" {
+      if vendor == nil || vendor == "codex" {
         for account in snapshot.codex {
           let visible = account.sessions.filter {
             (includeEnded || $0.isLive) && (includeSubagents || !$0.isSubagent)
@@ -308,6 +320,25 @@ public enum Tools {
           accounts.append(
             object([
               "id": .string(account.id), "vendor": "codex", "name": .string(account.name),
+              "plan": account.plan.map(JSONValue.string),
+              "sessionCounts": counts(visible.map(\.state)),
+            ]))
+          for session in visible {
+            rows.append(
+              (
+                session.rank, session.lastActivity ?? .distantPast, session.id,
+                row(session, account: account)
+              ))
+            if session.state == "working" { working += 1 }
+          }
+        }
+      }
+      if vendor == nil || vendor == "grok" {
+        for account in snapshot.grok {
+          let visible = account.sessions.filter { includeEnded || $0.isLive }
+          accounts.append(
+            object([
+              "id": .string(account.id), "vendor": "grok", "name": .string(account.name),
               "plan": account.plan.map(JSONValue.string),
               "sessionCounts": counts(visible.map(\.state)),
             ]))
@@ -368,6 +399,10 @@ public enum Tools {
         return envelope(
           ["session": detail(session, account: account)], snapshot: snapshot,
           lede: "\(session.name), in \(session.project): \(session.stateLabel).")
+      case .grok(let session, let account):
+        return envelope(
+          ["session": detail(session, account: account)], snapshot: snapshot,
+          lede: "\(session.name), in \(session.project): \(session.stateLabel).")
       }
     }
   }
@@ -419,9 +454,19 @@ public enum Tools {
           ]))
         lines.append("\(account.name) (Codex): \(usageLine(account.usage, now: now))")
       }
+      for account in snapshot.grok where matches(account.id, account.name) {
+        entries.append(
+          object([
+            "id": .string(account.id), "vendor": "grok", "name": .string(account.name),
+            "plan": account.plan.map(JSONValue.string),
+            "usage": usage(account.usage, now: now),
+          ]))
+        lines.append("\(account.name) (Grok Build): \(usageLine(account.usage, now: now))")
+      }
 
       if let query, entries.isEmpty {
-        let known = (snapshot.claude.map(\.name) + snapshot.codex.map(\.name))
+        let known = (snapshot.claude.map(\.name) + snapshot.codex.map(\.name)
+          + snapshot.grok.map(\.name))
           .joined(separator: ", ")
         return .failure(
           "No account matches \"\(query)\". "
@@ -431,7 +476,9 @@ public enum Tools {
         [
           "accounts": .array(entries),
           "sources": [
-            "live": .string("Asked of the account a moment ago."),
+            "live": .string(
+              "Asked of the account a moment ago: by Claude Code, or by Grok Build for its "
+                + "weekly allowance."),
             "cache": .string(
               "Copied down by Claude Code whenever it last refreshed. Mind the age."),
             "sessionLog": .string(
@@ -811,6 +858,13 @@ public enum Tools {
           state: session.state, wantsAttention: false, waitingFor: nil, statusChangedAt: nil)
       }
     }
+    for account in snapshot.grok {
+      for session in account.sessions where session.isLive {
+        all[session.id] = Watched(
+          id: session.id, vendor: "grok", name: session.name, project: session.project,
+          state: session.state, wantsAttention: false, waitingFor: nil, statusChangedAt: nil)
+      }
+    }
     return all
   }
 
@@ -893,6 +947,7 @@ public enum Tools {
           case .refused(let refusal): return refusal
           case .claude(let session, _): found.insert(session.id)
           case .codex(let session, _): found.insert(session.id)
+          case .grok(let session, _): found.insert(session.id)
           }
         }
         ids = found
@@ -965,6 +1020,10 @@ public enum Tools {
         return .failure(
           "\(codex.name) is a Codex session, and Armada cannot close one: Codex keeps no record "
             + "of which process a session runs in, and one process often holds several.")
+      case .grok(let grok, _):
+        return .failure(
+          "\(grok.name) is a Grok Build session, and Armada does not close one yet: how Grok "
+            + "Build answers a signal has not been measured. Ask the person to quit it with /exit.")
       case .claude(let found, _):
         session = found
       }
@@ -1039,6 +1098,10 @@ public enum Tools {
         return .failure(
           "\(codex.name) is a Codex session, and Armada cannot message one: Codex has no way to "
             + "wake an idle session from outside.")
+      case .grok(let grok, _):
+        return .failure(
+          "\(grok.name) is a Grok Build session, and Armada cannot message one: Grok Build's hooks "
+            + "run in step with a turn and cannot wake an idle session.")
       case .claude(let found, _):
         session = found
       }
@@ -1094,6 +1157,9 @@ public enum Tools {
         return .failure(
           "\(codex.name) is a Codex session, and Armada cannot bring one forward: Codex keeps no "
             + "record of which process a session runs in.")
+      case .grok(let grok, _):
+        return .failure(
+          "\(grok.name) is a Grok Build session, and Armada does not bring one forward yet.")
       case .claude(let found, _):
         session = found
       }
@@ -1172,6 +1238,8 @@ public enum Tools {
         (id, name, path, vendor) = (session.id, session.name, session.transcriptPath, .claude)
       case .codex(let session, _):
         (id, name, path, vendor) = (session.id, session.name, session.rolloutPath, .codex)
+      case .grok(let session, _):
+        (id, name, path, vendor) = (session.id, session.name, session.updatesPath, .grok)
       }
       guard let path else {
         return .failure("\(name) has never been prompted, so it has no transcript yet.")
@@ -1221,6 +1289,7 @@ public enum Tools {
   enum Lookup {
     case claude(FleetSnapshot.ClaudeSession, FleetSnapshot.ClaudeAccount)
     case codex(FleetSnapshot.CodexSession, FleetSnapshot.CodexAccount)
+    case grok(FleetSnapshot.GrokSession, FleetSnapshot.GrokAccount)
     case refused(ToolResult)
   }
 
@@ -1258,6 +1327,14 @@ public enum Tools {
           Candidate(
             id: session.id, names: [session.name, session.title].compactMap { $0 },
             vendor: "codex", lookup: .codex(session, account)))
+      }
+    }
+    for account in snapshot.grok {
+      for session in account.sessions {
+        candidates.append(
+          Candidate(
+            id: session.id, names: [session.name, session.title].compactMap { $0 },
+            vendor: "grok", lookup: .grok(session, account)))
       }
     }
 
@@ -1353,6 +1430,43 @@ public enum Tools {
       "lastActivity": session.lastActivity.map(isoValue),
       "contextPercent": session.context.map { .int($0.percent) },
       "model": session.model.map(JSONValue.string),
+    ])
+  }
+
+  static func row(_ session: FleetSnapshot.GrokSession, account: FleetSnapshot.GrokAccount)
+    -> JSONValue
+  {
+    object([
+      "id": .string(session.id), "vendor": "grok", "account": .string(account.name),
+      "name": .string(session.name), "project": .string(session.project),
+      "state": .string(session.state),
+      "headless": session.isHeadless ? .bool(true) : .none,
+      "lastActivity": session.lastActivity.map(isoValue),
+      "contextPercent": session.context.map { .int($0.percent) },
+      "model": session.model.map(JSONValue.string),
+    ])
+  }
+
+  static func detail(_ session: FleetSnapshot.GrokSession, account: FleetSnapshot.GrokAccount)
+    -> JSONValue
+  {
+    object([
+      "id": .string(session.id), "vendor": "grok", "pid": session.pid.map { .int(Int($0)) },
+      "name": .string(session.name), "title": session.title.map(JSONValue.string),
+      "project": .string(session.project), "cwd": .string(session.cwd),
+      "state": .string(session.state), "stateLabel": .string(session.stateLabel),
+      "live": .bool(session.isLive), "headless": .bool(session.isHeadless),
+      "startedAt": session.startedAt.map(isoValue),
+      "lastActivity": session.lastActivity.map(isoValue),
+      "model": session.model.map(JSONValue.string),
+      "context": session.context.map(context),
+      "totalTokens": session.totalTokens.map { .int($0) },
+      "costUSD": session.costUSD.map { .double($0) },
+      "updatesPath": .string(session.updatesPath),
+      "account": object([
+        "id": .string(account.id), "name": .string(account.name),
+        "plan": account.plan.map(JSONValue.string),
+      ]),
     ])
   }
 
