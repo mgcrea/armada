@@ -284,6 +284,23 @@ Checked in `~/.vscode/extensions/anthropic.claude-code-2.1.267-darwin-arm64/`:
 - User settings include `claudeCode.environmentVariables` (environment for the Claude
   process) and `claudeCode.claudeProcessWrapper`.
 
+**Typing into an open tab was considered and dropped (2026-09-17, extension 2.1.273).** The idea
+was to reach an idle session in VS Code by raising its window, revealing its tab with
+`open?session=<id>`, and posting the message and Return as key events under Accessibility. Three
+things read in the extension's code count against it, and the Stop hook above reaches the same
+session with no keystroke, in a terminal as well:
+
+- **The link cannot fill an open tab.** `createPanel` reveals the panel already bound to the id
+  and shows "Session is already open. Your prompt was not applied — enter it manually." So the
+  text would have to be typed.
+- **Nothing outside the extension focuses its input reliably.** "Claude Code: Focus input" is
+  bound to Cmd+Escape only while a text editor has focus. With the webview focused, the same
+  chord runs `claude-vscode.blur`.
+- **Accessibility can read VS Code's tree but must not write it:** setting `AXValue` on a tab
+  crashed VS Code (see [focusing-sessions.md](focusing-sessions.md#the-tab-through-the-extension)).
+  What would remain is synthetic key events into whichever element had focus, while the person
+  is using the Mac.
+
 ## Gotchas when testing
 
 - **Drive interactive sessions in a pty** (`script -q /dev/null claude …`). `-p` behaves

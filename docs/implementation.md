@@ -437,7 +437,16 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
        "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
-  | jq -r '.result.tools[].name'                          # the armada_* tools: six, seven with Allow writes on
+  | jq -r '.result.tools[].name'                          # the armada_* tools: seven, ten with Allow writes on
+
+# A tools/call needs the tool's name in an Mcp-Name header too, or the listener answers -32020.
+# Same headers as above plus -H 'Mcp-Name: armada_wait', and in the body
+# "method":"tools/call","params":{"name":"armada_wait","arguments":{"timeout_seconds":5},"_meta":{...}}
+
+# Message delivery, with Settings ▸ Supervisor ▸ Deliver messages on:
+grep -c deliver-message ~/.claude*/settings.json          # 1 per account; 0 once it is off
+ls ~/Library/Application\ Support/io.mgcrea.armada.debug/inbox   # a folder per session that has had a turn
+pgrep -lf deliver-message.zsh                             # one waiting hook per live session, no more
 
 # Voice, with Settings ▸ Voice and the MCP server on, while a conversation is open:
 pgrep -lP "$(pgrep -nx Armada)"                          # the voice claude, Armada's own child
@@ -584,6 +593,12 @@ listener was driven over a real socket with that table; the rest is known and un
   closed with it in 0.66s with its running command gone, idle closed in 0.7s, a second close
   inside five seconds refused. What the Claude Code panel in VS Code does when its CLI is ended
   underneath it was not tried.
+- **A fresh `sessionId` is unverified through the app.** The flag was measured (see
+  claude-code-sessions.md), and resume was driven end to end, but no fresh Terminal launch was:
+  the debug build had "start in VS Code" on, which by design returns no id.
+- **`armada_wait` polls.** It takes a fleet snapshot every second for up to 240s, one main-actor
+  hop each, rather than being woken by the watchers. A supervisor looping on it costs one hop a
+  second for as long as it watches.
 - **The supervisor is Claude-only.** Codex takes an MCP server through `-c mcp_servers`, so a
   Codex supervisor is a launch-script change, not a server change.
 

@@ -128,6 +128,23 @@ a registry row of its own, with no field naming the session it came from — the
 makes a resumed session untitled, and the reason Armada's fork button says so out loud instead
 of promising a link. Codex is the opposite here; see `codex-sessions.md`.
 
+### Naming, ending and resuming a session (2.1.273, measured 2026-09-16)
+
+Measured in a pty on the default account, for `armada_start_session` and `armada_close_session`:
+
+- **`--session-id <uuid>` is the registry's `sessionId`, as given.** Passed on a fresh
+  interactive launch, the `sessions/<pid>.json` file carried exactly that id.
+- **`--resume <id>` in a terminal keeps the id.** The resumed session's registry row had the
+  original `sessionId`, unlike a session resumed in VS Code, which gets a new one (above).
+- **`SIGTERM` is a clean quit.** An idle session and one running a shell command both exited with
+  status 143 in 0.7–0.8s. The registry file was gone at 0.3s, and its MCP server children and the
+  running command ended with it. The transcript stays, so the session can be resumed. What
+  `SIGKILL` leaves behind was not measured, which is why Armada sends it only to a process still
+  there eight seconds after `SIGTERM`.
+- **An exited `claude` is a zombie until its parent reaps it**, and `sysctl` still returns its
+  start time meanwhile. A check for "still running" has to look at `p_stat` as well
+  (`SessionCloserBridge.isSame`).
+
 ## Titles
 
 The title VS Code displays is an `ai-title` entry:
@@ -592,6 +609,14 @@ key press to the first spoken word.
   way. Use a genuinely slow command.
 - `-p` (non-interactive) runs behave differently from interactive ones. For example,
   channels aren't polled in `-p` mode. Test in a pty.
+- **A dialog before the prompt means no registry file.** A folder that is not trusted shows
+  "Quick safety check", and a folder under a repository with a `.mcp.json` shows "New MCP server
+  found". Until one is answered the session writes no `sessions/<pid>.json`, so a test waiting on
+  the registry times out. Answer it in the pty, or run in a folder that shows neither.
+- **Give the pty a quiet stdin.** Redirecting `/dev/zero` into `script ... claude` floods the input
+  with NULs, and the session never gets as far as registering.
+- **A shell-mode command (`!true`) writes a transcript without a model turn**, which is the cheap
+  way to make a session resumable.
 
 ## Related findings from the same investigation (2026-09-09)
 

@@ -248,8 +248,16 @@ it. Measured with a marker variable:
 - A folder already open, asked for again with or without `--new-window`, only comes forward.
   Its host keeps what it had. Armada reads every VS Code extension host's environment with
   `KERN_PROCARGS2` (they carry `VSCODE_CRASH_REPORTER_PROCESS_TYPE=extensionHost`, as do the
-  language servers they start). It reuses the window only when all of them agree with the
-  chosen account, because nothing maps a host to its window.
+  language servers they start, so only a direct child of VS Code's own process counts). It
+  reuses the window when the host drawing that window agrees with the chosen account. The host
+  is found through its log: each window's `logs/<session>/window<n>/exthost/exthost.log` opens
+  with `Extension host with pid <pid> started`, the next line names
+  `User/workspaceStorage/<id>`, and that folder's `workspace.json` holds the window's folder. A
+  reloaded window appends a second pair of lines to the same file. When no host is traced to
+  the project's folder (a multi-root workspace, a log not found), the window is reused only
+  when every host agrees, as the first build did for all launches. Measured 2026-09-16: that
+  first rule refused Silhouette, on the default account, because Contour's window ran on
+  another.
 - A `claudeCode.environmentVariables` naming `CLAUDE_CONFIG_DIR`, in the user's settings or
   the project's `.vscode/settings.json`, beats all of it and is refused.
 
@@ -348,8 +356,10 @@ it; the panel is now [the extension's to reveal](#the-tab-through-the-extension)
 that was wrong was the title format, which is not `<file> — <folder>`.
 
 `SessionHost.containerPID` — the extension-host pid, one per window — would have been an
-*exact* handle where a title is a heuristic, and it is captured already. There is still no
-supported way to map it to an AX window, and `~/.claude/ide/<port>.lock` does not help:
+*exact* handle where a title is a heuristic, and it is captured already. It can now be mapped to
+the *folder* its window shows, through VS Code's own logs (see
+[starting a session in a project's window](#starting-a-session-in-a-projects-window)), but there
+is still no supported way to map it to an AX window, and `~/.claude/ide/<port>.lock` does not help:
 every lock on this Mac reports `"pid": 3280`, which is the application, not the extension
 host. It can still *group* sessions ("these three are in the same window") without ever
 resolving which window that is.
