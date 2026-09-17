@@ -122,7 +122,12 @@ final class Accounts {
 
     let tick = DispatchSource.makeTimerSource(queue: .main)
     tick.schedule(deadline: .now() + Self.refreshInterval, repeating: Self.refreshInterval)
-    tick.setEventHandler { MainActor.assumeIsolated { self.refreshAll() } }
+    tick.setEventHandler {
+      MainActor.assumeIsolated {
+        self.rediscover()
+        self.refreshAll()
+      }
+    }
     tick.resume()
     timer = tick
 
@@ -151,12 +156,7 @@ final class Accounts {
   /// keeps the watchers alive is emptied; a callback arriving after that would
   /// otherwise reach a freed object.
   func stop() {
-    if let stream {
-      FSEventStreamStop(stream)
-      FSEventStreamInvalidate(stream)
-      FSEventStreamRelease(stream)
-      self.stream = nil
-    }
+    stopWatchingConfigFiles()
     timer?.cancel()
     timer = nil
     probeTimer?.cancel()
@@ -166,6 +166,40 @@ final class Accounts {
     for account in all { account.sessions.stop() }
     all = []
     lastProbe = [:]
+  }
+
+  /// Pick up a config folder that appeared since `start()`, without a relaunch.
+  ///
+  /// **Additions only.** A new folder is what "Add Account…" leaves behind, seconds after the
+  /// click, and waiting for a relaunch to see it would read as the button having failed. A
+  /// folder that goes away keeps its row until the next launch, as it always did: removing an
+  /// `Account` means stopping its watchers under whatever still holds it, a selected sidebar
+  /// row or a probe in flight, and nothing asks for that yet.
+  ///
+  /// On the refresh tick, so a folder made by hand from a shell turns up too, and called
+  /// directly by the sheet that is waiting for one. A listing of the home folder: cheap.
+  /// Nothing while stopped, so an unlicensed Armada does not start watching through here.
+  func rediscover() {
+    guard timer != nil else { return }
+    let discovered = ClaudeConfigFolder.discoverAll()
+    let known = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+    let added = discovered.filter { known[$0.path] == nil }.map(Account.init(folder:))
+    guard !added.isEmpty else { return }
+
+    for account in added { account.start() }
+    let fresh = Dictionary(uniqueKeysWithValues: added.map { ($0.id, $0) })
+    let order = discovered.map(\.path)
+    // `discoverAll`'s order, so the list reads as it will after a relaunch, with anything it
+    // no longer finds kept at the end rather than dropped.
+    all = order.compactMap { known[$0] ?? fresh[$0] } + all.filter { !order.contains($0.id) }
+
+    // The stream names each usage file, so a new account needs a new stream.
+    stopWatchingConfigFiles()
+    startWatchingConfigFiles()
+    probeAll()
+    // What `EntitlementMonitor` does after the first discovery: the new folder's
+    // `settings.json` gets the delivery hook if the switch is on.
+    MessageDelivery.shared.sync()
   }
 
   /// Re-read every folder's `.claude.json` now.
@@ -227,6 +261,14 @@ final class Accounts {
     FSEventStreamSetDispatchQueue(created, queue)
     FSEventStreamStart(created)
     stream = created
+  }
+
+  private func stopWatchingConfigFiles() {
+    guard let stream else { return }
+    FSEventStreamStop(stream)
+    FSEventStreamInvalidate(stream)
+    FSEventStreamRelease(stream)
+    self.stream = nil
   }
 
   /// Matched on the exact usage paths. Every folder's file arrives on this one

@@ -243,6 +243,7 @@ UNIT_SRC := \
 	Armada/UsageIngest.swift \
 	Armada/ProjectStats.swift \
 	Armada/LaunchScript.swift \
+	Armada/NewAccount.swift \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
 	Armada/MessageHook.swift \

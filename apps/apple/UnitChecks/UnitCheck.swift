@@ -41,6 +41,7 @@ struct UnitCheck {
     usageIngest()
     projectStats()
     launchScript()
+    newAccount()
     editorLaunch()
     claudeTrust()
     messageHook()
@@ -1372,6 +1373,47 @@ struct UnitCheck {
       prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
     expectEqual(
       "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
+  }
+
+  // MARK: - NewAccount
+
+  static func newAccount() {
+    section("NewAccount.check")
+    let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+    let taken = "/Users/someone/.claude-work"
+    func named(_ typed: String) -> NewAccount.Check {
+      NewAccount.check(typed, home: home) { $0.path(percentEncoded: false) == taken + "/" }
+    }
+    expectEqual("nothing typed is not an error", named(""), .empty)
+    expectEqual("nor is only whitespace", named("  "), .empty)
+    expectEqual(
+      "a plain name becomes a sibling folder", named("acme"), .ready(folderName: ".claude-acme"))
+    expectEqual(
+      "surrounding whitespace is dropped", named(" acme "), .ready(folderName: ".claude-acme"))
+    expectEqual("the prefix is forgiven", named("claude-acme"), .ready(folderName: ".claude-acme"))
+    expectEqual("with its dot too", named(".claude-acme"), .ready(folderName: ".claude-acme"))
+    expectEqual(
+      "dots, dashes and underscores inside", named("a.b-c_d"), .ready(folderName: ".claude-a.b-c_d")
+    )
+    check("the prefix alone is refused", isRefused(named("claude-")))
+    check("an existing folder is refused", isRefused(named("work")))
+    check("a leading dash is refused", isRefused(named("-rf")))
+    check("a leading dot is refused", isRefused(named("..")))
+    check("a slash is refused", isRefused(named("a/b")))
+    check("a space inside is refused", isRefused(named("my work")))
+    check("a quote is refused", isRefused(named("it's")))
+    check("a non-ASCII letter is refused", isRefused(named("équipe")))
+    check("a shell expansion is refused", isRefused(named("$HOME")))
+    expectEqual(
+      "forty characters are enough",
+      named(String(repeating: "a", count: 40)),
+      .ready(folderName: ".claude-" + String(repeating: "a", count: 40)))
+    check("forty-one are not", isRefused(named(String(repeating: "a", count: 41))))
+  }
+
+  static func isRefused(_ check: NewAccount.Check) -> Bool {
+    if case .refused = check { return true }
+    return false
   }
 
   // MARK: - EditorLaunch

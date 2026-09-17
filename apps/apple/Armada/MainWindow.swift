@@ -68,6 +68,8 @@ struct MainWindowView: View {
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
   @State private var monitor = EntitlementMonitor.shared
+  /// On the window rather than on the sidebar row, which the list is free to recycle.
+  @State private var addingAccount = false
 
   /// What the sidebar had selected last time.
   ///
@@ -92,6 +94,7 @@ struct MainWindowView: View {
       UpdateConsentCard()
       splitView
     }
+    .sheet(isPresented: $addingAccount) { AddAccountSheet() }
   }
 
   private var splitView: some View {
@@ -115,6 +118,17 @@ struct MainWindowView: View {
             AccountSidebarRow(account: account)
               .tag(SidebarItem.account(account.id))
           }
+          // A button in the list rather than a toolbar item: it sits under the accounts it
+          // adds to, which is where somebody looking for it looks. Untagged, so it is never
+          // a selection.
+          Button {
+            addingAccount = true
+          } label: {
+            Label("Add Account…", systemImage: "plus")
+          }
+          .buttonStyle(.borderless)
+          .disabled(!monitor.current.isEntitled)
+          .foregroundStyle(.secondary)
         }
         // Omitted entirely when there is no Codex home, rather than shown empty:
         // an app that watches agents should not tell someone who does not use
