@@ -179,7 +179,7 @@ struct GeneralPane: View {
         }
       } footer: {
         Text(
-          "Armada watches sessions whenever it is licensed or in a trial. It never writes to your Claude configuration."
+          "Armada watches sessions whenever it is licensed or in a trial. It writes to your Claude configuration only to mark a saved project trusted when it starts a session there, and to add one hook per account if you turn on Deliver messages in Supervisor."
         )
       }
 

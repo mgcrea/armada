@@ -10,7 +10,11 @@ struct ProjectsToolTests {
   private func call(
     _ arguments: JSONValue = .object([:]), on source: FakeFleetSource = FakeFleetSource()
   ) async -> ToolResult {
-    await Tools.table(source: source, starter: FakeSessionStarter()).call(
+    await Tools.table(
+      source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
+      sender: FakeMessageSender()
+    )
+    .call(
       name: "armada_get_projects", arguments: arguments, allowWrites: false)
   }
 

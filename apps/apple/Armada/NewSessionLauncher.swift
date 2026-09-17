@@ -100,10 +100,12 @@ final class NewSessionLauncher {
   /// alert would arrive out of nowhere; the sentence goes back to the agent instead. Only the
   /// asynchronous LaunchServices half still lands in `failure`, because by then the tool has
   /// answered and a pane is the one place left to say so.
-  func startForAgent(_ agent: NewSession.Agent, in project: URL, prompt: String?) -> String? {
+  func startForAgent(
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh, prompt: String?
+  ) -> String? {
     trustIfSaved(agent, in: project)
     let message = launch(
-      agent, in: project, start: .fresh, prompt: prompt,
+      agent, in: project, start: start, prompt: prompt,
       completion: { [weak self] message in self?.failure = message })
     if message == nil { lastAgentLaunchAt = Date() }
     return message

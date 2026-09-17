@@ -42,6 +42,7 @@ struct UnitCheck {
     launchScript()
     editorLaunch()
     claudeTrust()
+    messageHook()
 
     print("")
     if failures == 0 {
@@ -1431,6 +1432,190 @@ struct UnitCheck {
       "extensionHost")
     check("and nothing past its end", parsed?.environment.count == 2)
     check("too short to hold a count", EditorLaunch.processArguments([1, 0]) == nil)
+  }
+
+  // MARK: - MessageHook
+
+  static func messageHook() {
+    section("MessageHook: the settings edit")
+    let script = "/Users/me/Library/Application Support/io.mgcrea.armada/hooks/deliver-message.zsh"
+    let command = MessageHook.command(script: script, inbox: "/Users/me/inbox")
+    func parsed(_ edit: MessageHook.Edit) -> [String: Any]? {
+      guard case .edited(let data) = edit else { return nil }
+      return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+    func stop(_ root: [String: Any]?) -> [[String: Any]]? {
+      (root?["hooks"] as? [String: Any])?["Stop"] as? [[String: Any]]
+    }
+    func commands(_ group: [String: Any]?) -> [String] {
+      (group?["hooks"] as? [[String: Any]])?.compactMap { $0["command"] as? String } ?? []
+    }
+    func text(_ edit: MessageHook.Edit) -> String? {
+      if case .edited(let data) = edit { return String(decoding: data, as: UTF8.self) }
+      return nil
+    }
+    func refused(_ edit: MessageHook.Edit) -> Bool {
+      if case .refused = edit { return true }
+      return false
+    }
+
+    let fresh = MessageHook.installing(nil, command: command, script: script)
+    check(
+      "a missing file becomes one Stop entry", commands(stop(parsed(fresh))?.first) == [command])
+    let entry = (stop(parsed(fresh))?.first?["hooks"] as? [[String: Any]])?.first
+    check(
+      "the entry is an asyncRewake command with the long timeout",
+      entry?["asyncRewake"] as? Bool == true
+        && entry?["timeout"] as? Int == MessageHook.timeoutSeconds
+        && entry?["type"] as? String == "command")
+
+    let busy = #"""
+      {
+        "effortLevel": "high",
+        "cost": 0.30000000000000004,
+        "hooks": {
+          "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}],
+          "Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]
+        }
+      }
+      """#
+    let added = MessageHook.installing(Data(busy.utf8), command: command, script: script)
+    check(
+      "ours goes first in Stop, and the person's Stop and PreToolUse hooks stay",
+      commands(stop(parsed(added))?.first) == [command]
+        && commands(stop(parsed(added))?.last) == ["say done"]
+        && ((parsed(added)?["hooks"] as? [String: Any])?["PreToolUse"] as? [Any])?.count == 1)
+    check(
+      "a float JSONSerialization cannot write back is left as it was",
+      text(added)?.contains("0.30000000000000004") == true)
+
+    let addedData = Data((text(added) ?? "").utf8)
+    expectEqual(
+      "installing again changes nothing",
+      MessageHook.installing(addedData, command: command, script: script), .unchanged)
+    expectEqual(
+      "removing it gives back the original bytes",
+      text(MessageHook.removing(addedData, script: script)), busy)
+
+    let pretty = "{\n  \"effortLevel\": \"high\",\n  \"env\": {}\n}\n"
+    let prettyAdded = MessageHook.installing(Data(pretty.utf8), command: command, script: script)
+    check(
+      "into a file laid out one member per line, hooks gets a line of its own",
+      text(prettyAdded)?.hasPrefix("{\n  \"hooks\": ") == true
+        && text(prettyAdded)?.contains("},\n  \"effortLevel\"") == true)
+    expectEqual(
+      "and removing it gives back the original bytes",
+      text(MessageHook.removing(Data((text(prettyAdded) ?? "").utf8), script: script)), pretty)
+
+    let freshData = Data((text(fresh) ?? "").utf8)
+    check(
+      "removing the only hook takes hooks with it",
+      parsed(MessageHook.removing(freshData, script: script)).map { $0.isEmpty } == true)
+
+    let onlyStop = #"{"env": {"A": "1"}, "hooks": {"Stop": []}}"#
+    let intoEmpty = MessageHook.installing(Data(onlyStop.utf8), command: command, script: script)
+    check(
+      "an empty Stop list takes the entry", commands(stop(parsed(intoEmpty))?.first) == [command])
+
+    let old = MessageHook.command(script: script, inbox: "/Users/me/old-inbox")
+    let outdated = MessageHook.installing(
+      Data((text(MessageHook.installing(nil, command: old, script: script)) ?? "").utf8),
+      command: command, script: script)
+    check(
+      "an older command for the same script is replaced, not doubled",
+      stop(parsed(outdated))?.count == 1 && commands(stop(parsed(outdated))?.first) == [command])
+
+    let shared =
+      #"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}, "#
+      + #"{"type": "command", "command": "f='\#(script)'; exit 0"}]}]}}"#
+    let unshared = MessageHook.removing(Data(shared.utf8), script: script)
+    check(
+      "a handler sharing a group with the person's is removed alone",
+      commands(stop(parsed(unshared))?.first) == ["say done"])
+
+    check(
+      "settings that are not an object are refused",
+      refused(MessageHook.installing(Data("[1]".utf8), command: command, script: script))
+        && refused(
+          MessageHook.installing(Data(#"{"hooks": 3}"#.utf8), command: command, script: script))
+    )
+    check(
+      "isInstalled sees exactly this command",
+      MessageHook.isInstalled(addedData, command: command)
+        && !MessageHook.isInstalled(addedData, command: old))
+
+    section("MessageHook: the script")
+    let fileManager = FileManager.default
+    let scratch = fileManager.temporaryDirectory.appending(
+      path: "armada-hook-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: scratch) }
+    let scriptURL = scratch.appending(path: MessageHook.scriptName)
+    let inbox = scratch.appending(path: "inbox", directoryHint: .isDirectory)
+    try? fileManager.createDirectory(at: inbox, withIntermediateDirectories: true)
+    try? Data(MessageHook.script.utf8).write(to: scriptURL)
+
+    let syntax = Process()
+    syntax.executableURL = URL(filePath: "/bin/zsh")
+    syntax.arguments = ["-n", scriptURL.path(percentEncoded: false)]
+    try? syntax.run()
+    syntax.waitUntilExit()
+    expectEqual("the script parses", syntax.terminationStatus, 0)
+
+    let session = "11111111-2222-4333-8444-555555555555"
+    func run(_ hookInput: String, deliver message: String?, after: TimeInterval = 0.4) -> (
+      status: Int32, stderr: String
+    ) {
+      let process = Process()
+      process.executableURL = URL(filePath: "/bin/sh")
+      process.arguments = [
+        "-c",
+        MessageHook.command(
+          script: scriptURL.path(percentEncoded: false), inbox: inbox.path(percentEncoded: false)),
+      ]
+      let input = Pipe()
+      let errors = Pipe()
+      process.standardInput = input
+      process.standardError = errors
+      try? process.run()
+      input.fileHandleForWriting.write(Data(hookInput.utf8))
+      try? input.fileHandleForWriting.close()
+      Thread.sleep(forTimeInterval: after)
+      if let message {
+        let file = inbox.appending(path: session).appending(path: "0001-test.msg")
+        try? Data(message.utf8).write(to: file)
+      }
+      let deadline = Date().addingTimeInterval(5)
+      while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+      if process.isRunning {
+        process.terminate()
+        process.waitUntilExit()
+      }
+      let text = String(decoding: errors.fileHandleForReading.availableData, as: UTF8.self)
+      return (process.isRunning ? -1 : process.terminationStatus, text)
+    }
+    let delivered = run(
+      #"{"session_id":"\#(session.uppercased())","hook_event_name":"Stop"}"#,
+      deliver: "run the tests")
+    check(
+      "a message for this session is printed and exits 2",
+      delivered.status == 2 && delivered.stderr.contains("run the tests"))
+    check(
+      "the message is gone once delivered",
+      (try? fileManager.contentsOfDirectory(
+        atPath: inbox.appending(path: session).path(percentEncoded: false)))?
+        .contains { $0.hasSuffix(".msg") || $0.contains(".msg.") } == false)
+    let noSession = run(#"{"hook_event_name":"Stop"}"#, deliver: nil, after: 0)
+    expectEqual("input with no session id exits 0 at once", noSession.status, 0)
+
+    let missing = Process()
+    missing.executableURL = URL(filePath: "/bin/sh")
+    missing.arguments = [
+      "-c", MessageHook.command(script: "/nonexistent/deliver.zsh", inbox: "/tmp"),
+    ]
+    try? missing.run()
+    missing.waitUntilExit()
+    expectEqual("a missing script exits 0, which Claude Code ignores", missing.terminationStatus, 0)
   }
 
   // MARK: - ClaudeTrust

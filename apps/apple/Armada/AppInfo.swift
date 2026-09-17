@@ -58,8 +58,8 @@ enum AppInfo {
   /// rather than into it. It is also the platform convention, which means a person
   /// looking for what this app stores finds it where they expect.
   ///
-  /// Nothing Armada writes ever goes inside `~/.claude`: the General pane promises
-  /// that in as many words, and it should stay literally true.
+  /// Armada's own files go here, never inside `~/.claude`. Its only writes there are the
+  /// two the General pane names: `ClaudeTrust`'s flag and `MessageHook`'s entry.
   static var supportDirectory: URL? {
     guard
       let base = try? FileManager.default.url(

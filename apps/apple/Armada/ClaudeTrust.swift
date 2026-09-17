@@ -124,7 +124,7 @@ nonisolated enum ClaudeTrust {
   ///
   /// A temporary file in the same directory, then `rename(2)`: a reader sees the old file or
   /// the new one, never half of either. Returns nil on success.
-  private static func replace(_ path: String, with data: Data) -> String? {
+  static func replace(_ path: String, with data: Data) -> String? {
     var status = stat()
     let mode = stat(path, &status) == 0 ? status.st_mode & 0o7777 : 0o600
     let temporary = path + ".armada-\(UUID().uuidString).tmp"

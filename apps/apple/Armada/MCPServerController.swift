@@ -116,7 +116,9 @@ final class MCPServerController {
       info: ServerInfo(
         name: NewSession.Supervisor.serverName, version: AppInfo.shortVersion, title: "Armada"),
       instructions: Tools.instructions,
-      tools: Tools.table(source: FleetBridge(), starter: SessionStarterBridge()))
+      tools: Tools.table(
+        source: FleetBridge(), starter: SessionStarterBridge(), closer: SessionCloserBridge(),
+        sender: MessageSenderBridge()))
 
     let listener = LoopbackListener(
       server: server,

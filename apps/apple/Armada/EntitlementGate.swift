@@ -38,6 +38,8 @@ final class EntitlementMonitor {
       CodexAccounts.shared.start()
       // After the accounts, whose folders it reads.
       UsageIndex.shared.start()
+      // After the accounts too: it edits each one's settings.json to match the switch.
+      MessageDelivery.shared.sync()
     } else {
       UsageIndex.shared.stop()
       Accounts.shared.stop()

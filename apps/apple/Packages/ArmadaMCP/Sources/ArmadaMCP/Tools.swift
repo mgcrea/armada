@@ -3,27 +3,30 @@ import MCPKit
 
 /// Armada's tools.
 ///
-/// **Six that read, and one that starts a session.** Every definition is paid for in the
-/// client's context on every connect, so the reads are shaped around what a supervisor actually
-/// asks — *what needs me*, *what is everything doing*, *what is this one doing*, *how much plan is
-/// left*, *what did it last say*, *where has the work gone* — rather than mirroring the app's types.
+/// **Seven that read, and three that act: start, close and message a session.** Every definition is
+/// paid for in the client's context on every connect, so the reads are shaped around what a
+/// supervisor actually asks — *what needs me*, *what is everything doing*, *what is this one
+/// doing*, *how much plan is left*, *what did it last say*, *where has the work gone* — rather than
+/// mirroring the app's types.
 ///
-/// Nothing here reaches the network. `armada_start_session` is the one thing an agent can do *to*
-/// the Mac through Armada, and it is fenced three ways: registered behind the kit's write gate, so
-/// it is neither listed nor callable until the person turns on Allow writes; confined to folders
-/// the person saved as projects; and what it opens is an ordinary session, in their terminal or
-/// in VS Code when they chose it, that asks them for every permission. Sending a keystroke stays
-/// out: in VS Code an opening message waits in the input for the person to send.
+/// Nothing here reaches the network. `armada_start_session` and `armada_close_session` are the
+/// two things an agent can do *to* the Mac through Armada, and both are registered behind the
+/// kit's write gate, so neither is listed nor callable until the person turns on Allow writes.
+/// Starting is confined to folders the person saved as projects, and what it opens is an ordinary
+/// session, in their terminal or in VS Code when they chose it, that asks them for every
+/// permission. Closing reaches Claude Code only, and a busy session only with `force`. Sending a
+/// keystroke stays out: in VS Code an opening message waits in the input for the person to send.
 public enum Tools {
 
   /// Said once per client instead of once per tool description.
   public static let instructions = """
     Armada is a menu bar app watching every Claude Code and Codex session on this Mac, across \
     every account. These tools read what it already holds, and none reaches the network. The \
-    one exception to reading is armada_start_session, listed only when the person has turned \
-    on Allow writes in Armada: it opens a fresh session in one of their saved projects, in their \
-    terminal or VS Code, and that session still asks them for every permission. Ask the person before \
-    starting one.
+    exceptions to reading are armada_start_session and armada_close_session, listed only when \
+    the person has turned on Allow writes in Armada. The first opens a fresh session in one of \
+    their saved projects, in their terminal or VS Code, and that session still asks them for \
+    every permission. The second ends a Claude Code session's process. Ask the person before \
+    starting or closing one.
 
     How to read the answers:
 
@@ -44,7 +47,8 @@ public enum Tools {
     `index.complete: false` means older transcripts are still being read: totals are low, \
     not final.
 
-    Start with armada_needs_attention for "what needs me" and armada_get_fleet for an overview.
+    Start with armada_needs_attention for "what needs me" and armada_get_fleet for an overview. \
+    To watch, call armada_wait in a loop rather than polling the fleet.
     """
 
   public static let defaultTranscriptBytes = 64 * 1024
@@ -68,15 +72,29 @@ public enum Tools {
 
   /// The read tools by name, in listing order: what a supervisor session pre-allows.
   ///
-  /// **`armada_start_session` is left out on purpose.** Pre-allowed, a supervisor that read a
-  /// hostile transcript could start a session with nobody looking. Left out, Claude Code puts a
-  /// permission prompt in front of the person first, naming the project and the message.
+  /// **`armada_start_session` and `armada_close_session` are left out on purpose.** Pre-allowed,
+  /// a supervisor that read a hostile transcript could start or end a session with nobody
+  /// looking. Left out, Claude Code puts a permission prompt in front of the person first, naming
+  /// the project and the message, or the session and whether it is forced.
   public static let readToolNames = [
     "armada_needs_attention", "armada_get_fleet", "armada_get_session", "armada_get_usage",
-    "armada_get_projects", "armada_read_transcript",
+    "armada_get_projects", "armada_read_transcript", "armada_wait",
   ]
 
-  public static func table(source: any FleetSource, starter: any SessionStarter) -> ToolTable {
+  /// How long `armada_wait` sleeps between snapshots. A parameter so tests can shorten it.
+  public static let defaultWaitPoll: Duration = .seconds(1)
+  public static let defaultWaitSeconds = 120
+  /// Under the 300 seconds at which Codex fails a tool call outright (docs/reaching-agents.md).
+  public static let maxWaitSeconds = 240
+
+  /// The longest message `armada_send_message` passes on. A hook's output is capped at 10,000
+  /// characters (docs/reaching-agents.md), and the label Armada adds takes some of that.
+  public static let maxMessageCharacters = 4_000
+
+  public static func table(
+    source: any FleetSource, starter: any SessionStarter, closer: any SessionCloser,
+    sender: any MessageSender, waitPoll: Duration = defaultWaitPoll
+  ) -> ToolTable {
     var table = ToolTable()
     add(needsAttention: &table, source: source)
     add(fleet: &table, source: source)
@@ -84,7 +102,10 @@ public enum Tools {
     add(usage: &table, source: source)
     add(projects: &table, source: source)
     add(transcript: &table, source: source)
+    add(wait: &table, source: source, poll: waitPoll)
     add(startSession: &table, source: source, starter: starter)
+    add(closeSession: &table, source: source, closer: closer)
+    add(sendMessage: &table, source: source, sender: sender)
     return table
   }
 
@@ -113,6 +134,26 @@ public enum Tools {
       return
         "The opening message cannot start with \(first): the CLI would read it as a flag, a "
         + "shell command or a slash command. Start it with a word."
+    }
+    return nil
+  }
+
+  /// Why a message cannot be sent, or nil when it can.
+  ///
+  /// Plain text only. Unlike an opening message it never reaches a command line, so a leading
+  /// `-`, `!` or `/` is harmless here: the hook prints it into the session as a reminder, where
+  /// none of them means anything.
+  public static func messageRefusal(_ text: String) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return "The message is empty." }
+    if trimmed.count > maxMessageCharacters {
+      return "The message is \(trimmed.count) characters; the limit is \(maxMessageCharacters)."
+    }
+    let allowed: Set<Unicode.Scalar> = ["\n", "\t"]
+    if trimmed.unicodeScalars.contains(where: {
+      CharacterSet.controlCharacters.contains($0) && !allowed.contains($0)
+    }) {
+      return "The message contains control characters. Send plain text."
     }
     return nil
   }
@@ -617,10 +658,11 @@ public enum Tools {
         description:
           "Open a fresh Claude Code or Codex session in one of the person's saved projects, in "
           + "their terminal or VS Code as they chose, on the project's own account or the one "
-          + "named, optionally with an opening message. The session asks the person for "
-          + "permissions as usual. Armada does "
-          + "not own it and has no id for it yet: it appears in armada_get_fleet within a few "
-          + "seconds. Saved projects only.",
+          + "named, optionally with an opening message. Or pass `resume` with a Claude Code "
+          + "session id that is no longer open, such as one armada_close_session closed, to "
+          + "continue it in a terminal where it ran. The session asks the person for "
+          + "permissions as usual and appears in armada_get_fleet within a few seconds; "
+          + "`sessionId` is its id when Armada knows it. Saved projects only.",
         properties: [
           "project": [
             "type": "string",
@@ -638,19 +680,16 @@ public enum Tools {
             "type": "string", "maxLength": .int(maxPromptCharacters),
             "description": "An opening message, as plain text. It cannot start with -, ! or /.",
           ],
+          "resume": [
+            "type": "string",
+            "description": "A Claude Code session id to continue. Replaces project and account.",
+          ],
         ],
-        required: ["project"],
         gate: .requiresWrites,
         annotations: .mutating(destructive: false, idempotent: false, openWorld: false))
     ) { arguments in
       let snapshot = await source.projects()
       guard snapshot.isEntitled else { return .failure(notEntitled) }
-
-      let project: ProjectsSnapshot.Project
-      switch lookupProject(arguments["project"], in: snapshot) {
-      case .refused(let refusal): return refusal
-      case .found(let found): project = found
-      }
 
       let vendor = arguments["vendor"]?.stringValue
       if let vendor, vendor != "claude", vendor != "codex" {
@@ -659,10 +698,35 @@ public enum Tools {
       let prompt = arguments["prompt"]?.stringValue
       if let prompt, let refusal = promptRefusal(prompt) { return .failure(refusal) }
 
+      var projectID: String?
+      let resume = arguments["resume"]?.stringValue?.trimmingCharacters(in: .whitespaces)
+      if let resume {
+        guard arguments["project"] == nil, arguments["account"] == nil else {
+          return .failure(
+            "Pass `resume` on its own, without `project` or `account`: a resumed session runs "
+              + "where it ran before, on the account that holds its transcript.")
+        }
+        guard vendor == nil || vendor == "claude" else {
+          return .failure("Only a Claude Code session can be resumed here.")
+        }
+        // It reaches a script, quoted, but a session id has exactly one shape.
+        guard UUID(uuidString: resume) != nil else {
+          return .failure(
+            "`resume` takes a full session id, such as the `id` armada_get_fleet or "
+              + "armada_close_session returned, not a prefix or a name.")
+        }
+      } else {
+        switch lookupProject(arguments["project"], in: snapshot) {
+        case .refused(let refusal): return refusal
+        case .found(let found): projectID = found.id
+        }
+      }
+
       let outcome = await starter.startSession(
         StartSessionRequest(
-          projectID: project.id, vendor: vendor, account: arguments["account"]?.stringValue,
-          prompt: prompt?.trimmingCharacters(in: .whitespacesAndNewlines)))
+          projectID: projectID, vendor: vendor, account: arguments["account"]?.stringValue,
+          prompt: prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+          resume: resume?.lowercased()))
 
       switch outcome {
       case .refused(let message):
@@ -677,22 +741,315 @@ public enum Tools {
           started.promptAwaitsSend
           ? "It appears in armada_get_fleet once the person sends the message."
           : "It appears in armada_get_fleet within a few seconds."
+        let action = started.resumed ? "resume a" : "start a"
         let lede =
-          "Asked \(started.terminal) to start a \(vendorName) session in \(started.project) on "
+          "Asked \(started.terminal) to \(action) \(vendorName) session in \(started.project) on "
           + "\(started.account)\(message). \(appears)"
+        let note =
+          started.sessionID != nil
+          ? "\(started.terminal) was asked to open. Armada does not own the session; it will be "
+            + "in armada_get_fleet under `sessionId` once it has started."
+          : "\(started.terminal) was asked to open. Armada does not own the session and has no "
+            + "id for it; look for a new session in this project in armada_get_fleet."
         return envelope(
-          [
-            "started": [
+          object([
+            "started": object([
               "project": .string(started.project), "path": .string(started.path),
               "vendor": .string(started.vendor), "accountId": .string(started.accountID),
               "account": .string(started.account), "terminal": .string(started.terminal),
               "withPrompt": .bool(started.withPrompt),
               "promptAwaitsSend": .bool(started.promptAwaitsSend),
-            ],
-            "note": .string(
-              "\(started.terminal) was asked to open. Armada does not own the session and has no "
-                + "id for it yet; look for a new session in this project in armada_get_fleet."),
-          ], takenAt: snapshot.takenAt, isEntitled: snapshot.isEntitled, lede: lede)
+              "sessionId": started.sessionID.map(JSONValue.string),
+              "resumed": .bool(started.resumed),
+            ]),
+            "note": .string(note),
+          ]), takenAt: snapshot.takenAt, isEntitled: snapshot.isEntitled, lede: lede)
+      }
+    }
+  }
+
+  // MARK: - armada_wait
+
+  /// One session's state as `armada_wait` compares it between snapshots.
+  struct Watched: Equatable {
+    let id: String
+    let vendor: String
+    let name: String
+    let project: String
+    let state: String
+    let wantsAttention: Bool
+    let waitingFor: String?
+    /// When Claude Code last reported a status change. A session that asked for the person, was
+    /// answered, and asked again between two snapshots keeps its state and moves this.
+    let statusChangedAt: Date?
+  }
+
+  static func watched(_ snapshot: FleetSnapshot) -> [String: Watched] {
+    var all: [String: Watched] = [:]
+    for account in snapshot.claude {
+      for session in account.sessions {
+        all[session.id] = Watched(
+          id: session.id, vendor: "claude", name: session.name, project: session.project,
+          state: session.state, wantsAttention: session.wantsAttention,
+          waitingFor: session.waitingFor, statusChangedAt: session.statusChangedAt)
+      }
+    }
+    for account in snapshot.codex {
+      for session in account.sessions where session.isLive && !session.isSubagent {
+        all[session.id] = Watched(
+          id: session.id, vendor: "codex", name: session.name, project: session.project,
+          state: session.state, wantsAttention: false, waitingFor: nil, statusChangedAt: nil)
+      }
+    }
+    return all
+  }
+
+  /// What moved between two snapshots, restricted to `ids` when there are some.
+  ///
+  /// **Attention means newly wanting the person**, not wanting them still. A supervisor calls
+  /// this in a loop, and one that returned at once for a session already waiting would spin on
+  /// it until the person answered.
+  static func changes(
+    from before: [String: Watched], to after: [String: Watched], ids: Set<String>?,
+    attentionOnly: Bool
+  ) -> [JSONValue] {
+    var rows: [JSONValue] = []
+    let keys = Set(before.keys).union(after.keys).filter { ids?.contains($0) ?? true }
+    for id in keys.sorted() {
+      let old = before[id]
+      let new = after[id]
+      if attentionOnly {
+        guard let new, new.wantsAttention else { continue }
+        if let old, old.wantsAttention, old.statusChangedAt == new.statusChangedAt { continue }
+      } else {
+        guard old?.state != new?.state || old?.statusChangedAt != new?.statusChangedAt else {
+          continue
+        }
+      }
+      guard let shown = new ?? old else { continue }
+      rows.append(
+        object([
+          "id": .string(id), "vendor": .string(shown.vendor), "name": .string(shown.name),
+          "project": .string(shown.project), "from": old.map { .string($0.state) } ?? .null,
+          "to": new.map { .string($0.state) } ?? .string("gone"),
+          "wantsAttention": .bool(new?.wantsAttention ?? false),
+          "waitingFor": new?.waitingFor.map(JSONValue.string),
+        ]))
+    }
+    return rows
+  }
+
+  private static func add(wait table: inout ToolTable, source: any FleetSource, poll: Duration) {
+    table.add(
+      MCPTool(
+        name: "armada_wait",
+        title: "Wait for a change",
+        description:
+          "Block until a session newly wants the person (`until: attention`, the default) or "
+          + "any session changes state, appears or ends (`until: change`), then return what "
+          + "moved. Watches the sessions named, or every session. Returns `timedOut: true` "
+          + "after `timeout_seconds` with nothing to report; call it again to keep watching.",
+        properties: [
+          "sessions": [
+            "type": "array", "items": sessionArgument,
+            "description": "Sessions to watch, as armada_get_fleet names them. Default: all.",
+          ],
+          "until": [
+            "type": "string", "enum": ["attention", "change"],
+            "description": "Default: attention.",
+          ],
+          "timeout_seconds": [
+            "type": "integer", "minimum": 1, "maximum": .int(maxWaitSeconds),
+            "description": .string("Default: \(defaultWaitSeconds)."),
+          ],
+        ],
+        annotations: .readOnly)
+    ) { arguments in
+      let first = await source.snapshot()
+      guard first.isEntitled else { return .failure(notEntitled) }
+
+      let until = arguments["until"]?.stringValue ?? "attention"
+      guard until == "attention" || until == "change" else {
+        return .failure("`until` is attention or change, not \"\(until)\".")
+      }
+      let seconds = clamp(
+        arguments["timeout_seconds"]?.intValue, defaultWaitSeconds, 1...maxWaitSeconds)
+
+      var ids: Set<String>?
+      if let named = arguments["sessions"]?.arrayValue, !named.isEmpty {
+        var found: Set<String> = []
+        for query in named {
+          switch lookup(query, in: first) {
+          case .refused(let refusal): return refusal
+          case .claude(let session, _): found.insert(session.id)
+          case .codex(let session, _): found.insert(session.id)
+          }
+        }
+        ids = found
+      }
+
+      let baseline = watched(first)
+      let clock = ContinuousClock()
+      let deadline = clock.now + .seconds(seconds)
+      var latest = first
+      while clock.now < deadline {
+        try? await Task.sleep(for: min(poll, deadline - clock.now))
+        if Task.isCancelled { break }
+        latest = await source.snapshot()
+        let moved = changes(
+          from: baseline, to: watched(latest), ids: ids, attentionOnly: until == "attention")
+        if !moved.isEmpty {
+          let verb =
+            until == "attention" ? (moved.count == 1 ? "now wants" : "now want") : "changed"
+          let lede =
+            "\(plural(moved.count, "session")) \(verb)\(until == "attention" ? " the person" : "")."
+          return envelope(
+            ["changes": .array(moved), "timedOut": false], snapshot: latest, lede: lede)
+        }
+      }
+      return envelope(
+        ["changes": [], "timedOut": true], snapshot: latest,
+        lede: "Nothing \(until == "attention" ? "newly wants the person" : "changed") in "
+          + "\(seconds) seconds.")
+    }
+  }
+
+  // MARK: - armada_close_session
+
+  /// The Claude Code states a session is busy in: closing one stops a turn mid-edit.
+  public static let busyStates: Set<String> = ["working", "runningTool"]
+
+  private static func add(
+    closeSession table: inout ToolTable, source: any FleetSource, closer: any SessionCloser
+  ) {
+    table.add(
+      MCPTool(
+        name: "armada_close_session",
+        title: "Close a session",
+        description:
+          "End a Claude Code session's process, as quitting it would: the transcript stays and "
+          + "the session can be resumed later. A session that is working or probably running a "
+          + "tool is refused unless `force` is true, because closing it stops that work "
+          + "mid-turn. Codex sessions cannot be closed. The session leaves armada_get_fleet "
+          + "within a few seconds.",
+        properties: [
+          "session": sessionArgument,
+          "force": [
+            "type": "boolean",
+            "description": "Close it even while it is busy. Default false.",
+          ],
+        ],
+        required: ["session"],
+        gate: .requiresWrites,
+        annotations: .mutating(destructive: true, idempotent: false, openWorld: false))
+    ) { arguments in
+      let snapshot = await source.snapshot()
+      guard snapshot.isEntitled else { return .failure(notEntitled) }
+      let force = arguments["force"]?.boolValue ?? false
+
+      let session: FleetSnapshot.ClaudeSession
+      switch lookup(arguments["session"], in: snapshot) {
+      case .refused(let refusal):
+        return refusal
+      case .codex(let codex, _):
+        return .failure(
+          "\(codex.name) is a Codex session, and Armada cannot close one: Codex keeps no record "
+            + "of which process a session runs in, and one process often holds several.")
+      case .claude(let found, _):
+        session = found
+      }
+
+      if busyStates.contains(session.state), !force {
+        let doing = session.stateIsInferred ? "probably running a tool" : "working"
+        return .failure(
+          "\(session.name) is \(doing), so closing it would stop that work mid-turn. Ask the "
+            + "person, then pass `force: true` to close it anyway.")
+      }
+
+      switch await closer.closeSession(CloseSessionRequest(sessionID: session.id, force: force)) {
+      case .refused(let message):
+        return .failure(message)
+      case .closed(let closed):
+        let how = closed.killed ? "It ignored the request to quit and was killed" : "It quit"
+        let lede =
+          closed.exited
+          ? "Closed \(closed.name) in \(closed.project). \(how); its transcript is kept."
+          : "Asked \(closed.name) in \(closed.project) to quit and then killed it, but its "
+            + "process has not exited yet."
+        return envelope(
+          [
+            "closed": [
+              "id": .string(session.id), "name": .string(closed.name),
+              "project": .string(closed.project), "state": .string(closed.state),
+              "killed": .bool(closed.killed), "exited": .bool(closed.exited),
+            ]
+          ], snapshot: snapshot, lede: lede)
+      }
+    }
+  }
+
+  // MARK: - armada_send_message
+
+  private static func add(
+    sendMessage table: inout ToolTable, source: any FleetSource, sender: any MessageSender
+  ) {
+    table.add(
+      MCPTool(
+        name: "armada_send_message",
+        title: "Message a session",
+        description:
+          "Put a message in front of a running Claude Code session. An idle one starts a turn on "
+          + "it within seconds; a busy one reads it when its turn ends. The session sees it "
+          + "labelled as coming from a supervisor agent through Armada, not from the person. "
+          + "Needs Settings ▸ Supervisor to deliver messages. Codex sessions cannot be reached.",
+        properties: [
+          "session": sessionArgument,
+          "text": [
+            "type": "string", "maxLength": .int(maxMessageCharacters),
+            "description": "The message, as plain text.",
+          ],
+        ],
+        required: ["session", "text"],
+        gate: .requiresWrites,
+        annotations: .mutating(destructive: false, idempotent: false, openWorld: false))
+    ) { arguments in
+      let snapshot = await source.snapshot()
+      guard snapshot.isEntitled else { return .failure(notEntitled) }
+
+      guard let text = arguments["text"]?.stringValue else {
+        return .failure("Pass `text`: the message to send.")
+      }
+      if let refusal = messageRefusal(text) { return .failure(refusal) }
+
+      let session: FleetSnapshot.ClaudeSession
+      switch lookup(arguments["session"], in: snapshot) {
+      case .refused(let refusal):
+        return refusal
+      case .codex(let codex, _):
+        return .failure(
+          "\(codex.name) is a Codex session, and Armada cannot message one: Codex has no way to "
+            + "wake an idle session from outside.")
+      case .claude(let found, _):
+        session = found
+      }
+
+      let outcome = await sender.sendMessage(
+        SendMessageRequest(
+          sessionID: session.id, text: text.trimmingCharacters(in: .whitespacesAndNewlines)))
+      switch outcome {
+      case .refused(let message):
+        return .failure(message)
+      case .delivered(let name, let project):
+        return envelope(
+          ["sent": ["id": .string(session.id), "status": "delivered"]], snapshot: snapshot,
+          lede: "Delivered to \(name) in \(project). It is starting a turn on the message.")
+      case .queued(let name, let project, let reason):
+        return envelope(
+          [
+            "sent": [
+              "id": .string(session.id), "status": "queued", "reason": .string(reason),
+            ]
+          ], snapshot: snapshot, lede: "Queued for \(name) in \(project). \(reason)")
       }
     }
   }

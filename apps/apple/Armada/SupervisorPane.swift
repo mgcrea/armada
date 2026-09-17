@@ -5,8 +5,9 @@ import SwiftUI
 /// Settings ▸ Supervisor: the MCP server, and a Claude Code session started with it attached.
 ///
 /// A grouped `Form` rather than `MCPKitUI.MCPServerPanel`, as Almanac chose. Armada's Allow writes
-/// switch governs exactly one thing — an agent starting a session in a saved project — and the
-/// sentence under it has to say that, which the panel's generic switch cannot.
+/// switch governs a short, specific list — starting, resuming, closing and messaging sessions — and
+/// the sentence under it has to say that, which the panel's generic switch cannot. Delivering
+/// messages has a switch of its own, because turning it on edits every account's settings.json.
 ///
 /// What is carried over word for word is the loopback sentence, which is a security surface,
 /// and the client configuration, through `ClientSnippet`, so a client this pane tells you to
@@ -15,6 +16,8 @@ struct SupervisorPane: View {
   @AppStorage(MCPServerController.enabledKey) private var enabled = false
   @AppStorage(MCPServerController.portKey) private var port = MCPServerController.defaultPort
   @AppStorage(MCPServerController.allowWritesKey) private var allowWrites = false
+  @AppStorage(MessageDelivery.enabledKey) private var deliverMessages = false
+  @State private var delivery = MessageDelivery.shared
   @State private var controller = MCPServerController.shared
   @State private var accounts = Accounts.shared
   @State private var monitor = EntitlementMonitor.shared
@@ -72,10 +75,34 @@ struct SupervisorPane: View {
       Toggle(isOn: $allowWrites) {
         Text("Allow writes")
         Text(
-          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message. The session asks you for every permission as usual. Nothing else writes."
+          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message; resume a closed Claude Code session there; close a Claude Code session, a busy one only when it passes force; and message a session, once delivery is on below. A session it starts asks you for every permission as usual."
         )
       }
       .disabled(!enabled)
+      Toggle(isOn: $deliverMessages) {
+        Text("Deliver messages to sessions")
+        Text(
+          "Adds one hook to each Claude Code account's settings.json, so armada_send_message can put a message in front of a running session: an idle one starts a turn on it, a busy one reads it when its turn ends. The session sees it labelled as coming from an agent, not from you. Turning this off removes that hook and nothing else. Codex sessions cannot be reached."
+        )
+      }
+      .disabled(!enabled || !allowWrites)
+      .onChange(of: deliverMessages) { delivery.sync() }
+      if deliverMessages {
+        ForEach(delivery.accounts) { account in
+          switch account.state {
+          case .installed:
+            Label("\(account.name): hook installed", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+          case .removed:
+            Label("\(account.name): hook not installed", systemImage: "circle")
+              .foregroundStyle(.secondary)
+          case .failed(let reason):
+            Label("\(account.name): \(reason)", systemImage: "exclamationmark.triangle.fill")
+              .foregroundStyle(.orange)
+          }
+        }
+        .font(.caption)
+      }
       if let tokenError = controller.tokenError {
         Text(tokenError)
           .font(.caption)
@@ -103,7 +130,7 @@ struct SupervisorPane: View {
       // someone will stop on, and the answer to "and then what" is the reassurance.
       Text(
         allowWrites
-          ? "An agent connected here can see sessions, projects, plan limits and the end of each transcript, and one tool, armada_start_session, can open a fresh session in a saved project. It cannot change a running session or write to a vendor's folder. A client already connected sees the change once it reconnects. The server runs only while Armada does."
+          ? "An agent connected here can see sessions, projects, plan limits and the end of each transcript, and wait for a session to need you. armada_start_session can open or resume a session in a saved project, armada_close_session can end a Claude Code session, and armada_send_message can message one while delivery is on. None of them answers a permission prompt for you. A client already connected sees the change once it reconnects. The server runs only while Armada does."
           : "Every tool is read-only. An agent connected here can see sessions, projects, plan limits and the end of each transcript; it cannot change a session, start one, or write to a vendor's folder. The server runs only while Armada does."
       )
     }

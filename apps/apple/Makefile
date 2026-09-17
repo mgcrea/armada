@@ -244,6 +244,7 @@ UNIT_SRC := \
 	Armada/LaunchScript.swift \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
+	Armada/MessageHook.swift \
 	Armada/License.swift \
 	Armada/Revocations.swift \
 	UnitChecks/AppInfoStub.swift \

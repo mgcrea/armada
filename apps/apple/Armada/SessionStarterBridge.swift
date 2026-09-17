@@ -10,8 +10,21 @@ import Foundation
 ///
 /// **Throttled.** One launch per `throttle` seconds from agents, so a supervisor caught in a
 /// loop opens one window and is told to wait rather than filling the screen.
+///
+/// **Names the session when it can.** A fresh Claude Code session bound for a terminal gets an id
+/// minted here and passed as `--session-id`, so the agent can watch or close exactly the session
+/// it started. VS Code opens its tab through the extension's link, which takes no id, and Codex
+/// has no such flag; both still come back without one.
+///
+/// **Resumes only what nothing has open.** See `resume`.
 nonisolated struct SessionStarterBridge: SessionStarter {
   static let throttle: TimeInterval = 10
+  /// A transcript written this recently may belong to a session Armada does not watch — one over
+  /// ssh, or on a folder it has not discovered — so it is not resumed.
+  static let recentWrite: TimeInterval = 30
+  /// How much of a transcript's head is read for the folder it ran in. Every entry after the
+  /// first few carries `cwd`, so this is generous.
+  static let cwdSearchBytes = 256 * 1024
 
   func startSession(_ request: StartSessionRequest) async -> StartSessionOutcome {
     await MainActor.run { Self.start(request, now: Date()) }
@@ -22,15 +35,17 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     guard EntitlementMonitor.shared.current.isEntitled else {
       return .refused("Armada has no licence and no trial running, so it starts nothing.")
     }
+    if let prompt = request.prompt, let refusal = Tools.promptRefusal(prompt) {
+      return .refused(refusal)
+    }
+    if let id = request.resume { return resume(id, prompt: request.prompt, now: now) }
+
     let store = ProjectStore.shared
-    guard let project = store.project(id: request.projectID) else {
+    guard let projectID = request.projectID, let project = store.project(id: projectID) else {
       return .refused("That project is no longer saved in Armada.")
     }
     guard store.folderExists(project) else {
       return .refused("\(project.displayPath) is not there any more.")
-    }
-    if let prompt = request.prompt, let refusal = Tools.promptRefusal(prompt) {
-      return .refused(refusal)
     }
 
     let (resolved, refusal) = agent(for: request, project: project)
@@ -39,12 +54,20 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     }
 
     let launcher = NewSessionLauncher.shared
-    if let last = launcher.lastAgentLaunchAt, now.timeIntervalSince(last) < throttle {
-      return .refused(
-        "An agent started a session \(Int(now.timeIntervalSince(last))) seconds ago. Wait a "
-          + "moment before starting another.")
+    if let refusal = throttled(now) { return .refused(refusal) }
+    let sessionID: String?
+    let start: NewSession.Start
+    if case .claude = agent, !launcher.opensInVSCode(agent) {
+      let minted = UUID().uuidString.lowercased()
+      sessionID = minted
+      start = .identified(sessionID: minted)
+    } else {
+      sessionID = nil
+      start = .fresh
     }
-    if let message = launcher.startForAgent(agent, in: project.url, prompt: request.prompt) {
+    if let message = launcher.startForAgent(
+      agent, in: project.url, start: start, prompt: request.prompt)
+    {
       return .refused(message)
     }
 
@@ -61,7 +84,103 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
         account: account, terminal: launcher.destinationName(for: agent),
         withPrompt: request.prompt != nil,
-        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent)))
+        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent),
+        sessionID: sessionID))
+  }
+
+  @MainActor
+  private static func throttled(_ now: Date) -> String? {
+    guard let last = NewSessionLauncher.shared.lastAgentLaunchAt,
+      now.timeIntervalSince(last) < throttle
+    else { return nil }
+    return "An agent started a session \(Int(now.timeIntervalSince(last))) seconds ago. Wait a "
+      + "moment before starting another."
+  }
+
+  /// Continue a Claude Code session in a terminal, in the folder it ran in, on the account whose
+  /// folder holds its transcript.
+  ///
+  /// **Never one that is open.** Resuming a live session puts two writers on one transcript,
+  /// which is why the app's own action is Fork. Three checks stand in front of that: no watched
+  /// session has the id, the transcript has not been written in `recentWrite` seconds, and the
+  /// account is found by where the transcript is rather than by what the agent says. The folder
+  /// must be inside a saved project, the same boundary a fresh start keeps.
+  @MainActor
+  private static func resume(_ id: String, prompt: String?, now: Date) -> StartSessionOutcome {
+    let accounts = Accounts.shared.all
+    for account in accounts {
+      if let live = account.sessions.sessions.first(where: { $0.id == id }) {
+        return .refused(
+          "\(live.displayName) is still open in \(live.registry.projectName). Close it with "
+            + "armada_close_session first, or start a fresh session.")
+      }
+    }
+
+    var found: (Account, URL)?
+    for account in accounts {
+      if let url = TranscriptLocator.find(sessionId: id, cwd: "", in: account.folder.projectsDir) {
+        found = (account, url)
+        break
+      }
+    }
+    guard let (account, transcript) = found else {
+      return .refused("No Claude Code account on this Mac has a transcript for session \(id).")
+    }
+
+    let path = transcript.path(percentEncoded: false)
+    if let modified = try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]
+      as? Date, now.timeIntervalSince(modified) < recentWrite
+    {
+      return .refused(
+        "Session \(id) wrote to its transcript \(max(0, Int(now.timeIntervalSince(modified)))) "
+          + "seconds ago, so something may still have it open. Try again in a minute.")
+    }
+
+    guard let cwd = recordedFolder(of: transcript) else {
+      return .refused("Session \(id)'s transcript records no folder to resume it in.")
+    }
+    let store = ProjectStore.shared
+    guard let project = store.project(containing: cwd) else {
+      return .refused(
+        "Session \(id) ran in \((cwd as NSString).abbreviatingWithTildeInPath), which is not in "
+          + "a saved project. Only sessions in saved projects are resumed.")
+    }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      return .refused("\((cwd as NSString).abbreviatingWithTildeInPath) is not there any more.")
+    }
+
+    if let refusal = throttled(now) { return .refused(refusal) }
+    let launcher = NewSessionLauncher.shared
+    let agent = NewSession.Agent.claude(account.folder)
+    if let message = launcher.startForAgent(
+      agent, in: URL(filePath: cwd, directoryHint: .isDirectory), start: .resume(sessionID: id),
+      prompt: prompt)
+    {
+      return .refused(message)
+    }
+    return .started(
+      StartedSession(
+        project: project.displayName, path: cwd, vendor: "claude", accountID: account.folder.path,
+        account: account.displayName, terminal: launcher.terminal.name,
+        withPrompt: prompt != nil, sessionID: id, resumed: true))
+  }
+
+  /// The `cwd` the transcript's entries carry, from the first one that has it.
+  private static func recordedFolder(of transcript: URL) -> String? {
+    guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
+    defer { try? handle.close() }
+    guard let head = try? handle.read(upToCount: cwdSearchBytes) else { return nil }
+    for line in head.split(separator: 0x0A) {
+      guard line.range(of: Data(#""cwd":"#.utf8)) != nil,
+        let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+        let cwd = object["cwd"] as? String, !cwd.isEmpty
+      else { continue }
+      return cwd
+    }
+    return nil
   }
 
   /// The agent to launch: the account named, else the project's own when the vendor matches,
