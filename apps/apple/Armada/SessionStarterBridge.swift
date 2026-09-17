@@ -84,7 +84,8 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
         account: account, terminal: launcher.destinationName(for: agent),
         withPrompt: request.prompt != nil,
-        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent),
+        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent)
+          && !VSCodeLaunch.sendsPrompt,
         sessionID: sessionID))
   }
 

@@ -155,6 +155,30 @@ nonisolated enum HostWindow {
     return CFEqual(focused, window)
   }
 
+  /// The Claude Code extension's message input, when it is what `pid` has keyboard focus on.
+  ///
+  /// Measured 2026-09-17 on the extension 2.1.274: the input is an `AXTextArea` described
+  /// "Message input", the extension's own label rather than VS Code's, so it is not localized.
+  /// Only the visible tab's webview is in the tree, one input a window, and an empty input
+  /// reports its placeholder as its value. A tab the link has just opened has this focused.
+  static func focusedMessageInput(inApplication pid: pid_t) -> AXUIElement? {
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(app, messagingTimeout)
+    guard let focused = value(of: app, kAXFocusedUIElementAttribute),
+      CFGetTypeID(focused) == AXUIElementGetTypeID()
+    else { return nil }
+    let element = focused as! AXUIElement
+    guard value(of: element, kAXRoleAttribute) as? String == kAXTextAreaRole,
+      value(of: element, kAXDescriptionAttribute) as? String == "Message input"
+    else { return nil }
+    return element
+  }
+
+  /// An element's text, read and never written: writing `AXValue` crashed VS Code.
+  static func text(of element: AXUIElement) -> String? {
+    value(of: element, kAXValueAttribute) as? String
+  }
+
   /// Whether `window` has an editor tab labelled with any of `titles`.
   ///
   /// **Read-only, and it has to stay that way.** Measured 2026-09-15 on VS Code: editor

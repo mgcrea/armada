@@ -16,9 +16,12 @@ import os
 ///
 /// **What it does not do, and why each stays with the terminal.** A fork: the link's `session`
 /// resumes rather than forks, which is two writers on one transcript. Codex: its extension's
-/// routes are not measured. A supervisor: the link carries no `--mcp-config`. And an opening
-/// message is **typed into the tab, not sent** — the extension starts no `claude` until a
-/// message is sent, so the session reaches Armada's list once the person presses Return.
+/// routes are not measured. A supervisor: the link carries no `--mcp-config`.
+///
+/// **An opening message is typed by the link and sent by Armada.** The link only fills the
+/// tab's input, and the extension starts no `claude` until a message is sent. With
+/// `sendsPrompt` on, `send` presses Return in that input once it holds the message; off, or when
+/// the input cannot be confirmed, the message waits there for the person.
 ///
 /// **The account is the hard part.** A window runs Claude Code with the environment it was
 /// opened with and keeps it. A window Armada opens gets the account stated outright, as a
@@ -30,6 +33,7 @@ enum VSCodeLaunch {
   static let bundleID = "com.microsoft.VSCode"
   static let name = "Visual Studio Code"
   static let defaultsKey = "armada.newSessionInVSCode"
+  static let sendPromptDefaultsKey = "armada.sendPromptInVSCode"
 
   private static let logger = Logger(subsystem: "io.mgcrea.armada", category: "new-session")
 
@@ -42,6 +46,11 @@ enum VSCodeLaunch {
   /// Whether the person chose VS Code in Settings, and it is still here to use. An uninstalled
   /// VS Code falls back to the terminal rather than leaving the button dead.
   static var isChosen: Bool { UserDefaults.standard.bool(forKey: defaultsKey) && isInstalled }
+
+  /// Whether an opening message is sent rather than left in the input. On unless turned off.
+  static var sendsPrompt: Bool {
+    UserDefaults.standard.object(forKey: sendPromptDefaultsKey) as? Bool ?? true
+  }
 
   /// The launches this can take. Everything else goes to the terminal, as before.
   static func handles(_ agent: NewSession.Agent, start: NewSession.Start, supervisor: Bool)
@@ -113,7 +122,8 @@ enum VSCodeLaunch {
         Task {
           defer { launching.remove(path) }
           if let failure = await deliver(
-            url, to: window, of: running, application: application, projectName: projectName)
+            url, to: window, of: running, application: application, projectName: projectName,
+            prompt: prompt)
           {
             completion(failure)
           }
@@ -127,7 +137,7 @@ enum VSCodeLaunch {
       defer { launching.remove(path) }
       if let failure = await openWindow(
         path: path, projectName: projectName, configDirectory: configDirectory,
-        application: application, url: url)
+        application: application, url: url, prompt: prompt)
       {
         completion(failure)
       }
@@ -142,7 +152,8 @@ enum VSCodeLaunch {
   private static let windowTimeout: Duration = .seconds(30)
 
   private static func openWindow(
-    path: String, projectName: String, configDirectory: String?, application: URL, url: URL
+    path: String, projectName: String, configDirectory: String?, application: URL, url: URL,
+    prompt: String?
   ) async -> String? {
     guard let shell = await loginShellEnvironment() else {
       return
@@ -164,7 +175,8 @@ enum VSCodeLaunch {
         if open.count > 1 { return ambiguous(projectName) }
         if let window = open.first {
           return await deliver(
-            url, to: window, of: running, application: application, projectName: projectName)
+            url, to: window, of: running, application: application, projectName: projectName,
+            prompt: prompt)
         }
       }
       try? await Task.sleep(for: .milliseconds(250))
@@ -248,7 +260,7 @@ enum VSCodeLaunch {
   /// who clicked elsewhere twice gets a sentence rather than a session in the wrong window.
   private static func deliver(
     _ url: URL, to window: AXUIElement, of app: NSRunningApplication, application: URL,
-    projectName: String
+    projectName: String, prompt: String?
   ) async -> String? {
     let pid = app.processIdentifier
     // An `AXUIElement` is a CF reference to another process's element, and every call on it is
@@ -272,10 +284,79 @@ enum VSCodeLaunch {
         [url], withApplicationAt: application, configuration: NSWorkspace.OpenConfiguration(),
         completionHandler: nil)
       logger.info("opened a Claude Code tab in \(projectName, privacy: .public)")
-      return nil
+      guard let prompt, !prompt.isEmpty, sendsPrompt else { return nil }
+      return await send(prompt, in: window, pid: pid, projectName: projectName)
     }
     return
       "Another window kept coming to the front while \(projectName)'s was opening, so Armada did not open the session there. Start it again."
+  }
+
+  /// How long the new tab gets to show the message in its input. A window that has only just
+  /// opened is still loading the extension.
+  private static let inputTimeout: Duration = .seconds(15)
+
+  /// Press Return in the tab the link just opened, once its input holds `prompt`.
+  ///
+  /// **A key, not the Send button.** Measured 2026-09-17 on VS Code 1.137 with the extension
+  /// 2.1.274: `AXPress` on the "Send message" button returned success and sent nothing, twice,
+  /// the window focused or not, as it did on editor tabs. The input the link fills already has
+  /// keyboard focus, and a Return posted to VS Code's process sent the message within 0.1s and
+  /// wrote a transcript.
+  ///
+  /// **Sent only into that message.** The key goes when VS Code is frontmost, the project's
+  /// window is its focused one, and its focused element is the message input holding exactly
+  /// the prompt, checked right before posting. Anything else waits, and when that has not all held within
+  /// `inputTimeout` the message is left unsent, with a sentence saying why.
+  private static func send(
+    _ prompt: String, in window: AXUIElement, pid: pid_t, projectName: String
+  )
+    async -> String?
+  {
+    func unsent(_ reason: String) -> String {
+      logger.info(
+        "did not send the opening message in \(projectName, privacy: .public): \(reason, privacy: .public)"
+      )
+      return
+        "Armada opened a Claude Code tab in \(projectName)'s \(name) window with the opening message typed in, but did not send it because \(reason). Press Return in that tab to send it."
+    }
+    let deadline = ContinuousClock.now + inputTimeout
+    var missing = "the message did not show in the tab's input in time"
+    while ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(100))
+      // Waited for, not required throughout: measured 2026-09-17, VS Code reported another
+      // focused window for a moment while the new tab's webview loaded.
+      guard isFocused(window, pid: pid) else {
+        missing = "another window was in front"
+        continue
+      }
+      guard let input = HostWindow.focusedMessageInput(inApplication: pid),
+        EditorLaunch.inputHolds(HostWindow.text(of: input), prompt: prompt)
+      else {
+        missing = "the message did not show in the tab's input in time"
+        continue
+      }
+      postReturn(to: pid)
+      for _ in 0..<20 {
+        try? await Task.sleep(for: .milliseconds(100))
+        if !EditorLaunch.inputHolds(HostWindow.text(of: input), prompt: prompt) {
+          logger.info("sent the opening message in \(projectName, privacy: .public)")
+          return nil
+        }
+      }
+      return unsent("the tab did not take the Return key")
+    }
+    return unsent(missing)
+  }
+
+  /// Return, with no modifiers, to VS Code alone rather than to whatever is frontmost.
+  private static func postReturn(to pid: pid_t) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    for isDown in [true, false] {
+      guard let event = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: isDown)
+      else { continue }
+      event.flags = []
+      event.postToPid(pid)
+    }
   }
 
   private static func bringForward(_ window: AXUIElement, of app: NSRunningApplication) async

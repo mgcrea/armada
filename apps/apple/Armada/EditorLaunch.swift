@@ -166,6 +166,16 @@ nonisolated enum EditorLaunch {
     return components.url
   }
 
+  /// Whether the text a message input reports is `prompt`, so Return sends that message and no
+  /// other. Runs of whitespace compare equal: a line break in a `contentEditable` input is not
+  /// promised to read back as the `\n` the link carried.
+  static func inputHolds(_ text: String?, prompt: String) -> Bool {
+    guard let text else { return false }
+    let words = { (string: String) in string.split(whereSeparator: \.isWhitespace) }
+    let expected = words(prompt)
+    return !expected.isEmpty && words(text) == expected
+  }
+
   /// The Claude Code extension's id, the same on the Marketplace and Open VSX.
   static let extensionID = "anthropic.claude-code"
 

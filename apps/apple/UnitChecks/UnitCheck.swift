@@ -1413,6 +1413,15 @@ struct UnitCheck {
       EditorLaunch.openURL(scheme: "vscode", prompt: "fix a&b #1")?.absoluteString,
       "vscode://anthropic.claude-code/open?prompt=fix%20a%26b%20%231")
     check(
+      "the input holds the message, line breaks read back as spaces",
+      EditorLaunch.inputHolds("fix the\u{a0}build  now", prompt: "fix the build\nnow"))
+    check(
+      "not a placeholder, a longer message or nothing",
+      !EditorLaunch.inputHolds("⌘ Esc to focus or unfocus Claude", prompt: "fix")
+        && !EditorLaunch.inputHolds("fix it", prompt: "fix")
+        && !EditorLaunch.inputHolds(nil, prompt: "fix")
+        && !EditorLaunch.inputHolds("", prompt: " "))
+    check(
       "extension folders of any version",
       EditorLaunch.isClaudeExtension("anthropic.claude-code-2.1.273-darwin-arm64")
         && !EditorLaunch.isClaudeExtension("anthropic.claude-codex-1.0"))
