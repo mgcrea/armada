@@ -19,6 +19,11 @@ import Foundation
 ///   stops when its parent, the session's `claude`, is gone, for a session that was killed.
 /// - *Stale instructions.* A message older than `expiryMinutes` is deleted unread.
 /// - *Two runs taking one message.* A message is claimed by `mv` before it is printed.
+/// - *Grok Build running it.* Grok reads `~/.claude/settings.json` hooks, knows no `asyncRewake`,
+///   and sends `session_id` beside its own camelCase keys, so the script would hold every Grok turn
+///   open for the whole timeout. Measured on grok 1.0.34, 2026-09-17: a one-word turn hung until
+///   killed. The script leaves at once when `GROK_HOOK_EVENT` is set or the input has
+///   `hookEventName`, which Claude Code never sends. See docs/grok-sessions.md.
 /// - *Armada deleted with the hook still installed.* The command runs the script only when it is
 ///   there, and otherwise exits 0, which Claude Code ignores.
 ///
@@ -52,7 +57,9 @@ nonisolated enum MessageHook {
 
     root=$1
     [[ -n $root && -d $root ]] || exit 0
+    [[ -n $GROK_HOOK_EVENT ]] && exit 0
     input=$(cat)
+    [[ $input == *'"hookEventName"'* ]] && exit 0
     [[ $input =~ '"session_id"[[:space:]]*:[[:space:]]*"([0-9A-Fa-f-]{36})"' ]] || exit 0
     session=${match[1]:l}
     inbox=$root/$session

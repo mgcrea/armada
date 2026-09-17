@@ -21,6 +21,7 @@ designed and not started. See [implementation.md](implementation.md).
 | [claude-code-sessions.md](claude-code-sessions.md) | Measured: reading Claude Code sessions, titles and state from disk |
 | [focusing-sessions.md](focusing-sessions.md) | Measured: how a session's pid resolves to the app hosting it, and what that cannot reach |
 | [codex-sessions.md](codex-sessions.md) | Measured: Codex's equivalents — session logs, liveness, titles, limits, hooks |
+| [grok-sessions.md](grok-sessions.md) | Measured: Grok Build's equivalents, and why Armada's Claude hook hung its turns |
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
 | [landscape.md](landscape.md) | Competitors and standards (A2A) |
 | [spike/](spike/README.md) | Throwaway code the measurements came from |

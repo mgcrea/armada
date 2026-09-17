@@ -1616,6 +1616,10 @@ struct UnitCheck {
         .contains { $0.hasSuffix(".msg") || $0.contains(".msg.") } == false)
     let noSession = run(#"{"hook_event_name":"Stop"}"#, deliver: nil, after: 0)
     expectEqual("input with no session id exits 0 at once", noSession.status, 0)
+    let grok = run(
+      #"{"hookEventName":"stop","sessionId":"\#(session)","hook_event_name":"Stop","session_id":"\#(session)"}"#,
+      deliver: nil, after: 0)
+    expectEqual("Grok Build's input, which also has session_id, exits 0 at once", grok.status, 0)
 
     let missing = Process()
     missing.executableURL = URL(filePath: "/bin/sh")
