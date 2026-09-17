@@ -467,7 +467,8 @@ public enum Tools {
       }
 
       if let query, entries.isEmpty {
-        let known = (snapshot.claude.map(\.name) + snapshot.codex.map(\.name)
+        let known =
+          (snapshot.claude.map(\.name) + snapshot.codex.map(\.name)
           + snapshot.grok.map(\.name))
           .joined(separator: ", ")
         return .failure(

@@ -93,10 +93,13 @@ nonisolated struct GrokHome: Sendable, Hashable {
   /// The session directory for an id, wherever its project folder is. Nil when no project holds it.
   func sessionDirectory(id: String) -> URL? {
     let fileManager = FileManager.default
-    let projects = (try? fileManager.contentsOfDirectory(at: sessionsDir, includingPropertiesForKeys: nil)) ?? []
+    let projects =
+      (try? fileManager.contentsOfDirectory(at: sessionsDir, includingPropertiesForKeys: nil)) ?? []
     for project in projects where project.hasDirectoryPath {
       let candidate = project.appending(path: id, directoryHint: .isDirectory)
-      if fileManager.fileExists(atPath: candidate.appending(path: "summary.json").path(percentEncoded: false)) {
+      if fileManager.fileExists(
+        atPath: candidate.appending(path: "summary.json").path(percentEncoded: false))
+      {
         return candidate
       }
     }

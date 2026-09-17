@@ -149,7 +149,8 @@ public enum TranscriptTail {
       {
         entries.append(made)
       }
-    case "tool_call_update" where update["status"] as? String == "completed"
+    case "tool_call_update"
+    where update["status"] as? String == "completed"
       || update["status"] as? String == "failed":
       let texts = blocks(update["content"]).compactMap {
         (($0["content"] as? [String: Any])?["text"] as? String)

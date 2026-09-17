@@ -140,7 +140,9 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     guard let (account, transcript) = found else {
       // An id with no vendor named is looked for in Grok Build too: both mint UUIDs, and an
       // agent resuming a session it read from the fleet should not have to know which kind.
-      if fallBackToGrok, GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil }) {
+      if fallBackToGrok,
+        GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil })
+      {
         return resumeGrok(id, prompt: prompt, now: now)
       }
       return .refused("No Claude Code account on this Mac has a transcript for session \(id).")

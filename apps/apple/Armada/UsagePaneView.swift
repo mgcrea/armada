@@ -30,7 +30,9 @@ struct UsagePaneView: View {
         ContentUnavailableView {
           Label("No agents found", systemImage: "folder.badge.questionmark")
         } description: {
-          Text("Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok.")
+          Text(
+            "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok."
+          )
         }
       } else {
         ScrollView {

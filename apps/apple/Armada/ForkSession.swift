@@ -93,8 +93,9 @@ extension ForkAvailability {
   @MainActor
   static func grok(_ session: GrokSession, in account: GrokAccount) -> ForkAvailability {
     let updates = session.directory.appending(path: "updates.jsonl", directoryHint: .notDirectory)
-    guard session.scannedSize > 0
-      || FileManager.default.fileExists(atPath: updates.path(percentEncoded: false))
+    guard
+      session.scannedSize > 0
+        || FileManager.default.fileExists(atPath: updates.path(percentEncoded: false))
     else {
       return .unavailable(
         "This session has never been prompted, so there is no conversation to fork.")

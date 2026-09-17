@@ -129,7 +129,9 @@ final class GrokWatcher {
     }
     isScanning = true
     let home = self.home
-    let known = byId.mapValues { GrokKnownSession(size: $0.scannedSize, summaryModified: $0.summaryModified) }
+    let known = byId.mapValues {
+      GrokKnownSession(size: $0.scannedSize, summaryModified: $0.summaryModified)
+    }
     Task.detached(priority: .utility) {
       let entries = GrokWatcher.scan(home: home, known: known)
       await MainActor.run { self.apply(entries) }
@@ -138,7 +140,8 @@ final class GrokWatcher {
 
   /// Off the main actor. Lists two levels of directories, stats one file per session, and
   /// opens a session's files only when its `updates.jsonl` has grown.
-  nonisolated static func scan(home: GrokHome, known: [String: GrokKnownSession]) -> [GrokScanEntry] {
+  nonisolated static func scan(home: GrokHome, known: [String: GrokKnownSession]) -> [GrokScanEntry]
+  {
     let fileManager = FileManager.default
     let open = (try? Data(contentsOf: home.activeSessions)).map(GrokFiles.activeSessions) ?? []
     var pids: [String: Int32] = [:]
@@ -224,7 +227,8 @@ final class GrokWatcher {
       }
       if let tail = entry.tail {
         session.lastEventAt = tail.lastEventAt ?? session.lastEventAt
-        session.state = Self.state(pid: entry.pid, running: tail.isTurnRunning, at: tail.lastEventAt, now: now)
+        session.state = Self.state(
+          pid: entry.pid, running: tail.isTurnRunning, at: tail.lastEventAt, now: now)
       } else {
         session.state = Self.state(
           pid: entry.pid, running: session.state == .working, at: session.lastEventAt, now: now)

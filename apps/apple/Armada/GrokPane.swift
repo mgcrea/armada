@@ -299,7 +299,8 @@ struct GrokSessionDetail: View {
       }
       if let context = session.context {
         Section("Context") {
-          ProgressView(value: Double(min(context.used, context.window)), total: Double(context.window))
+          ProgressView(
+            value: Double(min(context.used, context.window)), total: Double(context.window))
           LabeledContent(
             "In use",
             value: "\(TokenCount.short(context.used)) of \(TokenCount.short(context.window))")

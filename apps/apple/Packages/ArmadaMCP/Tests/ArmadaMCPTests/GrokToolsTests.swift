@@ -40,7 +40,8 @@ struct GrokToolsTests {
               limits: [], fetchedAt: FakeFleetSource.now, source: "live"),
             sessions: [
               session(open, name: "French greeting", state: "awaitingInput", pid: 33_135),
-              session(headless, name: "Read the README", state: "working", pid: nil, headless: true),
+              session(
+                headless, name: "Read the README", state: "working", pid: nil, headless: true),
               session(ended, name: "Old one", state: "ended", pid: nil),
             ])
         ]))
