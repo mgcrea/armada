@@ -6,6 +6,15 @@ public enum VoiceMode: String, CaseIterable, Sendable {
   case hold
 }
 
+/// Whether the microphone opens again by itself once a reply is over, so a question the reply
+/// asked ("Should I go ahead?") can be answered without pressing the shortcut. Press mode only:
+/// someone who chose to hold has chosen to keep the microphone to the key.
+public enum VoiceFollowUp: String, CaseIterable, Sendable {
+  case never
+  case afterQuestion
+  case afterEveryReply
+}
+
 /// What one spoken question is doing, and what the app must do next, as a pure reducer.
 ///
 /// Every rule about the shortcut lives here rather than in the controller, so the question
@@ -16,6 +25,10 @@ public enum VoiceMode: String, CaseIterable, Sendable {
 /// **Pressing again always wins.** A press while the answer is still coming or still being
 /// spoken cuts it off and hides the overlay. A press once the answer is finished and the
 /// overlay is only waiting to hide starts a follow-up question instead.
+///
+/// **A reply can listen for its answer.** With `followUp` set, a reply that is over opens the
+/// microphone again instead of waiting to hide. Silence then closes the card quietly: nobody
+/// asked a question, so "Didn't catch that" would be wrong.
 public struct VoiceTurn: Equatable, Sendable {
   public enum Phase: Equatable, Sendable {
     case idle
@@ -64,17 +77,64 @@ public struct VoiceTurn: Equatable, Sendable {
   public private(set) var phase: Phase = .idle
   public var mode: VoiceMode
   public var speaksReplies: Bool
+  public var followUp: VoiceFollowUp
+  /// The microphone opened by itself after a reply, not on a press.
+  public private(set) var listensForAnswer = false
+  /// The reply's latest sentence ends with a question mark.
+  private var replyAsks = false
 
-  public init(mode: VoiceMode, speaksReplies: Bool = true) {
+  public init(mode: VoiceMode, speaksReplies: Bool = true, followUp: VoiceFollowUp = .never) {
     self.mode = mode
     self.speaksReplies = speaksReplies
+    self.followUp = followUp
   }
 
   public mutating func handle(_ event: Event) -> [Effect] {
+    let effects = step(event)
+    if case .listening = phase {} else { listensForAnswer = false }
+    return effects
+  }
+
+  /// Whether a sentence asks something, looking past the closing quotes, brackets and markdown
+  /// emphasis a reply may end on.
+  public static func endsWithQuestion(_ sentence: String) -> Bool {
+    let trailing: Set<Character> = ["\"", "'", "”", "’", "»", ")", "]", "*", "_"]
+    guard
+      let last = sentence.last(where: { !$0.isWhitespace && !trailing.contains($0) })
+    else { return false }
+    return ["?", "？", "؟"].contains(last)
+  }
+
+  /// The reply has arrived and been spoken: listen for an answer, or wait to hide.
+  private mutating func replyFinished() -> [Effect] {
+    let listens =
+      switch followUp {
+      case .never: false
+      case .afterQuestion: replyAsks
+      case .afterEveryReply: true
+      }
+    guard mode == .press, listens else {
+      phase = .answering(replyDone: true, speechDone: true)
+      return [.scheduleDismiss]
+    }
+    phase = .listening(finishing: false)
+    listensForAnswer = true
+    return [.startCapture]
+  }
+
+  private mutating func step(_ event: Event) -> [Effect] {
+    if case .sentence(let text) = event {
+      switch phase {
+      case .thinking, .answering:
+        if text.contains(where: { !$0.isWhitespace }) { replyAsks = Self.endsWithQuestion(text) }
+      default: break
+      }
+    }
     switch (phase, event) {
     case (.idle, .shortcutDown), (.failed, .shortcutDown),
       (.answering(replyDone: true, speechDone: true), .shortcutDown):
       phase = .listening(finishing: false)
+      listensForAnswer = false
       return [.startCapture]
 
     case (.listening(finishing: false), .shortcutDown) where mode == .press,
@@ -86,10 +146,15 @@ public struct VoiceTurn: Equatable, Sendable {
     case (.listening, .transcriptFinal(let text)):
       let question = text.trimmingWhitespace
       guard !question.isEmpty else {
+        if listensForAnswer {
+          phase = .idle
+          return [.hide]
+        }
         phase = .failed(Self.emptyTranscriptMessage)
         return [.scheduleDismiss]
       }
       phase = .thinking
+      replyAsks = false
       return [.send(question)]
 
     case (.thinking, .sentence(let text)):
@@ -102,16 +167,21 @@ public struct VoiceTurn: Equatable, Sendable {
       return [.speak(text)]
 
     case (.thinking, .turnEnded(error: nil)):
-      phase = .answering(replyDone: true, speechDone: true)
-      return [.scheduleDismiss]
+      return replyFinished()
 
     case (.answering(_, let speechDone), .turnEnded(error: nil)):
-      phase = .answering(replyDone: true, speechDone: speechDone)
-      return speechDone ? [.scheduleDismiss] : []
+      guard speechDone else {
+        phase = .answering(replyDone: true, speechDone: false)
+        return []
+      }
+      return replyFinished()
 
     case (.answering(let replyDone, speechDone: false), .speechFinished):
-      phase = .answering(replyDone: replyDone, speechDone: true)
-      return replyDone ? [.scheduleDismiss] : []
+      guard replyDone else {
+        phase = .answering(replyDone: false, speechDone: true)
+        return []
+      }
+      return replyFinished()
 
     case (.thinking, .turnEnded(error: let message?)),
       (.answering, .turnEnded(error: let message?)):

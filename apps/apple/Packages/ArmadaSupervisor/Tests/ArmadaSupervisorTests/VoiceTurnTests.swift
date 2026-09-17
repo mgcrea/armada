@@ -146,4 +146,91 @@ struct VoiceTurnTests {
     #expect(idle.handle(.failure("Turn on the MCP server.")) == [.scheduleDismiss])
     #expect(idle.handle(.shortcutDown) == [.startCapture], "a press after a failure tries again")
   }
+
+  private static let asked: [VoiceTurn.Event] = [
+    .shortcutDown, .speechEnded, .transcriptFinal("start r2"), .sentence("I'd start it."),
+    .sentence("Should I go ahead?"), .turnEnded(error: nil),
+  ]
+
+  @Test("after a question: once the question is spoken, the microphone opens for the answer")
+  func listensAfterQuestion() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&turn, Self.asked)
+    #expect(turn.handle(.speechFinished) == [.startCapture])
+    #expect(turn.phase == .listening(finishing: false))
+    #expect(turn.listensForAnswer)
+    #expect(
+      run(&turn, [.speechEnded, .transcriptFinal("yes")]) == [[.finishCapture], [.send("yes")]])
+    #expect(!turn.listensForAnswer)
+  }
+
+  @Test("after a question: a reply that asks nothing waits to hide as before")
+  func noQuestionNoListen() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(
+      &turn,
+      [
+        .shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("Any news?"),
+        .sentence("None."), .turnEnded(error: nil),
+      ])
+    #expect(turn.handle(.speechFinished) == [.scheduleDismiss])
+  }
+
+  @Test("after every reply: any reply listens")
+  func listensAfterEveryReply() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterEveryReply)
+    _ = run(
+      &turn,
+      [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("None."), .speechFinished])
+    #expect(turn.handle(.turnEnded(error: nil)) == [.startCapture])
+  }
+
+  @Test("hold mode never listens by itself")
+  func holdNeverListens() {
+    var turn = VoiceTurn(mode: .hold, followUp: .afterEveryReply)
+    _ = run(
+      &turn,
+      [
+        .shortcutDown, .shortcutUp, .transcriptFinal("start r2"), .sentence("Go ahead?"),
+        .turnEnded(error: nil),
+      ])
+    #expect(turn.handle(.speechFinished) == [.scheduleDismiss])
+  }
+
+  @Test("with speech off, the reply ending opens the microphone")
+  func silentListens() {
+    var turn = VoiceTurn(mode: .press, speaksReplies: false, followUp: .afterQuestion)
+    #expect(run(&turn, Self.asked).last == [.startCapture])
+  }
+
+  @Test("silence after a reply closes the card quietly, not with Didn't catch that")
+  func silenceHides() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&turn, Self.asked + [.speechFinished])
+    #expect(run(&turn, [.speechEnded, .transcriptFinal("")]) == [[.finishCapture], [.hide]])
+    #expect(turn.phase == .idle)
+
+    var pressed = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&pressed, Self.asked + [.speechFinished])
+    #expect(run(&pressed, [.shortcutDown, .transcriptFinal(" ")]) == [[.finishCapture], [.hide]])
+  }
+
+  @Test("a question after pressing still fails on an empty transcript")
+  func pressedStillFails() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&turn, Self.asked + [.speechFinished, .speechEnded, .transcriptFinal("")])
+    _ = run(&turn, [.shortcutDown, .speechEnded])
+    #expect(turn.handle(.transcriptFinal("")) == [.scheduleDismiss])
+    #expect(turn.phase == .failed(VoiceTurn.emptyTranscriptMessage))
+  }
+
+  @Test("a question is recognised past quotes, brackets and emphasis")
+  func questionMarks() {
+    #expect(VoiceTurn.endsWithQuestion("Should I go ahead?"))
+    #expect(VoiceTurn.endsWithQuestion("Should I \"go ahead?\" "))
+    #expect(VoiceTurn.endsWithQuestion("**Should I go ahead?**"))
+    #expect(VoiceTurn.endsWithQuestion("続けますか？"))
+    #expect(!VoiceTurn.endsWithQuestion("Done."))
+    #expect(!VoiceTurn.endsWithQuestion("  "))
+  }
 }
