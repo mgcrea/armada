@@ -303,9 +303,11 @@ enum VSCodeLaunch {
   /// keyboard focus, and a Return posted to VS Code's process sent the message within 0.1s and
   /// wrote a transcript.
   ///
-  /// **Sent only into that message.** The key goes when VS Code is frontmost, the project's
-  /// window is its focused one, and its focused element is the message input holding exactly
-  /// the prompt, checked right before posting. Anything else waits, and when that has not all held within
+  /// **Sent only into that message.** The key goes when the project's window is the one VS Code
+  /// has focused and the message input in it holds exactly the prompt, checked right before
+  /// posting. VS Code needs not be the frontmost application: measured 2026-09-17, a Return
+  /// posted to its process arrived with Finder in front, which matters because another agent's
+  /// app taking the front is what broke the first build of this. Anything else waits, and when that has not all held within
   /// `inputTimeout` the message is left unsent, with a sentence saying why.
   private static func send(
     _ prompt: String, in window: AXUIElement, pid: pid_t, projectName: String
@@ -323,16 +325,21 @@ enum VSCodeLaunch {
     var missing = "the message did not show in the tab's input in time"
     while ContinuousClock.now < deadline {
       try? await Task.sleep(for: .milliseconds(100))
-      // Waited for, not required throughout: measured 2026-09-17, VS Code reported another
-      // focused window for a moment while the new tab's webview loaded.
-      guard isFocused(window, pid: pid) else {
-        missing = "another window was in front"
-        continue
-      }
-      guard let input = HostWindow.focusedMessageInput(inApplication: pid),
+      guard let input = HostWindow.messageInput(in: window),
         EditorLaunch.inputHolds(HostWindow.text(of: input), prompt: prompt)
       else {
         missing = "the message did not show in the tab's input in time"
+        continue
+      }
+      // The tab the link opens is focused only sometimes, so focus is given rather than waited
+      // for. The window is still checked: a key goes to the window VS Code has focused, and
+      // another window's input would take a Return meant for this one.
+      if !HostWindow.isFocused(input) {
+        HostWindow.focus(input)
+        try? await Task.sleep(for: .milliseconds(100))
+      }
+      guard HostWindow.isFocused(input), HostWindow.isFocused(window, inApplication: pid) else {
+        missing = "the tab's input did not take keyboard focus"
         continue
       }
       postReturn(to: pid)

@@ -217,10 +217,49 @@ it.
 **The link opens a tab and starts nothing.** Without `session`,
 `vscode://anthropic.claude-code/open?prompt=<text>` opens a fresh conversation tab with the
 text in its "Message input" box. No `claude` runs on that account and no transcript is written
-until the person sends a message, so the session reaches Armada's list only then, and an
-opening message from `armada_start_session` waits there (`promptAwaitsSend` in its result).
-With `session`, the link resumes that session rather than forking it, so forks stay in the
-terminal, and so do Codex and the supervisor.
+until a message is sent, so the session reaches Armada's list only then. With `session`, the
+link resumes that session rather than forking it, so forks stay in the terminal, and so do
+Codex and the supervisor.
+
+**So Armada presses Return, and only Return.** Measured 2026-09-17 on VS Code 1.137 with the
+extension 2.1.274. The link's two parameters are all there is: its handler reads `session` and
+`prompt`, hands them to `claude-vscode.primaryEditor.open`, and the webview's `setInputText`
+fills the box. Nothing in the extension sends a message, so the tab is driven instead.
+
+- **The Send button cannot be pressed.** It is a real `<button type="submit">` described "Send
+  message", "Stop" while a reply runs, and `AXEnabled` false while the box is empty. `AXPress`
+  on it returned success and sent nothing, twice, the window focused or not — the same dead end
+  as the editor tabs above, for the same reason.
+- **The key works.** The box the link fills is an `AXTextArea` described "Message input", and a
+  Return posted to VS Code's process with `CGEvent.postToPid` sent the message in 0.1s and wrote
+  a transcript.
+- **The box is focused, not found focused.** The link's tab holds keyboard focus some of the
+  time and not others, and a Return with the focus elsewhere goes nowhere. Setting `AXFocused`
+  on the box focused it and VS Code stayed up — the only thing Armada writes into that tree,
+  and worth saying beside the `AXValue` write above that crashed it.
+- **Frontmost is not required, and requiring it was the bug.** The first build waited for VS
+  Code to be the frontmost application. Measured with nobody touching the Mac: the project's
+  window was VS Code's focused window throughout, while the frontmost application was another
+  agent's freshly launched app, and fifteen seconds ran out with the message typed and unsent —
+  which is what "the paste works but it never presses Return" looks like from the outside. A
+  Return posted to VS Code's pid arrived with Finder in front, so the check went.
+- **Sent into that message alone.** `VSCodeLaunch.send` waits until the project's window is the
+  one VS Code has focused and the message input in it holds exactly the prompt, focuses that
+  box, posts the key, and confirms the box no longer holds it. The window check stays because a
+  key goes to the window VS Code has focused, and another window's input would take a Return
+  meant for this one. Whitespace runs compare equal (`EditorLaunch.inputHolds`): a line break in
+  a `contentEditable` box is not promised to read back as the `\n` the link carried. An empty
+  box reads as its placeholder, which is why an exact match is a real check and not a formality.
+- **Measured end to end 2026-09-17**, through `armada_start_session` into three projects whose
+  windows were open — almanac, cadence, bastion — each tab opened and its message sent within
+  0.5s, with a transcript written and the session in the fleet.
+- **Unsent is a sentence, not a silence.** The message stays typed, the reason is logged and put
+  in front of the person, and they press Return themselves. Settings ▸ General ▸ "Send an
+  agent's opening message" turns the whole step off, and `promptAwaitsSend` in
+  `armada_start_session`'s result says which way it went.
+- Only the visible tab's webview is in the tree, so a window has one message input however many
+  conversations it holds. Untested: a prompt that opens the tab's own suggestion menu, such as
+  one starting with a slash, where Return may pick a suggestion instead of sending.
 
 **The link cannot name a window.** It goes to the window VS Code last focused. `code <folder>`
 on a folder that is already open did not bring its window forward, and two links sent after it

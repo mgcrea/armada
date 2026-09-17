@@ -155,23 +155,48 @@ nonisolated enum HostWindow {
     return CFEqual(focused, window)
   }
 
-  /// The Claude Code extension's message input, when it is what `pid` has keyboard focus on.
+  /// The Claude Code extension's message input inside `window`, wherever the focus is.
   ///
   /// Measured 2026-09-17 on the extension 2.1.274: the input is an `AXTextArea` described
   /// "Message input", the extension's own label rather than VS Code's, so it is not localized.
-  /// Only the visible tab's webview is in the tree, one input a window, and an empty input
-  /// reports its placeholder as its value. A tab the link has just opened has this focused.
-  static func focusedMessageInput(inApplication pid: pid_t) -> AXUIElement? {
-    let app = AXUIElementCreateApplication(pid)
-    AXUIElementSetMessagingTimeout(app, messagingTimeout)
-    guard let focused = value(of: app, kAXFocusedUIElementAttribute),
-      CFGetTypeID(focused) == AXUIElementGetTypeID()
-    else { return nil }
-    let element = focused as! AXUIElement
-    guard value(of: element, kAXRoleAttribute) as? String == kAXTextAreaRole,
-      value(of: element, kAXDescriptionAttribute) as? String == "Message input"
-    else { return nil }
-    return element
+  /// Only the visible tab's webview is in the tree, so a window has one however many
+  /// conversations it holds, and an empty input reports its placeholder as its value.
+  ///
+  /// **Walks into web areas**, unlike `hasEditorTab` and `showsRestrictedMode`, because the
+  /// input lives three deep in the panel's webviews. About a thousand nodes, 60ms on one window.
+  static func messageInput(in window: AXUIElement) -> AXUIElement? {
+    var found: AXUIElement?
+    func walk(_ element: AXUIElement, depth: Int) {
+      guard found == nil, depth < maxTreeDepth else { return }
+      if value(of: element, kAXRoleAttribute) as? String == kAXTextAreaRole,
+        value(of: element, kAXDescriptionAttribute) as? String == "Message input"
+      {
+        found = element
+        return
+      }
+      for child in value(of: element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
+        walk(child, depth: depth + 1)
+      }
+    }
+    walk(window, depth: 0)
+    return found
+  }
+
+  /// Whether `element` holds keyboard focus.
+  static func isFocused(_ element: AXUIElement) -> Bool {
+    value(of: element, kAXFocusedAttribute) as? Bool == true
+  }
+
+  /// Give `element` keyboard focus, so a key posted to its application lands in it.
+  ///
+  /// **The one thing Armada writes into VS Code's tree.** Measured 2026-09-17: setting
+  /// `AXFocused` on the message input succeeded, focused it, and VS Code stayed up, where
+  /// writing `AXValue` on a tab crashed it. A tab the link opens is focused only sometimes, so
+  /// without this the Return has nowhere to land.
+  @discardableResult
+  static func focus(_ element: AXUIElement) -> Bool {
+    AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+      == .success
   }
 
   /// An element's text, read and never written: writing `AXValue` crashed VS Code.
