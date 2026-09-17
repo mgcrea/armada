@@ -5,13 +5,38 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.1.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.2.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.2.0] - 2026-09-17
 
 ### Added
 
+- **Watch Grok Build sessions, beside Claude Code and Codex.** Grok Build gets its own sidebar
+  section, one row per account and a pane of its own, read from `~/.grok` the way the others are
+  read from theirs: which sessions are live, what each is doing, the tokens and cost they have
+  spent, and how much of the context window is left. Nothing is sent anywhere to find out.
+- **See how much of your Grok Build week is left.** Nothing on disk holds the allowance, so
+  Armada asks your own `grok` for it, the same question the TUI's `/usage` asks. It costs
+  nothing, starts no session, and the answer reaches the menu bar limit and the Usage pane
+  alongside your Claude and Codex accounts.
+- **Grok Build counts in the menu bar, and any account can be hidden from the panel.** Grok Build
+  sessions add to the menu bar icon, its halo and its panel. Any account, whatever its agent, can
+  be taken out of that panel: hover its row in the sidebar for the eye, use the row's context
+  menu, or find the full list in Settings ▸ General. Hiding trims the panel only — the window,
+  the Usage pane, the starred figure and the halo still count it.
+- **Start, fork and resume Grok Build sessions from a saved project.** A project can be set to
+  Grok Build, and then starting one there opens it in your terminal, its live sessions are listed
+  in the project's pane, and any of them can be forked. Recent folders are suggested as they are
+  for the others. A supervisor can start one with `vendor: "grok"`, and resume one that is not
+  open anywhere, checked the way a Claude Code resume is: nothing has it open, its log has been
+  quiet for 30 seconds, and its folder sits inside a saved project.
+- **A supervisor sees Grok Build too.** `armada_get_fleet`, `armada_get_session`,
+  `armada_get_usage`, `armada_read_transcript` and `armada_wait` all cover Grok Build sessions,
+  and the transcript reader follows its messages, tool calls and turn boundaries.
+  `armada_needs_attention` leaves them out, as it does Codex, because being open and not busy is
+  not a request for attention. `armada_close_session`, `armada_send_message` and
+  `armada_focus_session` each say why a Grok Build session is not something they can reach.
 - **Add an account from Armada, for Claude Code, Codex or Grok Build.** Add Account is pinned to
   the bottom of the main window's sidebar, and sits in Settings ▸ General too. Pick the agent and
   give the account a name, and Armada opens that agent in your terminal on a new folder, such as
@@ -46,9 +71,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   on the session's account when the project is not open. Armada brings that window to the front
   first, so the tab never lands in another project, and it needs the Accessibility permission
   Focus already uses. A new window gets your shell's PATH. An opening message from an agent is
-  typed into the tab for you to send. If a project's window is open on a different account,
-  Armada says so rather than starting there. Forks, Codex and the supervisor still open in your
-  terminal.
+  typed into the tab and sent, so the session starts on its own; turn off "Send an agent's
+  opening message" in Settings ▸ General to read it first and press Return yourself, and if
+  Armada cannot confirm the tab took it within fifteen seconds, the message waits there for you.
+  If a project's window is open on a different account, Armada says so rather than starting
+  there. Forks, Codex and the supervisor still open in your terminal.
 - **Start a session by voice.** With Allow writes on in Settings ▸ Supervisor, voice can start a
   new session in one of your saved projects. Asking for it is enough: voice starts it there and
   then, says so in a few words, and asks back only when it cannot tell which project you mean.
@@ -86,7 +113,17 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 - **Voice answers in a sentence, two at most.** It leads with the answer and leaves out the rest:
   no restating the question, no "it should show up in a few seconds", no list of every session.
-  Before starting a session it asks one short question. Instructions you wrote yourself are kept.
+  Instructions you wrote yourself are kept.
+- **A mouse binding can use no modifier.** The modifier picker has a "No modifier" entry, last in
+  the list, so a side button nobody else uses can act on its own. The row says what that costs on
+  buttons 3 and 4, which are the two browsers and editors answer to as Back and Forward.
+
+### Fixed
+
+- **Grok Build turns no longer hang while a supervisor can message sessions.** Grok Build reads
+  Claude Code's hooks out of the same `settings.json`, so the delivery hook held every Grok Build
+  turn open until it timed out. It now recognises a Grok Build turn and steps out of the way at
+  once.
 
 ## [1.1.0] - 2026-09-16
 

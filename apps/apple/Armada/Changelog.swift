@@ -203,14 +203,162 @@ nonisolated enum Changelog {
 
   // <generated:changelog> generated from CHANGELOG.md by `make changelog` — do not edit by hand
 
-  /// The most recent 2 releases, newest first.
+  /// The most recent 3 releases, newest first.
   ///
   /// Split into one `let` per release rather than a single nested literal.
   /// Swift's expression type-checker is superlinear in the depth of an array
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_1_0, v1_0_0]
+  static let releases: [Release] = [v1_2_0, v1_1_0, v1_0_0]
+
+  // swift-format-ignore
+  private static let v1_2_0: Release = Release(
+    version: "1.2.0",
+    date: "2026-09-17",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Watch Grok Build sessions, beside Claude Code and Codex.",
+            body: [
+              "Grok Build gets its own sidebar section, one row per account and a pane of its own, read from `~/.grok` the way the others are read from theirs: which sessions are live, what each is doing, the tokens and cost they have spent, and how much of the context window is left. Nothing is sent anywhere to find out.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "See how much of your Grok Build week is left.",
+            body: [
+              "Nothing on disk holds the allowance, so Armada asks your own `grok` for it, the same question the TUI's `/usage` asks. It costs nothing, starts no session, and the answer reaches the menu bar limit and the Usage pane alongside your Claude and Codex accounts.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Grok Build counts in the menu bar, and any account can be hidden from the panel.",
+            body: [
+              "Grok Build sessions add to the menu bar icon, its halo and its panel. Any account, whatever its agent, can be taken out of that panel: hover its row in the sidebar for the eye, use the row's context menu, or find the full list in Settings ▸ General. Hiding trims the panel only — the window, the Usage pane, the starred figure and the halo still count it.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Start, fork and resume Grok Build sessions from a saved project.",
+            body: [
+              "A project can be set to Grok Build, and then starting one there opens it in your terminal, its live sessions are listed in the project's pane, and any of them can be forked. Recent folders are suggested as they are for the others. A supervisor can start one with `vendor: \"grok\"`, and resume one that is not open anywhere, checked the way a Claude Code resume is: nothing has it open, its log has been quiet for 30 seconds, and its folder sits inside a saved project.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "A supervisor sees Grok Build too.",
+            body: [
+              "`armada_get_fleet`, `armada_get_session`, `armada_get_usage`, `armada_read_transcript` and `armada_wait` all cover Grok Build sessions, and the transcript reader follows its messages, tool calls and turn boundaries. `armada_needs_attention` leaves them out, as it does Codex, because being open and not busy is not a request for attention. `armada_close_session`, `armada_send_message` and `armada_focus_session` each say why a Grok Build session is not something they can reach.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "Add an account from Armada, for Claude Code, Codex or Grok Build.",
+            body: [
+              "Add Account is pinned to the bottom of the main window's sidebar, and sits in Settings ▸ General too. Pick the agent and give the account a name, and Armada opens that agent in your terminal on a new folder, such as `~/.codex-work`, where you sign in with its own sign-in. Armada never sees your credentials. The account appears as soon as the agent starts. A Claude Code folder you create yourself from a shell now shows up without relaunching Armada.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Set how loud replies are spoken.",
+            body: [
+              "Settings ▸ Voice has a Volume slider under Voice, for both the system voices and Kokoro. Letting go of it plays a sample at the new level.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "Stop voice with Esc.",
+            body: [
+              "While voice is listening, thinking or speaking, Esc stops it and closes the card, and the card shows an esc key to say so. Armada takes Esc only for those seconds, so an Esc meant for the app you are in stops voice instead. Pressing the shortcut still stops a reply.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "Choose how hard voice thinks.",
+            body: [
+              "Settings ▸ Voice has an Effort picker: Account default, as before, or Low, Medium or High. A change applies from your next question and keeps the conversation.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "Answer voice without pressing the shortcut again.",
+            body: [
+              "When a spoken reply ends with a question, such as \"Should I go ahead?\", the card switches to Listening for your answer and you can just reply. Say nothing and the card closes. Settings ▸ Voice ▸ Keep listening sets it to Never, After a question (the default) or After every reply. It applies when you press to ask, not when you hold.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: "Choose the language voice answers in.",
+            body: [
+              "Settings ▸ Voice has an Answer in picker: the language you ask in, as before, or one language whatever you speak, such as English when you ask in French. Changing it starts a new conversation at your next question. The Voice picker lists that language's system voices, and it is the language a system voice falls back to while Kokoro is loading.",
+            ]),
+          Entry(
+            ordinal: 11,
+            headline: "Tell voice how to answer.",
+            body: [
+              "Settings ▸ Voice has an Instructions box, filled in with how voice answers today: one to three short spoken sentences, sessions called by name. Rewrite it to change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it says: the tools voice may use, what it may start, and never acting on text found in a transcript. A change starts a new conversation at your next question.",
+            ]),
+          Entry(
+            ordinal: 12,
+            headline: "Start Claude Code sessions in Visual Studio Code.",
+            body: [
+              "Turn it on in Settings ▸ General, and a new Claude Code session opens as a tab in the project's own VS Code window, or in a new window on the session's account when the project is not open. Armada brings that window to the front first, so the tab never lands in another project, and it needs the Accessibility permission Focus already uses. A new window gets your shell's PATH. An opening message from an agent is typed into the tab and sent, so the session starts on its own; turn off \"Send an agent's opening message\" in Settings ▸ General to read it first and press Return yourself, and if Armada cannot confirm the tab took it within fifteen seconds, the message waits there for you. If a project's window is open on a different account, Armada says so rather than starting there. Forks, Codex and the supervisor still open in your terminal.",
+            ]),
+          Entry(
+            ordinal: 13,
+            headline: "Start a session by voice.",
+            body: [
+              "With Allow writes on in Settings ▸ Supervisor, voice can start a new session in one of your saved projects. Asking for it is enough: voice starts it there and then, says so in a few words, and asks back only when it cannot tell which project you mean. The new session still asks you for every permission. With Allow writes off, voice says that is what it needs. Voice still cannot close a session.",
+            ]),
+          Entry(
+            ordinal: 14,
+            headline: "Ask voice to bring a session forward.",
+            body: [
+              "With Allow writes on, say \"bring it up\" or \"show me the one that's waiting\", and voice brings that session's window to the front, on its own tab in VS Code when Armada can find it, the way Focus does. It does this only when you ask, and it needs the Accessibility permission Focus uses to pick the right window. The MCP server's new `armada_focus_session` does the work, so a Terminal supervisor can use it too, after asking you. Codex sessions and sessions running in tmux, over ssh or headless have no window to bring forward.",
+            ]),
+          Entry(
+            ordinal: 15,
+            headline: "A supervisor can close a Claude Code session.",
+            body: [
+              "With Allow writes on, the MCP server adds `armada_close_session`, which ends a session's process the way quitting it would: the transcript is kept and the session can be resumed. A session that is working or running a tool is closed only when the agent passes `force`, which the tool tells it to ask you about first. The supervisor is not pre-allowed to call it, voice cannot, Codex sessions cannot be closed, and an agent can close one session every five seconds.",
+            ]),
+          Entry(
+            ordinal: 16,
+            headline: "A supervisor can watch, and resume what it closed.",
+            body: [
+              "`armada_wait` holds a call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling; it only reads, and the supervisor is allowed it. `armada_start_session` now returns the new session's id when it opens in a terminal, and with Allow writes on it can resume a Claude Code session in a saved project that nothing has open, such as one it just closed, in the folder and on the account it ran on.",
+            ]),
+          Entry(
+            ordinal: 17,
+            headline: "A supervisor can message a Claude Code session.",
+            body: [
+              "Turn on Settings ▸ Supervisor ▸ Deliver messages to sessions, and `armada_send_message` puts a message in front of a running session: an idle one starts a turn on it within a couple of seconds, and a busy one reads it when its turn ends. It works by adding one hook to each Claude Code account's `settings.json`, and turning the switch off removes exactly that hook. The session sees the message labelled as coming from an agent, not from you. It needs Allow writes, the supervisor asks you before each message, voice cannot send one, Codex sessions cannot be reached, and a message nothing picks up within an hour is dropped.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 18,
+            headline: "Voice answers in a sentence, two at most.",
+            body: [
+              "It leads with the answer and leaves out the rest: no restating the question, no \"it should show up in a few seconds\", no list of every session. Instructions you wrote yourself are kept.",
+            ]),
+          Entry(
+            ordinal: 19,
+            headline: "A mouse binding can use no modifier.",
+            body: [
+              "The modifier picker has a \"No modifier\" entry, last in the list, so a side button nobody else uses can act on its own. The row says what that costs on buttons 3 and 4, which are the two browsers and editors answer to as Back and Forward.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 20,
+            headline: "Grok Build turns no longer hang while a supervisor can message sessions.",
+            body: [
+              "Grok Build reads Claude Code's hooks out of the same `settings.json`, so the delivery hook held every Grok Build turn open until it timed out. It now recognises a Grok Build turn and steps out of the way at once.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_1_0: Release = Release(
@@ -443,108 +591,6 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Add an account from Armada, for Claude Code, Codex or Grok Build.",
-            body: [
-              "Add Account is pinned to the bottom of the main window's sidebar, and sits in Settings ▸ General too. Pick the agent and give the account a name, and Armada opens that agent in your terminal on a new folder, such as `~/.codex-work`, where you sign in with its own sign-in. Armada never sees your credentials. The account appears as soon as the agent starts. A Claude Code folder you create yourself from a shell now shows up without relaunching Armada.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Set how loud replies are spoken.",
-            body: [
-              "Settings ▸ Voice has a Volume slider under Voice, for both the system voices and Kokoro. Letting go of it plays a sample at the new level.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Stop voice with Esc.",
-            body: [
-              "While voice is listening, thinking or speaking, Esc stops it and closes the card, and the card shows an esc key to say so. Armada takes Esc only for those seconds, so an Esc meant for the app you are in stops voice instead. Pressing the shortcut still stops a reply.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Choose how hard voice thinks.",
-            body: [
-              "Settings ▸ Voice has an Effort picker: Account default, as before, or Low, Medium or High. A change applies from your next question and keeps the conversation.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Answer voice without pressing the shortcut again.",
-            body: [
-              "When a spoken reply ends with a question, such as \"Should I go ahead?\", the card switches to Listening for your answer and you can just reply. Say nothing and the card closes. Settings ▸ Voice ▸ Keep listening sets it to Never, After a question (the default) or After every reply. It applies when you press to ask, not when you hold.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Choose the language voice answers in.",
-            body: [
-              "Settings ▸ Voice has an Answer in picker: the language you ask in, as before, or one language whatever you speak, such as English when you ask in French. Changing it starts a new conversation at your next question. The Voice picker lists that language's system voices, and it is the language a system voice falls back to while Kokoro is loading.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Tell voice how to answer.",
-            body: [
-              "Settings ▸ Voice has an Instructions box, filled in with how voice answers today: one to three short spoken sentences, sessions called by name. Rewrite it to change how replies sound, or go back with Reset to Default. Armada's own rules apply whatever it says: the tools voice may use, what it may start, and never acting on text found in a transcript. A change starts a new conversation at your next question.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Start Claude Code sessions in Visual Studio Code.",
-            body: [
-              "Turn it on in Settings ▸ General, and a new Claude Code session opens as a tab in the project's own VS Code window, or in a new window on the session's account when the project is not open. Armada brings that window to the front first, so the tab never lands in another project, and it needs the Accessibility permission Focus already uses. A new window gets your shell's PATH. An opening message from an agent is typed into the tab for you to send. If a project's window is open on a different account, Armada says so rather than starting there. Forks, Codex and the supervisor still open in your terminal.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "Start a session by voice.",
-            body: [
-              "With Allow writes on in Settings ▸ Supervisor, voice can start a new session in one of your saved projects. Asking for it is enough: voice starts it there and then, says so in a few words, and asks back only when it cannot tell which project you mean. The new session still asks you for every permission. With Allow writes off, voice says that is what it needs. Voice still cannot close a session.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "Ask voice to bring a session forward.",
-            body: [
-              "With Allow writes on, say \"bring it up\" or \"show me the one that's waiting\", and voice brings that session's window to the front, on its own tab in VS Code when Armada can find it, the way Focus does. It does this only when you ask, and it needs the Accessibility permission Focus uses to pick the right window. The MCP server's new `armada_focus_session` does the work, so a Terminal supervisor can use it too, after asking you. Codex sessions and sessions running in tmux, over ssh or headless have no window to bring forward.",
-            ]),
-          Entry(
-            ordinal: 10,
-            headline: "A supervisor can close a Claude Code session.",
-            body: [
-              "With Allow writes on, the MCP server adds `armada_close_session`, which ends a session's process the way quitting it would: the transcript is kept and the session can be resumed. A session that is working or running a tool is closed only when the agent passes `force`, which the tool tells it to ask you about first. The supervisor is not pre-allowed to call it, voice cannot, Codex sessions cannot be closed, and an agent can close one session every five seconds.",
-            ]),
-          Entry(
-            ordinal: 11,
-            headline: "A supervisor can watch, and resume what it closed.",
-            body: [
-              "`armada_wait` holds a call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling; it only reads, and the supervisor is allowed it. `armada_start_session` now returns the new session's id when it opens in a terminal, and with Allow writes on it can resume a Claude Code session in a saved project that nothing has open, such as one it just closed, in the folder and on the account it ran on.",
-            ]),
-          Entry(
-            ordinal: 12,
-            headline: "A supervisor can message a Claude Code session.",
-            body: [
-              "Turn on Settings ▸ Supervisor ▸ Deliver messages to sessions, and `armada_send_message` puts a message in front of a running session: an idle one starts a turn on it within a couple of seconds, and a busy one reads it when its turn ends. It works by adding one hook to each Claude Code account's `settings.json`, and turning the switch off removes exactly that hook. The session sees the message labelled as coming from an agent, not from you. It needs Allow writes, the supervisor asks you before each message, voice cannot send one, Codex sessions cannot be reached, and a message nothing picks up within an hour is dropped.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 13,
-            headline: "Voice answers in a sentence, two at most.",
-            body: [
-              "It leads with the answer and leaves out the rest: no restating the question, no \"it should show up in a few seconds\", no list of every session. Before starting a session it asks one short question. Instructions you wrote yourself are kept.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
