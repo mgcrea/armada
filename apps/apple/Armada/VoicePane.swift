@@ -12,6 +12,7 @@ import SwiftUI
 struct VoicePane: View {
   @AppStorage(VoiceController.enabledKey) private var enabled = false
   @AppStorage(VoiceController.modeKey) private var mode = VoiceMode.press
+  @AppStorage(VoiceController.followUpKey) private var followUp = VoiceFollowUp.afterQuestion
   @AppStorage(VoiceController.accountKey) private var accountID = ""
   @AppStorage(VoiceController.speaksKey) private var speaks = true
   @AppStorage(VoiceController.voiceKey) private var voiceID = ""
@@ -110,13 +111,19 @@ struct VoicePane: View {
         Text("Holding").tag(VoiceMode.hold)
       }
       .pickerStyle(.segmented)
+      Picker("Keep listening", selection: $followUp) {
+        Text("Never").tag(VoiceFollowUp.never)
+        Text("After a question").tag(VoiceFollowUp.afterQuestion)
+        Text("After every reply").tag(VoiceFollowUp.afterEveryReply)
+      }
+      .disabled(mode == .hold)
     } header: {
       Text("Shortcut")
     } footer: {
       Text(
         mode == .press
-          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it."
-          : "Hold the shortcut while you ask and let go to send. Pressing while it answers stops it."
+          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it. Keep listening opens the microphone again once a reply is spoken, so you can answer it without the shortcut, and closes it if you say nothing."
+          : "Hold the shortcut while you ask and let go to send. Pressing while it answers stops it. The microphone opens only while you hold the shortcut, so Keep listening is off."
       )
     }
   }
