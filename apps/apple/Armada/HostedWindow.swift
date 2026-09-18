@@ -25,6 +25,9 @@ final class HostedWindow {
   /// Lives only long enough to see off SwiftUI's opening resize. See `show()`.
   private var resizeGuard: OpeningResizeGuard?
 
+  /// Writes the frame back out, in place of the autosave that used to. See `FrameSaver`.
+  private var frameSaver: FrameSaver?
+
   /// `contentSize` is the size the window opens at the very first time, before
   /// there is an autosaved frame to restore. Worth stating for a window built out
   /// of a `NavigationSplitView`: SwiftUI's fitting size for that is the width
@@ -84,13 +87,25 @@ final class HostedWindow {
       // the pane it opened is behind the tab you were already looking at.
       created.tabbingMode = .disallowed
 
-      // Read before `setFrameAutosaveName`, which both restores a remembered
-      // frame and writes one. The question it answers is the only one that
-      // matters here: has anybody ever sized this window themselves?
-      let remembered = UserDefaults.standard.string(forKey: "NSWindow Frame \(autosaveName)") != nil
-      // SwiftUI's own fitting size, read before the autosave overwrites it.
+      // SwiftUI's own fitting size, read before a remembered frame overwrites it.
       let natural = created.frame
-      created.setFrameAutosaveName(autosaveName)
+      // `setFrameUsingName`, and never `setFrameAutosaveName`. The two read the same
+      // key in the same format — a frame saved by a build that used the autosave still
+      // restores here — but naming a window for autosave also makes AppKit write the
+      // frame out from inside `-[NSWindow _setFrameCommon:]`, and that write aborts this
+      // app. The sequence, off the 2026-09-18 report: SwiftUI resizes the window during
+      // the window's own layout pass (`NSHostingView.windowDidLayout`), the autosave
+      // persists the new frame, persisting posts `NSUserDefaultsDidChange`, SwiftUI's
+      // `@AppStorage` observer reads that as a settings change and dirties the hosting
+      // view, and the `setNeedsUpdateConstraints` that follows lands inside the layout
+      // pass that is still running. AppKit throws rather than re-enter, nobody catches
+      // it, and the process takes SIGABRT. It needs no bad frame and no bad window: any
+      // `@AppStorage` anywhere in the app is enough, and this app is full of it.
+      //
+      // The answer is not to stop persisting but to persist somewhere that is not inside
+      // a layout pass, which is `FrameSaver` below. The return value is the question that
+      // used to be asked of `UserDefaults` directly: has anybody ever sized this window?
+      let remembered = created.setFrameUsingName(autosaveName)
       // A remembered frame wins — but only if the content can live in it. AppKit
       // restores whatever was last written under that key, including a frame no
       // layout can satisfy, and a SwiftUI `NavigationSplitView` handed one of
@@ -107,20 +122,21 @@ final class HostedWindow {
       if unusable {
         created.setFrame(natural, display: false)
       }
-      // After the autosave name, never before. Naming it resizes the window — to
-      // a remembered frame when there is one, and to SwiftUI's own idea of the
+      // After the restore, never before. Restoring resizes the window — to the
+      // remembered frame when there is one, and to SwiftUI's own idea of the
       // content's width when there is not.
       if !remembered || unusable, let contentSize {
         created.setContentSize(contentSize)
       }
       created.center()
-      // Overwrite the frame that was just rejected. Autosave writes on a user
+      // Overwrite the frame that was just rejected. `FrameSaver` writes on a user
       // resize, and nothing done here is one, so without this the bad value sits
       // in prefs forever — rediscovered and discarded on every launch.
       if unusable {
         created.saveFrame(usingName: autosaveName)
       }
       window = created
+      frameSaver = FrameSaver(window: created, name: autosaveName)
 
       // SwiftUI sizes a `NavigationSplitView` window to its own idea of the
       // content's width, on a layout pass that lands after `show()` has already
@@ -157,11 +173,14 @@ final class HostedWindow {
 /// SwiftUI resizes a hosted `NavigationSplitView` window unprompted, a layout pass
 /// or two after it is ordered front. Every resize after that is a person dragging
 /// a corner, and undoing one of those is the bug this must not become, so the
-/// whole thing expires on a deadline. Three quarters of a second is long enough
-/// for a window that has only just appeared and far too short for anyone to have
-/// grabbed its edge.
+/// whole thing expires on a deadline.
 @MainActor
 private final class OpeningResizeGuard {
+  /// How long SwiftUI gets to argue. Three quarters of a second is long enough for a
+  /// window that has only just appeared and far too short for anyone to have grabbed its
+  /// edge. `FrameSaver` waits the same span out before it starts believing what it sees.
+  static let settle = Duration.milliseconds(750)
+
   private var token: NSObjectProtocol?
 
   init?(window: NSWindow, intended: NSRect) {
@@ -177,7 +196,7 @@ private final class OpeningResizeGuard {
       }
     }
     Task { @MainActor [weak self] in
-      try? await Task.sleep(for: .milliseconds(750))
+      try? await Task.sleep(for: Self.settle)
       self?.stop()
     }
   }
@@ -186,5 +205,63 @@ private final class OpeningResizeGuard {
     guard let token else { return }
     NotificationCenter.default.removeObserver(token)
     self.token = nil
+  }
+}
+
+/// Remembers where the person put a window, in place of AppKit's frame autosave.
+///
+/// Two differences from `setFrameAutosaveName`, and each is the whole reason this exists.
+///
+/// **It writes on a turn of its own.** The autosave writes from inside the `setFrame` that
+/// prompted it, which on a SwiftUI-driven resize means writing to `UserDefaults` in the
+/// middle of the window's layout pass — the abort described in `HostedWindow.show()`. Every
+/// write here is one main-actor hop removed from whatever caused it, so the `@AppStorage`
+/// invalidation it sets off arrives at a window that has finished laying out.
+///
+/// **It only believes the person.** `didEndLiveResize` and `didMove` are somebody dragging
+/// an edge or a title bar; `didResize` is also every size SwiftUI tries on its own, which is
+/// the value `contentSize` exists to overrule. Listening starts once `OpeningResizeGuard`
+/// has stopped pushing the frame around, for the same reason.
+@MainActor
+private final class FrameSaver {
+  private let window: NSWindow
+  private let name: String
+  private var tokens: [NSObjectProtocol] = []
+  private var pending = false
+
+  init(window: NSWindow, name: String) {
+    self.window = window
+    self.name = name
+    Task { @MainActor [weak self] in
+      try? await Task.sleep(for: OpeningResizeGuard.settle)
+      self?.listen()
+    }
+  }
+
+  private func listen() {
+    for notification in [NSWindow.didEndLiveResizeNotification, NSWindow.didMoveNotification] {
+      tokens.append(
+        NotificationCenter.default.addObserver(
+          forName: notification, object: window, queue: .main
+        ) { [weak self] _ in
+          MainActor.assumeIsolated { self?.schedule() }
+        })
+    }
+  }
+
+  /// One write per turn, however many notifications land in it: a drag that both resizes
+  /// and moves the window posts two, and they describe the same frame.
+  private func schedule() {
+    guard !pending else { return }
+    pending = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      pending = false
+      // The same floor the restore applies, on the way out rather than on the way in.
+      // A frame no layout can satisfy is not worth keeping, and keeping one is what
+      // makes it permanent — see `show()`.
+      guard window.isVisible, HostedWindow.canHoldContent(window) else { return }
+      window.saveFrame(usingName: name)
+    }
   }
 }
