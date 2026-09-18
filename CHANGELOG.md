@@ -5,8 +5,42 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.2.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.3.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.3.0] - 2026-09-18
+
+### Added
+
+- **Back and Forward as one mouse trigger.** A binding can take both thumb buttons rather than
+  one: pressed together, or one held while the other is clicked. Hold Back and click Forward
+  again and again to walk the fleet without letting go. The three are listed under "Both thumb
+  buttons" in the trigger picker. A combo has to wait to tell itself apart from a plain press,
+  so with no modifier set the row says what that costs: Back and Forward reach other apps 70 ms
+  late for a together binding, and only on release for a held one. Give the combo a modifier and
+  nothing is delayed — a bare Back is never held back, and a button no combo could claim is
+  never touched at all.
+- **Send a key with the modifier you choose.** A keystroke used to arrive with whatever you were
+  holding on the button. The action menu now has a "Sent with" section: leave it "As held", or
+  name one modifier, or none. A bare thumb button can then still send ⌘F16. The action still
+  reads as the chord that will actually arrive, which is the one to bind in the other app.
+- **A held trigger holds its modifier down.** While the button that sent a key is still down,
+  Armada holds the modifier down as a real key, the way a hand holds ⌘ through ⌘Tab, and lets go
+  when you do. VS Code's window picker wants exactly that: ⌥F15 opens it, each further press
+  walks it, and releasing ⌥ picks. It used to stay open until you pressed Return.
+
+### Fixed
+
+- **A sent F-key now reaches apps that took it as a global shortcut.** F13–F20 went out without
+  the fn flag a real keyboard sets, and a Carbon hot key — how most menu bar apps register a
+  global shortcut — does not match one without it. A sent F17 went straight past the app waiting
+  for it and landed on the front one as a key nobody handles, which is a beep.
+- **An agent's opening message is sent while another app is in front.** Starting a Claude Code
+  session in VS Code typed the message into the tab, then waited for VS Code to be the frontmost
+  application before pressing Return. A session that opened while anything else held the front
+  never got it: the message sat in the tab for fifteen seconds and was given up on. Armada no
+  longer waits for the front, and focuses the tab's input itself rather than trusting that the
+  new tab kept focus.
 
 ## [1.2.0] - 2026-09-17
 
