@@ -78,7 +78,7 @@ struct MousePane: View {
           Text("Bindings")
         } footer: {
           Text(
-            "Sending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings (VS Code, Xcode, anything) and Armada will fire it from a button. macOS itself uses none of them. The key arrives with the modifier you held on the button, so bind the chord the action shows, such as ⌥F13, rather than the bare key."
+            "Back and Forward can also work as one trigger, pressed together or one held while the other is clicked — hold one and click the other repeatedly to walk the fleet. A combo makes Armada hold the first press back until it knows what you meant, which is what the note under such a binding is about.\n\nSending a key is the way out to everything else: bind F13–F20 in another app's own keyboard settings (VS Code, Xcode, anything) and Armada will fire it from a button. macOS itself uses none of them. By default the key arrives with the modifier you held on the button; the action menu can send it with another one, or none. Either way, bind the chord the action shows, such as ⌘F16, rather than the bare key."
           )
         }
       }
@@ -122,9 +122,10 @@ private struct MouseBindingRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       trigger
-      if !isCapturing, binding.replacesSystemButton {
-        // The one binding that costs something outside Armada, said where it is set.
-        Text("With no modifier, this button stops going Back or Forward in every app.")
+      if !isCapturing, let cost = binding.systemCost {
+        // What this binding costs outside Armada, said where it is chosen rather than
+        // discovered later in a browser.
+        Text(cost)
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -150,7 +151,7 @@ private struct MouseBindingRow: View {
           .pickerStyle(.inline)
 
           Picker("Button", selection: $binding.button) {
-            ForEach(MouseBinding.offeredButtons, id: \.self) {
+            ForEach(MouseBinding.singleButtons, id: \.self) {
               Text(MouseBinding.buttonLabel($0)).tag($0)
             }
             // The button this binding already uses, when it is one the list does not
@@ -158,6 +159,14 @@ private struct MouseBindingRow: View {
             // opening the menu would silently move it to Button 4.
             if !MouseBinding.offeredButtons.contains(binding.button) {
               Text(MouseBinding.buttonLabel(binding.button)).tag(binding.button)
+            }
+            // The two thumb buttons as one trigger, in the same picker as the buttons
+            // themselves: a combo is chosen where a button is, because it is the same
+            // question — what does the thumb do.
+            Section("Both thumb buttons") {
+              ForEach(MouseBinding.combos, id: \.self) {
+                Text(MouseBinding.buttonLabel($0)).tag($0)
+              }
             }
           }
           .pickerStyle(.inline)
@@ -173,17 +182,35 @@ private struct MouseBindingRow: View {
           .font(.caption)
           .foregroundStyle(.tertiary)
 
-        Picker("", selection: $binding.action) {
-          Section("Armada") {
-            ForEach(MouseAction.commands) { Text($0.label).tag($0) }
-          }
-          Section("Send a key") {
-            ForEach(MouseAction.keys) {
-              Text($0.label(firedWith: binding.modifiers)).tag($0)
+        // A menu for the same reason as the trigger's: the key and the modifier it is
+        // sent with are one chord, set in one place, and the label reads as that chord.
+        // The modifier section is there only for a key; Armada's own commands have no
+        // chord to carry one.
+        Menu {
+          Picker("Action", selection: $binding.action) {
+            Section("Armada") {
+              ForEach(MouseAction.commands) { Text($0.label).tag($0) }
+            }
+            Section("Send a key") {
+              ForEach(MouseAction.keys) { Text($0.keyName ?? $0.label).tag($0) }
             }
           }
+          .pickerStyle(.inline)
+
+          if binding.action.keyCode != nil {
+            Picker("Sent with", selection: $binding.sentModifiers) {
+              Text("As held (\(binding.modifiers.pickerLabel))")
+                .tag(MouseModifiers?.none)
+              ForEach(MouseModifiers.allCases) {
+                Text($0.pickerLabel).tag(MouseModifiers?.some($0))
+              }
+            }
+            .pickerStyle(.inline)
+          }
+        } label: {
+          Text(binding.actionLabel)
         }
-        .labelsHidden()
+        .frame(minWidth: 150)
 
         Button(action: onRemove) {
           Image(systemName: "minus.circle")

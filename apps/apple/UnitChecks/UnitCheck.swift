@@ -1,3 +1,4 @@
+import CoreGraphics
 import CryptoKit
 import Foundation
 
@@ -47,6 +48,9 @@ struct UnitCheck {
     editorLaunch()
     claudeTrust()
     messageHook()
+    mouseChord()
+    modifierHold()
+    mouseSentKey()
 
     print("")
     if failures == 0 {
@@ -1700,6 +1704,275 @@ struct UnitCheck {
 
   // MARK: - MessageHook
 
+  /// The button-combo state machine: what is held back, what fires, what the
+  /// application still gets. Every rule here costs a real Back press something, so
+  /// each one is pinned rather than left to the tap to demonstrate by hand.
+  static func mouseChord() {
+    section("MouseChord: holds, combos and what reaches the app")
+
+    let back = 3
+    let forward = 4
+    let together = MouseBinding(
+      modifiers: .none, button: MouseBinding.backAndForward, action: .focusNextWaiting)
+    let ordered = MouseBinding(
+      modifiers: .none, button: MouseBinding.backThenForward, action: .focusNextSession)
+    let single = MouseBinding(modifiers: .option, button: back, action: .showArmada)
+    let optionTogether = MouseBinding(
+      modifiers: .option, button: MouseBinding.backAndForward, action: .showArmada)
+    let none: CGEventFlags = []
+    let option: CGEventFlags = [.maskAlternate]
+
+    func chord(_ bindings: [MouseBinding]) -> MouseChord { MouseChord(bindings: bindings) }
+
+    // Nothing to claim the press: today's behaviour, and the one that must not change
+    // for a Mac with no combo bound.
+    var plain = chord([single])
+    expectEqual(
+      "an unbound press passes at once", plain.press(button: back, flags: none, at: 0),
+      MouseChord.Decision(action: .pass))
+    expectEqual(
+      "a single binding still fires", plain.press(button: back, flags: option, at: 1),
+      MouseChord.Decision(action: .fire(single)))
+
+    // A combo can claim it, so it waits.
+    var both = chord([together, ordered])
+    expectEqual(
+      "a press a combo could claim is held", both.press(button: back, flags: none, at: 0),
+      MouseChord.Decision(action: .hold(token: 1)))
+    expectEqual(
+      "the other button inside the window is the together combo",
+      both.press(button: forward, flags: none, at: 0.05),
+      MouseChord.Decision(action: .fire(together)))
+
+    var late = chord([together, ordered])
+    _ = late.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "after the window, with the button still down, it is the ordered combo",
+      late.press(button: forward, flags: none, at: 0.3),
+      MouseChord.Decision(action: .fire(ordered)))
+    expectEqual(
+      "and it fires again on each further press",
+      late.press(button: forward, flags: none, at: 0.9),
+      MouseChord.Decision(action: .fire(ordered)))
+    expectEqual(
+      "releasing the anchor is swallowed, not replayed",
+      late.release(button: back, flags: none, at: 1.0),
+      MouseChord.Decision(action: .swallow))
+    expectEqual(
+      "and the run is over: the next press is held again",
+      late.press(button: back, flags: none, at: 1.1),
+      MouseChord.Decision(action: .hold(token: 2)))
+
+    // A click shorter than the window. The application gets its Back, late.
+    var quick = chord([together, ordered])
+    _ = quick.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "a click inside the window settles as a replay on release",
+      quick.release(button: back, flags: none, at: 0.02),
+      MouseChord.Decision(settled: .replay, action: .swallow))
+
+    // No ordered combo starts with this button, so there is nothing left to wait for.
+    var togetherOnly = chord([together])
+    _ = togetherOnly.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "the window expiring settles a together-only hold",
+      togetherOnly.windowExpired(token: 1), MouseChord.Decision(settled: .replay))
+    expectEqual(
+      "an ordered hold outlives the window",
+      chordAfterWindow(bindings: [together, ordered], button: back),
+      MouseChord.Decision())
+
+    // A hold that settles into the button's own binding rather than a replay.
+    var withSingle = chord([optionTogether, single])
+    _ = withSingle.press(button: back, flags: option, at: 0)
+    expectEqual(
+      "a hold whose button has a single binding settles into it, not a replay",
+      withSingle.windowExpired(token: 1), MouseChord.Decision(settled: .fire(single)))
+
+    // Modifiers gate the wait, or a ⌥ combo would delay every bare Back on the Mac.
+    var modified = chord([optionTogether])
+    expectEqual(
+      "a combo bound to a modifier never holds a bare press",
+      modified.press(button: back, flags: none, at: 0), MouseChord.Decision(action: .pass))
+
+    // A release macOS hid: the stale hold is settled by that button's next press.
+    var stale = chord([together, ordered])
+    _ = stale.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "a second press of a held button settles the first",
+      stale.press(button: back, flags: none, at: 5),
+      MouseChord.Decision(settled: .replay, action: .hold(token: 2)))
+
+    // An unrelated button while a press is held: the held one settles, the new one is
+    // not the tap's business.
+    var other = chord([together, ordered])
+    _ = other.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "an unrelated press settles the held one and passes",
+      other.press(button: 2, flags: none, at: 0.01),
+      MouseChord.Decision(settled: .replay, action: .pass))
+
+    // Switching the feature off, or macOS disabling the tap, mid-hold.
+    var reset = chord([together, ordered])
+    _ = reset.press(button: back, flags: none, at: 0)
+    expectEqual("a reset settles what was held", reset.reset(), MouseChord.Settled.replay)
+    expectEqual("and leaves nothing behind", reset.reset(), nil)
+
+    // A press another application posted — Cadence's replay of a press it held. Holding
+    // it again is what made the two apps bounce one press between them for ever,
+    // pinning the pointer to where it was clicked.
+    var posted = chord([together, ordered])
+    expectEqual(
+      "a posted press is never held, even when a combo could claim it",
+      posted.press(button: back, flags: none, at: 0, posted: true),
+      MouseChord.Decision(action: .pass))
+    var postedSingle = chord([single, optionTogether])
+    expectEqual(
+      "a posted press still fires a single binding",
+      postedSingle.press(button: back, flags: option, at: 0, posted: true),
+      MouseChord.Decision(action: .fire(single)))
+    var postedSecond = chord([together, ordered])
+    _ = postedSecond.press(button: back, flags: none, at: 0)
+    expectEqual(
+      "a posted press of the other button completes no combo",
+      postedSecond.press(button: forward, flags: none, at: 0.3, posted: true),
+      MouseChord.Decision(settled: .replay, action: .pass))
+
+    var postedMidRun = chord([together, ordered])
+    _ = postedMidRun.press(button: back, flags: none, at: 0)
+    _ = postedMidRun.press(button: forward, flags: none, at: 0.3)
+    _ = postedMidRun.press(button: forward, flags: none, at: 0.5, posted: true)
+    expectEqual(
+      "a posted press does not end a run, so the anchor's release is still swallowed",
+      postedMidRun.release(button: back, flags: none, at: 0.6),
+      MouseChord.Decision(action: .swallow))
+
+    // A real F-key carries fn, and a Carbon hot key — Cadence's dictation shortcut —
+    // ignores one that does not, so a posted F17 without it reaches the front app
+    // as an unhandled key instead: a beep.
+    let sending = MouseBinding(modifiers: .option, button: back, action: .f17)
+    expectEqual(
+      "a sent F-key carries fn alongside the modifiers it is sent with",
+      sending.keystrokeFlags, [.maskAlternate, .maskSecondaryFn])
+    var bare = sending
+    bare.sentModifiers = MouseModifiers.none
+    expectEqual(
+      "and carries fn when sent with no modifier", bare.keystrokeFlags, [.maskSecondaryFn])
+
+    // A stale timer, from a hold that has already been settled some other way.
+    var stopped = chord([together, ordered])
+    _ = stopped.press(button: back, flags: none, at: 0)
+    _ = stopped.release(button: back, flags: none, at: 0.01)
+    expectEqual(
+      "a timer for a settled hold does nothing", stopped.windowExpired(token: 1),
+      MouseChord.Decision())
+  }
+
+  /// What a "Send a key" binding actually sends: the modifier you hold, or one chosen
+  /// for it. The row names the chord to bind in the other app, so the two must agree.
+  static func mouseSentKey() {
+    section("MouseBinding: the modifier a key is sent with")
+
+    var binding = MouseBinding(
+      modifiers: .option, button: MouseBinding.backThenForward, action: .f16)
+    expectEqual("as held by default", binding.sentModifiers, nil)
+    expectEqual("as held sends the trigger's own", binding.sentFlags, [.maskAlternate])
+    expectEqual("and the row says so", binding.actionLabel, "Send ⌥F16")
+
+    binding.sentModifiers = .command
+    expectEqual("a chosen modifier replaces the held one", binding.sentFlags, [.maskCommand])
+    expectEqual("and the row names it", binding.actionLabel, "Send ⌘F16")
+
+    binding.sentModifiers = MouseModifiers.none
+    expectEqual("no modifier sends the bare key", binding.sentFlags, [])
+    expectEqual("and the row reads bare", binding.actionLabel, "Send F16")
+
+    binding.action = .focusNextSession
+    expectEqual(
+      "Armada's own commands ignore it", binding.actionLabel, "Focus next session")
+
+    // A list saved before the field existed.
+    let old =
+      #"[{"id":"4825754D-7A60-4B85-8C5A-86358BE49C9D","modifiers":"none","button":-2,"action":"f15"}]"#
+    let decoded = try? JSONDecoder().decode([MouseBinding].self, from: Data(old.utf8))
+    expectEqual("a binding saved before this decodes", decoded?.count, 1)
+    expectEqual("and sends as held", decoded?.first?.sentModifiers, nil)
+  }
+
+  /// The modifiers Armada holds down while a trigger is held. VS Code's window picker
+  /// opens on ⌘F15 and picks when ⌘ comes *up*, so a ⌘ that only ever rode along as
+  /// a flag left the picker open for good; these pin the key-down, the key-up, and
+  /// that nothing is left down.
+  static func modifierHold() {
+    section("ModifierHold: the modifier a sent key is held with")
+    let command: CGEventFlags = [.maskCommand]
+    let back = 3
+    let forward = 4
+
+    var hold = ModifierHold()
+    expectEqual(
+      "the first fire presses the modifier the hand is not holding",
+      hold.fire(sent: command, physical: [], releasedBy: [back]),
+      [ModifierHold.Event(key: 0x37, down: true, flags: command)])
+    expectEqual(
+      "a repeat inside the run presses nothing more",
+      hold.fire(sent: command, physical: [], releasedBy: [back]), [])
+    expectEqual(
+      "releasing the other button lets nothing go", hold.release(button: forward), [])
+    expectEqual(
+      "releasing the held button lets it go, and that is what picks the window",
+      hold.release(button: back), [ModifierHold.Event(key: 0x37, down: false, flags: [])])
+    expectEqual("and nothing is left down", hold.reset(), [])
+
+    var asHeld = ModifierHold()
+    expectEqual(
+      "a modifier the hand is already holding is never pressed again",
+      asHeld.fire(sent: command, physical: command, releasedBy: [back]), [])
+
+    var bare = ModifierHold()
+    expectEqual(
+      "a key sent bare presses nothing", bare.fire(sent: [], physical: [], releasedBy: [back]), [])
+
+    var pair = ModifierHold()
+    expectEqual(
+      "a pair goes down in order, each carrying what is down so far",
+      pair.fire(sent: [.maskCommand, .maskShift], physical: [], releasedBy: [back]),
+      [
+        ModifierHold.Event(key: 0x38, down: true, flags: [.maskShift]),
+        ModifierHold.Event(key: 0x37, down: true, flags: [.maskShift, .maskCommand]),
+      ])
+    expectEqual(
+      "and comes up in reverse",
+      pair.reset(),
+      [
+        ModifierHold.Event(key: 0x37, down: false, flags: [.maskShift]),
+        ModifierHold.Event(key: 0x38, down: false, flags: []),
+      ])
+
+    var changed = ModifierHold()
+    _ = changed.fire(sent: command, physical: [], releasedBy: [back])
+    expectEqual(
+      "a fire with a different modifier lets the old one go first",
+      changed.fire(sent: [.maskAlternate], physical: [], releasedBy: [back]),
+      [
+        ModifierHold.Event(key: 0x37, down: false, flags: []),
+        ModifierHold.Event(key: 0x3A, down: true, flags: [.maskAlternate]),
+      ])
+
+    var stopped = ModifierHold()
+    _ = stopped.fire(sent: command, physical: [], releasedBy: [back])
+    expectEqual(
+      "a reset — the tap stopping — lets go of everything",
+      stopped.reset(), [ModifierHold.Event(key: 0x37, down: false, flags: [])])
+  }
+
+  /// A hold that has outlived its window, for a check that only cares that the
+  /// expiry did nothing.
+  static func chordAfterWindow(bindings: [MouseBinding], button: Int) -> MouseChord.Decision {
+    var chord = MouseChord(bindings: bindings)
+    _ = chord.press(button: button, flags: [], at: 0)
+    return chord.windowExpired(token: 1)
+  }
   static func messageHook() {
     section("MessageHook: the settings edit")
     let script = "/Users/me/Library/Application Support/io.mgcrea.armada/hooks/deliver-message.zsh"

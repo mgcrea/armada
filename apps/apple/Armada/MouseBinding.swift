@@ -15,7 +15,7 @@ import Foundation
 /// binds F13 asked for it, and one that does not sees a key it ignores. That is also
 /// why this needs no per-application scoping — Armada does not decide what the key
 /// means, the application receiving it does.
-enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
+nonisolated enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
   case focusNextWaiting
   case focusNextSession
   case focusPreviousSession
@@ -64,18 +64,6 @@ enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
 
   /// "F15" for the keystroke half, nil for Armada's own commands.
   var keyName: String? { keyCode == nil ? nil : rawValue.uppercased() }
-
-  /// The row's label, which for a keystroke has to name the chord that will actually
-  /// arrive rather than the key alone.
-  ///
-  /// `MouseTap` carries the trigger's modifiers onto the key it sends, so a row
-  /// reading "Send F15" next to a ⌘ trigger would send the reader off to bind `f15`
-  /// in another application and watch nothing happen. Armada's own commands do not
-  /// vary with the trigger and ignore it.
-  func label(firedWith modifiers: MouseModifiers) -> String {
-    guard let keyName else { return label }
-    return "Send \(modifiers.label)\(keyName)"
-  }
 }
 
 /// The modifiers a binding fires on, as a closed list of combinations.
@@ -91,7 +79,7 @@ enum MouseAction: String, CaseIterable, Codable, Identifiable, Hashable {
 /// A closed list rather than a set of four toggles because the picker is then one
 /// control with readable rows. The combinations left out — anything with three
 /// modifiers, Shift alone with a button — are the ones nobody reaches for.
-enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
+nonisolated enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
   case option
   case command
   case control
@@ -140,20 +128,104 @@ enum MouseModifiers: String, CaseIterable, Codable, Identifiable, Hashable {
 }
 
 /// One trigger and what it does.
-struct MouseBinding: Codable, Hashable, Identifiable {
+nonisolated struct MouseBinding: Codable, Hashable, Identifiable {
   var id: UUID = UUID()
   var modifiers: MouseModifiers = .option
   /// `mouseEventButtonNumber`, which is zero-based: 2 is the middle button, 3 and 4
   /// are the two side buttons on a mouse that has them. Left and right are 0 and 1
-  /// and never reach here — the tap does not ask for them.
+  /// and never reach here — the tap does not ask for them. A negative number is one
+  /// of the combos below rather than a button.
   var button: Int = 3
   var action: MouseAction = .focusNextWaiting
+  /// The modifiers a key is sent with, or nil to send it with the ones held on the
+  /// trigger.
+  ///
+  /// **Nil, "as held", is the default, and not only so that lists saved before this
+  /// existed decode unchanged.** It is what makes a hold-and-release picker work from
+  /// the mouse: hold ⌥ and a button, and VS Code sees ⌥F13 go down and picks when ⌥
+  /// comes up. A chosen modifier is for a trigger that has none to give — a combo on
+  /// the bare thumb buttons that should still arrive as ⌘F16 — and it replaces what
+  /// is held rather than adding to it, so the row can name exactly one chord.
+  var sentModifiers: MouseModifiers?
+
+  /// What a sent key carries. See `sentModifiers`.
+  var sentFlags: CGEventFlags { (sentModifiers ?? modifiers).flags }
+
+  /// The flags a sent key is actually posted with: `sentFlags`, plus fn.
+  ///
+  /// **fn is not optional.** Every F-key a real keyboard sends has it set, and a
+  /// Carbon hot key — `RegisterEventHotKey`, which is how Cadence and most menu bar
+  /// apps take a global shortcut — does not match an F-key without it. Sent bare, F17
+  /// went straight past Cadence's dictation shortcut and landed on the front app as a
+  /// key nobody handles, which is a beep. Applications that read the key event
+  /// directly, VS Code among them, get what a keyboard would have sent them either
+  /// way.
+  var keystrokeFlags: CGEventFlags { sentFlags.union(.maskSecondaryFn) }
+
+  /// What the action column reads: the chord that will actually arrive for a key, so
+  /// the reader binds the right thing in the other application.
+  var actionLabel: String {
+    guard let keyName = action.keyName else { return action.label }
+    return "Send \((sentModifiers ?? modifiers).label)\(keyName)"
+  }
+
+  /// The two thumb buttons pressed together.
+  ///
+  /// **A negative number in the button field rather than a trigger type of its own.**
+  /// A binding stays one modifier, one button and one action, so a list written
+  /// before combos existed decodes unchanged and no migration runs. No mouse reports
+  /// a negative button, so these can never match a press. `-1` is the number Cadence
+  /// writes for the same trigger, and the two apps share this mechanism.
+  static let backAndForward = -1
+  /// Back held, Forward clicked — and clicked again, as often as you like.
+  static let backThenForward = -2
+  /// The same the other way round.
+  static let forwardThenBack = -3
+
+  /// The combos, in menu order.
+  static let combos = [backAndForward, backThenForward, forwardThenBack]
+
+  /// The only pair a combo is built from: the two buttons one thumb can work at
+  /// once. Every other button on a mouse needs the hand to move, which is not a
+  /// chord anybody would press.
+  static let comboPair: Set<Int> = [3, 4]
+
+  /// The modifiers a binding can be built from. Everything else in `CGEventFlags` —
+  /// Caps Lock, the keypad and non-coalesced bits — is masked out before comparing,
+  /// or a press with Caps Lock on would match nothing.
+  static let watchedFlags: CGEventFlags = [
+    .maskCommand, .maskAlternate, .maskControl, .maskShift,
+  ]
+
+  var isCombo: Bool { button < 0 }
+
+  /// The button that is *held* by an ordered combo, or nil for anything else.
+  var orderedAnchor: Int? {
+    switch button {
+    case Self.backThenForward: 3
+    case Self.forwardThenBack: 4
+    default: nil
+    }
+  }
+
+  /// Whether a press of this button could turn out to be this binding, which is what
+  /// decides that the press has to be held back at all.
+  func comboStarts(with button: Int) -> Bool {
+    switch self.button {
+    case Self.backAndForward: Self.comboPair.contains(button)
+    case Self.backThenForward, Self.forwardThenBack: orderedAnchor == button
+    default: false
+    }
+  }
 
   /// How the button is named in a row. The displayed number is one-based, because
   /// that is what every mouse's own documentation and configuration software calls
   /// it: `mouseEventButtonNumber` 3 is the button Logitech and Razer both label 4.
   static func buttonLabel(_ button: Int) -> String {
     switch button {
+    case backAndForward: "Back + Forward together"
+    case backThenForward: "Hold Back, press Forward"
+    case forwardThenBack: "Hold Forward, press Back"
     case 2: "Middle button"
     case 3: "Button 4 (back)"
     case 4: "Button 5 (forward)"
@@ -164,94 +236,40 @@ struct MouseBinding: Codable, Hashable, Identifiable {
   /// The buttons offered without asking the mouse. Anything else arrives through
   /// `MouseTap.beginCapture` — a mouse with a thumb cluster numbers them however it
   /// likes, and guessing would be worse than asking.
-  static let offeredButtons = [2, 3, 4]
+  static let singleButtons = [2, 3, 4]
+
+  /// Every trigger the picker offers without asking the mouse: the buttons, then the
+  /// combos.
+  static let offeredButtons = singleButtons + combos
 
   var label: String {
     modifiers == .none
       ? Self.buttonLabel(button) : "\(modifiers.label) \(Self.buttonLabel(button))"
   }
 
-  /// Whether this binding takes a button the rest of the Mac already uses on its own:
-  /// Back and Forward, which every browser and editor answers to.
-  var replacesSystemButton: Bool { modifiers == .none && (button == 3 || button == 4) }
-}
-
-/// The bindings, and whether they are live.
-///
-/// **Not `@AppStorage`, unlike every other setting in this app.** The reader of this
-/// list is `MouseTap`, which is not a view and has no property wrapper to observe
-/// the key with; a settings pane writing to defaults and a tap polling them would be
-/// two sources of truth for something that has to be exactly right at the moment a
-/// button goes down. So the store is the authority, it persists on write, and it
-/// tells the tap to re-evaluate itself. The JSON round-trip through a defaults string
-/// is the same shape `DayWeights.stored` uses, and for the same reason: a list
-/// written by a later version has to degrade to something usable rather than trap.
-@MainActor
-@Observable
-final class MouseBindingsStore {
-  static let shared = MouseBindingsStore()
-
-  static let enabledKey = "armada.mouseBindingsEnabled"
-  static let bindingsKey = "armada.mouseBindings"
-
-  var isEnabled: Bool {
-    didSet {
-      guard isEnabled != oldValue else { return }
-      UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey)
-      MouseTap.shared.sync()
-    }
-  }
-
-  var bindings: [MouseBinding] {
-    didSet {
-      guard bindings != oldValue else { return }
-      persist()
-      MouseTap.shared.sync()
-    }
-  }
-
-  /// What a fresh install gets the first time the toggle is turned on.
+  /// What a binding with no modifier costs the rest of the Mac, said in the row that
+  /// sets it. Nil when it costs nothing: with a modifier held, every one of these
+  /// buttons still does what it always did.
   ///
-  /// Two bindings rather than none, because an empty list makes the toggle do
-  /// nothing and reads as a broken setting. Both are Armada's own commands: seeding
-  /// a keystroke would send F13 to applications that have not been told to expect
-  /// it, which is harmless but also pointless until somebody binds it.
-  static let seed: [MouseBinding] = [
-    MouseBinding(modifiers: .option, button: 3, action: .focusNextWaiting),
-    MouseBinding(modifiers: .option, button: 4, action: .showArmada),
-  ]
-
-  private init() {
-    let defaults = UserDefaults.standard
-    isEnabled = defaults.bool(forKey: Self.enabledKey)
-    if let stored = defaults.string(forKey: Self.bindingsKey),
-      let data = stored.data(using: .utf8),
-      let decoded = try? JSONDecoder().decode([MouseBinding].self, from: data)
-    {
-      bindings = decoded
-    } else {
-      bindings = Self.seed
+  /// A combo costs something too, and something stranger than losing a button: the
+  /// press it waits on cannot be delivered until the wait is over. That is worth a
+  /// line where it is chosen rather than a surprise in a browser later.
+  var systemCost: String? {
+    guard modifiers == .none else { return nil }
+    switch button {
+    case 2:
+      return "With no modifier, this button stops opening links in a new tab."
+    case 3, 4:
+      let direction = button == 3 ? "back" : "forward"
+      return "With no modifier, this button stops going \(direction) in every app."
+    case Self.backAndForward:
+      return "With no modifier, Back and Forward reach other apps 70 ms late."
+    case Self.backThenForward, Self.forwardThenBack:
+      let held = orderedAnchor == 3 ? "Back" : "Forward"
+      return "With no modifier, \(held) only reaches other apps when you let the button go."
+    default:
+      return nil
     }
   }
 
-  private func persist() {
-    guard let data = try? JSONEncoder().encode(bindings),
-      let json = String(data: data, encoding: .utf8)
-    else { return }
-    UserDefaults.standard.set(json, forKey: Self.bindingsKey)
-  }
-
-  /// The binding a press matches, or nil. First match wins, so a list that somehow
-  /// holds two bindings for one trigger behaves predictably rather than arbitrarily.
-  func binding(button: Int, flags: CGEventFlags) -> MouseBinding? {
-    bindings.first { $0.button == button && $0.modifiers.flags == flags }
-  }
-
-  func add() {
-    bindings.append(MouseBinding(modifiers: .command, button: 3, action: .f13))
-  }
-
-  func remove(_ binding: MouseBinding) {
-    bindings.removeAll { $0.id == binding.id }
-  }
 }

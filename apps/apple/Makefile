@@ -251,6 +251,9 @@ UNIT_SRC := \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
 	Armada/MessageHook.swift \
+	Armada/MouseBinding.swift \
+	Armada/MouseChord.swift \
+	Armada/ModifierHold.swift \
 	Armada/License.swift \
 	Armada/Revocations.swift \
 	UnitChecks/AppInfoStub.swift \

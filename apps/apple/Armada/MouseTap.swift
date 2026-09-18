@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import OSLog
 
 /// What the tap does with one event.
 ///
@@ -54,12 +55,55 @@ final class MouseTap {
 
   @ObservationIgnored private var capture: ((Int) -> Void)?
 
-  /// The modifiers a binding can be built from. Everything else in `CGEventFlags` —
-  /// Caps Lock, the numeric-keypad and non-coalesced bits — is masked out before a
-  /// comparison, or a press with Caps Lock on would match nothing.
-  static let watchedFlags: CGEventFlags = [
-    .maskCommand, .maskAlternate, .maskControl, .maskShift,
-  ]
+  /// What a press means once combos are taken into account. The rule lives there and
+  /// is checked by `make unit`; this class is the transport that carries it out.
+  @ObservationIgnored private var chord = MouseChord(bindings: [])
+
+  /// The held-back press, and its release when that arrived first. `MouseChord` deals
+  /// in numbers and cannot hold an event, so the copies wait here to be replayed.
+  /// The modifier keys held down on the hand's behalf while a trigger is. See
+  /// `ModifierHold`.
+  @ObservationIgnored private var modifierHold = ModifierHold()
+
+  @ObservationIgnored private var heldDown: CGEvent?
+  @ObservationIgnored private var heldUp: CGEvent?
+
+  /// Temporary, for the freeze this is being debugged with: every decision, and the
+  /// identity of the event that prompted it. Read with
+  /// `log show --predicate 'subsystem == "io.mgcrea.armada"' --last 5m`.
+  @ObservationIgnored private static let logger = Logger(
+    subsystem: "io.mgcrea.armada", category: "mouse")
+
+  /// Also temporary: a replay storm pins the pointer and can only be escaped by
+  /// quitting, so the tap stops itself rather than let that happen twice.
+  @ObservationIgnored private var replayTimes: [TimeInterval] = []
+
+  @ObservationIgnored private var callbackTimes: [TimeInterval] = []
+
+  /// Temporary: count every callback, log the first few of a flood with where they
+  /// came from, and stop the tap once there are more than 150 in two seconds. A thumb
+  /// cannot press that fast.
+  fileprivate func countCallback(type: CGEventType, event: CGEvent) -> Bool {
+    let at = now()
+    callbackTimes.append(at)
+    callbackTimes.removeAll { at - $0 > 2 }
+    let count = callbackTimes.count
+    if count > 40, count % 20 == 0 {
+      Self.logger.error(
+        "flood \(count) in 2s: type=\(type.rawValue) button=\(event.getIntegerValueField(.mouseEventButtonNumber)) pid=\(event.getIntegerValueField(.eventSourceUnixProcessID)) data=\(event.getIntegerValueField(.eventSourceUserData)) x=\(Int(event.location.x)) y=\(Int(event.location.y))"
+      )
+    }
+    guard count > 150 else { return false }
+    Self.logger.error("flood: stopping the tap")
+    callbackTimes.removeAll()
+    DispatchQueue.main.async { self.stop() }
+    return true
+  }
+
+  /// Stamped into `eventSourceUserData` on a press this tap replays, so it passes
+  /// straight back out instead of being held a second time. "ARMD", and the same
+  /// mechanism Cadence uses.
+  nonisolated static let replayMarker: Int64 = 0x4152_4D44
 
   private init() {}
 
@@ -84,6 +128,14 @@ final class MouseTap {
   /// them deciding. Idempotent in both directions, and a tap macOS refused is asked
   /// for again on the next call.
   func sync() {
+    // A binding edited mid-hold could leave a press held for a combo that no longer
+    // exists, so the held press is settled before the list changes under it.
+    let bindings = MouseBindingsStore.shared.bindings
+    if bindings != chord.bindings {
+      if let settled = chord.reset() { carry(settled) }
+      MouseTap.post(modifierHold.reset())
+      chord.bindings = bindings
+    }
     // Capture runs while unlicensed too: it only learns a button number for the
     // Detect button in Settings.
     let wanted = capture != nil || bindingsWantTap
@@ -127,16 +179,35 @@ final class MouseTap {
         eventsOfInterest: CGEventMask(mask),
         callback: { proxy, type, event, userInfo in
           guard let userInfo else { return Unmanaged.passUnretained(event) }
+          let isButton = type == .otherMouseDown || type == .otherMouseUp
+          // Temporary: a flood of any kind stops the tap rather than pin the pointer.
+          let flooded = MainActor.assumeIsolated {
+            Unmanaged<MouseTap>.fromOpaque(userInfo).takeUnretainedValue().countCallback(
+              type: type, event: event)
+          }
+          if flooded { return Unmanaged.passUnretained(event) }
+          // A press this tap held back and has now given to the application. Deciding
+          // on it again would hold it for ever.
+          if isButton, event.getIntegerValueField(.eventSourceUserData) == MouseTap.replayMarker {
+            MouseTap.logger.notice(
+              "marked replay came back, passing button=\(event.getIntegerValueField(.mouseEventButtonNumber))"
+            )
+            return Unmanaged.passUnretained(event)
+          }
           let tap = Unmanaged<MouseTap>.fromOpaque(userInfo).takeUnretainedValue()
           // Read out here, so that only values cross onto the main actor. The
           // tap-disabled notifications are not button events and carry no button.
-          let isButton = type == .otherMouseDown || type == .otherMouseUp
           let button = isButton ? Int(event.getIntegerValueField(.mouseEventButtonNumber)) : 0
           let flags = event.flags
+          // Kept only if this press turns out to be one that waits.
+          let copy = isButton ? event.copy() : nil
+          // The mouse reports process 0; anything else was posted by an application,
+          // and combos leave those alone. See `MouseChord.press`.
+          let posted = event.getIntegerValueField(.eventSourceUnixProcessID) != 0
           // The run loop source is on the main run loop, so this genuinely is the
           // main actor; the assumption is checked in debug builds.
           let decision = MainActor.assumeIsolated {
-            tap.decide(type: type, button: button, flags: flags)
+            tap.decide(type: type, button: button, flags: flags, copy: copy, posted: posted)
           }
           switch decision {
           case .pass:
@@ -166,6 +237,8 @@ final class MouseTap {
 
   private func stop() {
     guard let port else { return }
+    if let settled = chord.reset() { carry(settled) }
+    MouseTap.post(modifierHold.reset())
     CGEvent.tapEnable(tap: port, enable: false)
     if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
     CFMachPortInvalidate(port)
@@ -180,17 +253,50 @@ final class MouseTap {
   /// dictionary-sized lookup and, for a keystroke, posting two events. Armada's own
   /// commands reach LaunchServices and the Accessibility API and are far too slow, so
   /// they are dispatched and this returns immediately.
-  fileprivate func decide(type: CGEventType, button: Int, flags: CGEventFlags) -> TapDecision {
+  fileprivate func decide(
+    type: CGEventType, button: Int, flags: CGEventFlags, copy: CGEvent?, posted: Bool
+  ) -> TapDecision {
+    Self.logger.notice(
+      "in type=\(type.rawValue) button=\(button) flags=\(flags.rawValue, format: .hex) pid=\(copy?.getIntegerValueField(.eventSourceUnixProcessID) ?? -1) data=\(copy?.getIntegerValueField(.eventSourceUserData) ?? -1) held=\(self.chord.isHolding) swallowed=\(self.swallowed.sorted().description)"
+    )
     // Not in the mask, but delivered anyway — this is the one notification that the
     // tap has been turned off, and re-enabling is the only way back. Without it the
     // feature dies silently on the first slow callback and stays dead until relaunch.
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
       if let port { CGEvent.tapEnable(tap: port, enable: true) }
+      // Whatever was waiting is now stranded: the events that would have settled it
+      // were dropped while the tap was off.
+      if let settled = chord.reset() { carry(settled) }
+      MouseTap.post(modifierHold.reset())
       return .swallow
     }
 
     if type == .otherMouseUp {
-      return swallowed.remove(button) == nil ? .pass : .swallow
+      // The release of a press still being held is held with it, so a replay hands
+      // the application the pair rather than a button that goes down and stays down.
+      if chord.isHolding, copy != nil,
+        heldDown?.getIntegerValueField(.mouseEventButtonNumber)
+          == Int64(button)
+      {
+        heldUp = copy
+      }
+      let decision = chord.release(button: button, flags: flags, at: now())
+      Self.logger.notice(
+        "release -> settled=\(String(describing: decision.settled)) action=\(String(describing: decision.action))"
+      )
+      if let settled = decision.settled { carry(settled, fromRelease: true) }
+      // The trigger coming up is the modifier coming up — what VS Code's picker waits
+      // for before it opens the window it is on.
+      MouseTap.post(modifierHold.release(button: button))
+      switch decision.action {
+      case .swallow:
+        swallowed.remove(button)
+        return .swallow
+      default:
+        // Nothing the chord owns: the release of a press this tap swallowed has to go
+        // with it, and any other release is the application's.
+        return swallowed.remove(button) == nil ? .pass : .swallow
+      }
     }
     guard type == .otherMouseDown else { return .pass }
     // A press means any release still pending for this button was lost. See `swallowed`.
@@ -198,6 +304,8 @@ final class MouseTap {
 
     if let capture {
       self.capture = nil
+      if let settled = chord.reset() { carry(settled) }
+      MouseTap.post(modifierHold.reset())
       swallowed.insert(button)
       // Out of the callback before touching SwiftUI state, and `sync()` afterwards so
       // the tap stops again if it was only running for this.
@@ -208,20 +316,141 @@ final class MouseTap {
       return .swallow
     }
 
-    let held = flags.intersection(Self.watchedFlags)
-    guard let binding = MouseBindingsStore.shared.binding(button: button, flags: held) else {
+    let decision = chord.press(button: button, flags: flags, at: now(), posted: posted)
+    Self.logger.notice(
+      "press -> settled=\(String(describing: decision.settled)) action=\(String(describing: decision.action))"
+    )
+    if let settled = decision.settled { carry(settled) }
+
+    switch decision.action {
+    case .hold(let token):
+      heldDown = copy
+      heldUp = nil
+      // The window, after which a press no ordered combo can still claim is settled.
+      DispatchQueue.main.asyncAfter(deadline: .now() + MouseChord.window) {
+        MouseTap.shared.windowExpired(token: token)
+      }
+      return .swallow
+    case .fire(let binding):
+      swallowed.insert(button)
+      Self.logger.notice("fire \(binding.label) -> \(binding.action.rawValue)")
+      if let key = binding.action.keyCode {
+        let downs = modifierHold.fire(
+          sent: binding.sentFlags, physical: flags,
+          releasedBy: Self.releasedBy(binding, pressed: button))
+        // With no modifier held on the hand's behalf this is the path it always was.
+        // With one, everything goes out through one queue, so ⌘ is down before the
+        // key that needs it.
+        guard !downs.isEmpty || !modifierHold.held.isEmpty else {
+          return .send(key, binding.keystrokeFlags)
+        }
+        MouseTap.post(downs)
+        MouseTap.post(key: key, modifiers: binding.keystrokeFlags)
+        return .swallow
+      }
+      let action = binding.action
+      DispatchQueue.main.async { MouseCommand.run(action) }
+      return .swallow
+    case .swallow:
+      swallowed.insert(button)
+      return .swallow
+    case .pass, .none:
       // The unbound case, and the common one: a side button nobody bound is Back in
       // every browser on the Mac and has to arrive untouched.
       return .pass
     }
+  }
 
-    swallowed.insert(button)
-    if let key = binding.action.keyCode {
-      return .send(key, binding.modifiers.flags)
+  private func windowExpired(token: Int) {
+    if let settled = chord.windowExpired(token: token).settled { carry(settled) }
+  }
+
+  /// A monotonic clock, because the wait is a duration and a wall clock that steps
+  /// backwards would make a press look as though it arrived before the one it follows.
+  private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+  /// The buttons whose release ends a hold the binding started: the held one of an
+  /// ordered combo, either of a together combo, the button itself otherwise.
+  private static func releasedBy(_ binding: MouseBinding, pressed button: Int) -> Set<Int> {
+    if let anchor = binding.orderedAnchor { return [anchor] }
+    if binding.button == MouseBinding.backAndForward { return MouseBinding.comboPair }
+    return [button]
+  }
+
+  /// Post modifier keys going down or up, as `flagsChanged` events — what a keyboard
+  /// sends for a modifier — through the same queue as `post(key:modifiers:)` without
+  /// a proxy, so the order they were decided in is the order they arrive in.
+  fileprivate nonisolated static func post(_ events: [ModifierHold.Event]) {
+    guard !events.isEmpty else { return }
+    let source = CGEventSource(stateID: .hidSystemState)
+    for modifier in events {
+      guard
+        let event = CGEvent(
+          keyboardEventSource: source, virtualKey: modifier.key, keyDown: modifier.down)
+      else { continue }
+      event.type = .flagsChanged
+      event.flags = modifier.flags
+      event.post(tap: .cgSessionEventTap)
     }
-    let action = binding.action
-    DispatchQueue.main.async { MouseCommand.run(action) }
-    return .swallow
+  }
+
+  /// Carry out what became of a held-back press.
+  ///
+  /// **A key fired here is posted directly rather than through the tap proxy**, which
+  /// the inline path uses. There is no proxy to hand: this runs from a timer, a
+  /// release, or a later press of another button. Keyboard events are outside this
+  /// tap's mask, so a posted key cannot arrive back at this callback either way.
+  private func carry(_ settled: MouseChord.Settled, fromRelease: Bool = false) {
+    Self.logger.notice(
+      "carry \(String(describing: settled)) fromRelease=\(fromRelease) heldDown=\(self.heldDown != nil) heldUp=\(self.heldUp != nil)"
+    )
+    let button = heldDown.map { Int($0.getIntegerValueField(.mouseEventButtonNumber)) }
+    switch settled {
+    case .fire(let binding):
+      if let button, !fromRelease {
+        // The press was swallowed and its release has not arrived yet.
+        swallowed.insert(button)
+      }
+      if let key = binding.action.keyCode {
+        let physical = heldDown?.flags ?? []
+        MouseTap.post(
+          modifierHold.fire(
+            sent: binding.sentFlags, physical: physical,
+            releasedBy: button.map { [$0] } ?? []))
+        MouseTap.post(key: key, modifiers: binding.keystrokeFlags)
+        // Settled by its own release: the trigger is already up, so the modifier is
+        // let go straight after the key rather than waiting for a release that has
+        // been and gone.
+        if fromRelease { MouseTap.post(modifierHold.reset()) }
+      } else {
+        let action = binding.action
+        DispatchQueue.main.async { MouseCommand.run(action) }
+      }
+    case .replay:
+      // Marked, so this tap lets them through on the way back in. The release is
+      // there only when it beat the settlement; when it has not arrived yet, the real
+      // one passes through later on its own.
+      let at = now()
+      replayTimes.append(at)
+      replayTimes.removeAll { at - $0 > 2 }
+      guard replayTimes.count <= 12 else {
+        Self.logger.error("replay storm: \(self.replayTimes.count) in 2s — stopping the tap")
+        replayTimes.removeAll()
+        heldDown = nil
+        heldUp = nil
+        stop()
+        return
+      }
+      for event in [heldDown, heldUp].compactMap({ $0 }) {
+        event.setIntegerValueField(.eventSourceUserData, value: Self.replayMarker)
+        Self.logger.notice(
+          "replay button=\(event.getIntegerValueField(.mouseEventButtonNumber)) type=\(event.type.rawValue) count=\(self.replayTimes.count)"
+        )
+        event.post(tap: .cgSessionEventTap)
+      }
+    }
+    heldDown = nil
+    heldUp = nil
   }
 
   /// **Posted through the proxy, not `CGEvent.post`.** The proxy injects downstream of
@@ -242,14 +471,18 @@ final class MouseTap {
   /// Armada swallows the button and never the modifier, so the application still sees
   /// the real ⌘ key-down and key-up on either side of this.
   fileprivate nonisolated static func post(
-    key: CGKeyCode, modifiers: CGEventFlags, proxy: CGEventTapProxy
+    key: CGKeyCode, modifiers: CGEventFlags, proxy: CGEventTapProxy? = nil
   ) {
     let source = CGEventSource(stateID: .hidSystemState)
     for isDown in [true, false] {
       guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: isDown)
       else { continue }
       event.flags = modifiers
-      event.tapPostEvent(proxy)
+      if let proxy {
+        event.tapPostEvent(proxy)
+      } else {
+        event.post(tap: .cgSessionEventTap)
+      }
     }
   }
 }
