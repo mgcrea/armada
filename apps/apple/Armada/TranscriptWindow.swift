@@ -42,14 +42,35 @@ final class TranscriptWindow {
     self.name = name
     window.retitle(name)
     window.show()
+    // After `show()`, never before: the window is built lazily on the first one, and
+    // `setTranslucent` on a window that does not exist yet does nothing.
+    applyStoredStyle()
+  }
+
+  /// Match the window's background to the chosen style.
+  ///
+  /// Read from defaults rather than taken as an argument, because two callers want it at
+  /// different moments — `show()` on every open, and the view when the picker changes while
+  /// the window is up — and neither should have to know what the other passed.
+  func applyStoredStyle() {
+    let stored = UserDefaults.standard.string(forKey: TranscriptStyle.defaultsKey)
+    window.setTranslucent(TranscriptStyle(stored: stored ?? "").isTranslucent)
   }
 }
 
 /// The window's content: whatever `TranscriptWindow` is pointed at.
 struct TranscriptWindowView: View {
   @State private var target = TranscriptWindow.shared
+  @AppStorage(TranscriptStyle.defaultsKey) private var storedStyle = TranscriptStyle.fallback.stored
 
   var body: some View {
+    content
+      // The window's own background is chrome, not content, so the change has to reach the
+      // `NSWindow` as well as the view that draws the material.
+      .onChange(of: storedStyle) { target.applyStoredStyle() }
+  }
+
+  @ViewBuilder private var content: some View {
     if let url = target.url {
       TranscriptPane(url: url, title: target.name)
         // The url, not the name: two sessions can share a title, and re-reading a

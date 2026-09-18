@@ -225,6 +225,7 @@ UNIT_SRC := \
 	Armada/TranscriptTitle.swift \
 	Armada/TranscriptContext.swift \
 	Armada/TranscriptLog.swift \
+	Armada/TranscriptStyle.swift \
 	Armada/TranscriptQuota.swift \
 	Armada/UsageSnapshot.swift \
 	Armada/UsageForecast.swift \

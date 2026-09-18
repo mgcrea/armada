@@ -154,6 +154,8 @@ struct GeneralPane: View {
   @State private var loginError: String?
   @State private var trust = AccessibilityTrust.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
+  @AppStorage(TranscriptStyle.defaultsKey)
+  private var transcriptStyle = TranscriptStyle.fallback.stored
   @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
   @AppStorage(VSCodeLaunch.defaultsKey) private var inVSCode = false
   @AppStorage(VSCodeLaunch.sendPromptDefaultsKey) private var sendPromptInVSCode = true
@@ -217,6 +219,25 @@ struct GeneralPane: View {
         // record. The sails fill on their own and are not part of this choice.
         Text(
           "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex or Grok session that is merely open counts as waiting on you. To keep one limit's figure beside the icon, star it in Usage or above an account's sessions."
+        )
+      }
+
+      Section {
+        Picker("Window style", selection: $transcriptStyle) {
+          ForEach(TranscriptStyle.allCases, id: \.stored) { option in
+            Text(option.label).tag(option.stored)
+          }
+        }
+        Text(TranscriptStyle(stored: transcriptStyle).detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } header: {
+        Text("Transcript")
+      } footer: {
+        // Says where the window comes from, because "Read Transcript" is two menus deep and
+        // someone changing this setting may never have opened one.
+        Text(
+          "Read Transcript, on a session's details or its right-click menu, opens that session's conversation in a window of its own. Follow, in that window, re-reads the transcript as it grows and keeps you at the newest turn."
         )
       }
 

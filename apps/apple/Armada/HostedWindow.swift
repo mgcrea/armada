@@ -75,6 +75,22 @@ final class HostedWindow {
     window?.title = title
   }
 
+  /// Let the content own the window's background, or take it back.
+  ///
+  /// An opaque `NSWindow` composites its `backgroundColor` under everything in it, so an
+  /// `NSVisualEffectView` inside one blurs that flat colour and nothing else — the material
+  /// renders grey and reads as a broken material rather than as a window that is still
+  /// painting. Both halves are needed: `isOpaque` alone leaves the colour, and the colour
+  /// alone leaves AppKit's opaque-window drawing path.
+  ///
+  /// Idempotent, and safe before the first `show()` — with no window yet it does nothing,
+  /// and the caller applies it again once there is one.
+  func setTranslucent(_ translucent: Bool) {
+    guard let window else { return }
+    window.isOpaque = !translucent
+    window.backgroundColor = translucent ? .clear : .windowBackgroundColor
+  }
+
   func show() {
     if window == nil {
       let hosting = NSHostingController(rootView: content())

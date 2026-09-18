@@ -26,6 +26,7 @@ struct UnitCheck {
     transcriptTitle()
     transcriptContext()
     transcriptLog()
+    transcriptStyle()
     transcriptQuota()
     contextWindow()
     usageForecast()
@@ -124,6 +125,35 @@ struct UnitCheck {
   }
 
   // MARK: - JSONLines
+
+  /// The transcript window's material.
+  ///
+  /// Small, but every failure here is silent: an unrecognised stored value renders as a
+  /// blank picker rather than an error, and a style whose `isTranslucent` disagrees with the
+  /// material it draws gives a flat grey window that reads as a broken material.
+  static func transcriptStyle() {
+    section("TranscriptStyle")
+
+    expectEqual(
+      "every case round-trips through defaults",
+      TranscriptStyle.allCases.map { TranscriptStyle(stored: $0.stored) }, TranscriptStyle.allCases)
+    expectEqual(
+      "an unknown stored value falls back", TranscriptStyle(stored: "aerogel"),
+      TranscriptStyle.fallback)
+    expectEqual("so does an empty one", TranscriptStyle(stored: ""), TranscriptStyle.fallback)
+    expectEqual(
+      "the fallback is the opaque one, which is the only one whose contrast Armada controls",
+      TranscriptStyle.fallback, .solid)
+    check(
+      "every case has a label and a detail",
+      TranscriptStyle.allCases.allSatisfy { !$0.label.isEmpty && !$0.detail.isEmpty })
+    expectEqual(
+      "no two cases share a label",
+      Set(TranscriptStyle.allCases.map(\.label)).count, TranscriptStyle.allCases.count)
+    check(
+      "only the solid one lets the window keep painting",
+      TranscriptStyle.allCases.filter { !$0.isTranslucent } == [.solid])
+  }
 
   /// The reader behind the transcript pane.
   ///

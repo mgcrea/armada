@@ -106,6 +106,10 @@ struct TranscriptPane: View {
   @State private var showThinking = true
   @State private var showTools = true
 
+  @AppStorage(TranscriptStyle.defaultsKey) private var storedStyle = TranscriptStyle.fallback.stored
+
+  private var style: TranscriptStyle { TranscriptStyle(stored: storedStyle) }
+
   private var visible: [TranscriptLog.Entry] {
     reader.entries.filter { entry in
       switch entry.kind {
@@ -123,6 +127,7 @@ struct TranscriptPane: View {
       footer
     }
     .navigationTitle(title)
+    .background(TranscriptBackground(style: style))
     .onAppear { reader.load(url) }
     .onChange(of: url) { reader.load(url) }
   }
@@ -147,11 +152,15 @@ struct TranscriptPane: View {
           }
           .listRowSeparator(.hidden)
           .listRowInsets(.init(top: 4, leading: 12, bottom: 4, trailing: 12))
+          .listRowBackground(Color.clear)
         }
       }
       .listStyle(.plain)
       // The window opens at the end, which is where a transcript is read from.
       .defaultScrollAnchor(.bottom)
+      // Let the window's material through. Without this the List paints its own
+      // background over the blur and every style looks like Solid.
+      .scrollContentBackground(.hidden)
     }
   }
 
@@ -170,6 +179,57 @@ struct TranscriptPane: View {
     .padding(.vertical, 8)
     // `.bar` is itself a material and reads correctly over any of the four.
     .background(.bar)
+  }
+}
+
+/// The window's material, behind everything.
+///
+/// `NSVisualEffectView` for the first three and SwiftUI's own glass for the fourth, because
+/// they are genuinely different things: the effect view is a blur of what is behind the
+/// window, and Liquid Glass is a lensing material macOS 26 draws itself. There is no
+/// `NSVisualEffectView.Material` that means "glass", and faking one would be a worse
+/// frosted rather than a glass.
+private struct TranscriptBackground: View {
+  let style: TranscriptStyle
+
+  var body: some View {
+    switch style {
+    case .solid:
+      // Named rather than left to the window: the window is transparent whenever any other
+      // style has been picked, and this has to put the background back.
+      Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
+    case .frosted:
+      VisualEffect(material: .sidebar).ignoresSafeArea()
+    case .desktop:
+      VisualEffect(material: .underWindowBackground).ignoresSafeArea()
+    case .glass:
+      Color.clear.glassEffect(.regular, in: .rect).ignoresSafeArea()
+    }
+  }
+}
+
+/// An `NSVisualEffectView`, which SwiftUI has no first-class equivalent of.
+///
+/// `.behindWindow` blending, which is the one that samples the desktop and the windows under
+/// this one; `.withinWindow` would sample Armada's own content and render as nothing here,
+/// since this view *is* the bottom of the window.
+///
+/// `state: .active` rather than `.followsWindowActiveState`: a transcript being read beside
+/// the editor it is about is nearly always in an inactive window, and the system's inactive
+/// appearance flattens the material to a grey that looks like the setting failed.
+private struct VisualEffect: NSViewRepresentable {
+  let material: NSVisualEffectView.Material
+
+  func makeNSView(context: Context) -> NSVisualEffectView {
+    let view = NSVisualEffectView()
+    view.blendingMode = .behindWindow
+    view.state = .active
+    view.material = material
+    return view
+  }
+
+  func updateNSView(_ view: NSVisualEffectView, context: Context) {
+    view.material = material
   }
 }
 
