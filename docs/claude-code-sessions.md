@@ -569,6 +569,75 @@ with `say` rather than a live microphone:
 Not measured: a tool call through the live endpoint, a live microphone, and the time from a
 key press to the first spoken word.
 
+## Host-answered permission prompts (2.1.274, measured 2026-09-18)
+
+**A headless session hands its permission decisions to whoever holds its stdin and stdout.**
+This reverses what the design log assumed on 2026-09-16 ("headless, a tool is either allowed
+and runs unasked or denied, so there is no Claude Code prompt to fall back on") and answers
+open question 5 below. Spike: `.idea/spike/permissions/`.
+
+The mechanism is one flag. Read out of the CLI binary's own bundled SDK, which builds its
+argument list like this:
+
+```js
+if (canUseTool) {
+  if (permissionPromptToolName) throw Error("canUseTool callback cannot be used with permissionPromptToolName…")
+  args.push("--permission-prompt-tool", "stdio")
+}
+```
+
+So `--permission-prompt-tool stdio` is the whole handshake — no capability negotiation, and
+the `initialize` control request is not required for it.
+
+When a call needs consent, the CLI sends the host a `control_request`:
+
+```json
+{"type":"control_request","request_id":"e7050043-…","request":{
+  "subtype":"can_use_tool","tool_name":"Bash","display_name":"Bash",
+  "input":{"command":"rm -rf /tmp/armada-spike-probe-dir","description":"Remove the probe directory"},
+  "description":"Remove the probe directory",
+  "blocked_path":"/tmp/armada-spike-probe-dir",
+  "tool_use_id":"toolu_01WM1qkgV5fuQacugNjtt8BJ",
+  "permission_suggestions":[
+    {"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"rm -rf /tmp/armada-spike-probe-dir"}],
+     "behavior":"allow","destination":"localSettings"},
+    {"type":"addDirectories","directories":["/tmp"],"destination":"session"},
+    {"type":"setMode","mode":"acceptEdits","destination":"session"}]}}
+```
+
+`permission_suggestions` is the terminal dialog's own set of options — an always-allow rule, a
+directory grant, a mode change — so a native dialog can offer what the TUI offers rather than
+a bare yes/no. The host answers with a `control_response` carrying
+`{"behavior":"allow","updatedInput":…}` or `{"behavior":"deny","message":…}`. Both were
+measured end to end: allow ran the command in 0.11s, deny returned the host's own sentence to
+the model as the tool result, and the model reported it and stopped.
+
+**Four earlier runs reported "no permission request" and were wrong about why.** The prompt
+asked for `echo ARMADA_OK`, which is auto-approved as trivially safe before the callback is
+consulted. Nothing about the flags was at fault. The CLI's own SDK warning names the three
+things that shadow the callback and are worth stating in any design that leans on it:
+
+- `permissionMode: "bypassPermissions"` auto-approves everything except explicit deny rules.
+- Bare `allowedTools` entries (a tool name with no parenthesised verb) auto-approve the whole
+  tool.
+- Allow rules in settings files do the same, and are **not visible to the host** — the warning
+  says so explicitly.
+
+To gate *every* call regardless, the CLI points at a `PreToolUse` hook instead.
+
+Two things measured along the way that constrain a host:
+
+- **`--permission-mode manual` is not honoured.** `system/init` reports `permissionMode:
+  "default"` whatever is passed, and a `set_permission_mode` control request asking for
+  `manual` answers `{"mode":"default"}` — a silent coercion, not an error.
+- **`--permission-prompts none` did not deny the safe `echo`**, which is consistent with the
+  above: a call that never escalates never reaches the prompt path at all.
+
+The `initialize` control request works and is answered with the session's commands,
+`current_permission_mode`, and `pending_permission_requests` — the latter documented as
+"always present (possibly empty)… from Claude Code v2.1.268 or later", so a host attaching to
+a session that is already parked on a prompt can re-arm it.
+
 ## Open questions, in priority order
 
 1. Does the unanswered-`tool_use` rule fix false idle? Verify with a session running a
@@ -580,8 +649,12 @@ key press to the first spoken word.
    sessions can ever show one.
 4. Is the messaging socket protocol simple enough to read busy/idle directly, and is that
    worth coupling to?
-5. Which states are worth showing beyond working/idle, such as waiting for a permission
-   prompt? Permission waits weren't tested.
+5. ~~Which states are worth showing beyond working/idle, such as waiting for a permission
+   prompt?~~ **Answered 2026-09-18 for a session Armada owns**: a headless session sends
+   `can_use_tool` to whoever holds its pipes, so an owned session's permission wait is known
+   exactly, not inferred — see "Host-answered permission prompts" above. For a session
+   Armada only watches, the unanswered-`tool_use` rule still cannot tell a running tool from
+   a pending approval.
 
 ## The spike code
 
