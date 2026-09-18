@@ -68,37 +68,14 @@ final class MouseTap {
   @ObservationIgnored private var heldDown: CGEvent?
   @ObservationIgnored private var heldUp: CGEvent?
 
-  /// Temporary, for the freeze this is being debugged with: every decision, and the
-  /// identity of the event that prompted it. Read with
-  /// `log show --predicate 'subsystem == "io.mgcrea.armada"' --last 5m`.
-  @ObservationIgnored private static let logger = Logger(
-    subsystem: "io.mgcrea.armada", category: "mouse")
-
-  /// Also temporary: a replay storm pins the pointer and can only be escaped by
-  /// quitting, so the tap stops itself rather than let that happen twice.
+  /// A replay storm pins the pointer and can only be escaped by quitting, so the tap
+  /// stops itself rather than let that happen. The ping-pong that caused one is fixed
+  /// — `replayMarker` and the `posted` check below — and this is what keeps a
+  /// regression in it from costing the session rather than the feature.
   @ObservationIgnored private var replayTimes: [TimeInterval] = []
 
-  @ObservationIgnored private var callbackTimes: [TimeInterval] = []
-
-  /// Temporary: count every callback, log the first few of a flood with where they
-  /// came from, and stop the tap once there are more than 150 in two seconds. A thumb
-  /// cannot press that fast.
-  fileprivate func countCallback(type: CGEventType, event: CGEvent) -> Bool {
-    let at = now()
-    callbackTimes.append(at)
-    callbackTimes.removeAll { at - $0 > 2 }
-    let count = callbackTimes.count
-    if count > 40, count % 20 == 0 {
-      Self.logger.error(
-        "flood \(count) in 2s: type=\(type.rawValue) button=\(event.getIntegerValueField(.mouseEventButtonNumber)) pid=\(event.getIntegerValueField(.eventSourceUnixProcessID)) data=\(event.getIntegerValueField(.eventSourceUserData)) x=\(Int(event.location.x)) y=\(Int(event.location.y))"
-      )
-    }
-    guard count > 150 else { return false }
-    Self.logger.error("flood: stopping the tap")
-    callbackTimes.removeAll()
-    DispatchQueue.main.async { self.stop() }
-    return true
-  }
+  @ObservationIgnored private static let logger = Logger(
+    subsystem: "io.mgcrea.armada", category: "mouse")
 
   /// Stamped into `eventSourceUserData` on a press this tap replays, so it passes
   /// straight back out instead of being held a second time. "ARMD", and the same
@@ -180,18 +157,9 @@ final class MouseTap {
         callback: { proxy, type, event, userInfo in
           guard let userInfo else { return Unmanaged.passUnretained(event) }
           let isButton = type == .otherMouseDown || type == .otherMouseUp
-          // Temporary: a flood of any kind stops the tap rather than pin the pointer.
-          let flooded = MainActor.assumeIsolated {
-            Unmanaged<MouseTap>.fromOpaque(userInfo).takeUnretainedValue().countCallback(
-              type: type, event: event)
-          }
-          if flooded { return Unmanaged.passUnretained(event) }
           // A press this tap held back and has now given to the application. Deciding
           // on it again would hold it for ever.
           if isButton, event.getIntegerValueField(.eventSourceUserData) == MouseTap.replayMarker {
-            MouseTap.logger.notice(
-              "marked replay came back, passing button=\(event.getIntegerValueField(.mouseEventButtonNumber))"
-            )
             return Unmanaged.passUnretained(event)
           }
           let tap = Unmanaged<MouseTap>.fromOpaque(userInfo).takeUnretainedValue()
@@ -256,9 +224,6 @@ final class MouseTap {
   fileprivate func decide(
     type: CGEventType, button: Int, flags: CGEventFlags, copy: CGEvent?, posted: Bool
   ) -> TapDecision {
-    Self.logger.notice(
-      "in type=\(type.rawValue) button=\(button) flags=\(flags.rawValue, format: .hex) pid=\(copy?.getIntegerValueField(.eventSourceUnixProcessID) ?? -1) data=\(copy?.getIntegerValueField(.eventSourceUserData) ?? -1) held=\(self.chord.isHolding) swallowed=\(self.swallowed.sorted().description)"
-    )
     // Not in the mask, but delivered anyway — this is the one notification that the
     // tap has been turned off, and re-enabling is the only way back. Without it the
     // feature dies silently on the first slow callback and stays dead until relaunch.
@@ -281,9 +246,6 @@ final class MouseTap {
         heldUp = copy
       }
       let decision = chord.release(button: button, flags: flags, at: now())
-      Self.logger.notice(
-        "release -> settled=\(String(describing: decision.settled)) action=\(String(describing: decision.action))"
-      )
       if let settled = decision.settled { carry(settled, fromRelease: true) }
       // The trigger coming up is the modifier coming up — what VS Code's picker waits
       // for before it opens the window it is on.
@@ -317,9 +279,6 @@ final class MouseTap {
     }
 
     let decision = chord.press(button: button, flags: flags, at: now(), posted: posted)
-    Self.logger.notice(
-      "press -> settled=\(String(describing: decision.settled)) action=\(String(describing: decision.action))"
-    )
     if let settled = decision.settled { carry(settled) }
 
     switch decision.action {
@@ -333,7 +292,6 @@ final class MouseTap {
       return .swallow
     case .fire(let binding):
       swallowed.insert(button)
-      Self.logger.notice("fire \(binding.label) -> \(binding.action.rawValue)")
       if let key = binding.action.keyCode {
         let downs = modifierHold.fire(
           sent: binding.sentFlags, physical: flags,
@@ -401,9 +359,6 @@ final class MouseTap {
   /// release, or a later press of another button. Keyboard events are outside this
   /// tap's mask, so a posted key cannot arrive back at this callback either way.
   private func carry(_ settled: MouseChord.Settled, fromRelease: Bool = false) {
-    Self.logger.notice(
-      "carry \(String(describing: settled)) fromRelease=\(fromRelease) heldDown=\(self.heldDown != nil) heldUp=\(self.heldUp != nil)"
-    )
     let button = heldDown.map { Int($0.getIntegerValueField(.mouseEventButtonNumber)) }
     switch settled {
     case .fire(let binding):
@@ -443,9 +398,6 @@ final class MouseTap {
       }
       for event in [heldDown, heldUp].compactMap({ $0 }) {
         event.setIntegerValueField(.eventSourceUserData, value: Self.replayMarker)
-        Self.logger.notice(
-          "replay button=\(event.getIntegerValueField(.mouseEventButtonNumber)) type=\(event.type.rawValue) count=\(self.replayTimes.count)"
-        )
         event.post(tap: .cgSessionEventTap)
       }
     }
