@@ -203,14 +203,61 @@ nonisolated enum Changelog {
 
   // <generated:changelog> generated from CHANGELOG.md by `make changelog` — do not edit by hand
 
-  /// The most recent 4 releases, newest first.
+  /// The most recent 5 releases, newest first.
   ///
   /// Split into one `let` per release rather than a single nested literal.
   /// Swift's expression type-checker is superlinear in the depth of an array
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_3_0, v1_2_0, v1_1_0, v1_0_0]
+  static let releases: [Release] = [v1_4_0, v1_3_0, v1_2_0, v1_1_0, v1_0_0]
+
+  // swift-format-ignore
+  private static let v1_4_0: Release = Release(
+    version: "1.4.0",
+    date: "2026-09-18",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Read a session's conversation in a window of its own.",
+            body: [
+              "\"Read Transcript\", on a session's details or its right-click menu, opens what that session has been saying and doing — the turns, the thinking, the tool calls — in a window sized to read in, rather than in the sidebar's detail column, which wraps a conversation into a strip two or three words wide. Thinking and Tools are checkboxes in the footer, so a long session can be read as just the conversation, and the footer counts what the filters are hiding. A long tool result or a screenshot is cut short in the window and kept whole on disk. Claude Code sessions only: Codex and Grok Build write a transcript in a different format, and a session that has never been prompted has no transcript to read.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Follow a session as it works.",
+            body: [
+              "Follow, in the transcript window's footer, re-reads the file as it grows and keeps you at the newest turn — read a session beside the editor it is working in and watch the turns land. It is on by default and remembered for the next window. Expanding a row or changing a filter no longer yanks you to the bottom, so you can stop and read something while the session keeps going.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Choose what the transcript window is made of.",
+            body: [
+              "Settings ▸ General ▸ Transcript picks between Solid, Frosted, Desktop through and Glass. Solid is the default and stays the most readable: it is the only one whose contrast does not depend on the wallpaper behind it. The picker says what each one costs rather than what it looks like, because the other three get harder to read the busier the desktop is.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Start sessions in Ghostty.",
+            body: [
+              "Ghostty joins Terminal and iTerm in the terminal picker, and is offered only if you have it. It was left out on the belief that it could not run a session's startup script; measured against the call Armada actually makes, it runs it, starts in the right folder, and closes the surface when the session ends. One wart, and it is Ghostty's: launching it cold opens its own default window beside the session's.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 4,
+            headline: "Armada no longer quits while you resize a window.",
+            body: [
+              "Remembering a window's size wrote it out from inside the window's own layout pass, and that write could land back in the layout pass that was still running — which macOS refuses to re-enter, taking the app down with it. Resizing the main window or Settings could end the app outright. Sizes are still remembered, and one saved by an earlier version is still restored.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_3_0: Release = Release(

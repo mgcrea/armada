@@ -5,8 +5,44 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.3.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.4.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.4.0] - 2026-09-18
+
+### Added
+
+- **Read a session's conversation in a window of its own.** "Read Transcript", on a session's
+  details or its right-click menu, opens what that session has been saying and doing — the turns,
+  the thinking, the tool calls — in a window sized to read in, rather than in the sidebar's detail
+  column, which wraps a conversation into a strip two or three words wide. Thinking and Tools are
+  checkboxes in the footer, so a long session can be read as just the conversation, and the footer
+  counts what the filters are hiding. A long tool result or a screenshot is cut short in the window
+  and kept whole on disk. Claude Code sessions only: Codex and Grok Build write a transcript in a
+  different format, and a session that has never been prompted has no transcript to read.
+- **Follow a session as it works.** Follow, in the transcript window's footer, re-reads the file as
+  it grows and keeps you at the newest turn — read a session beside the editor it is working in and
+  watch the turns land. It is on by default and remembered for the next window. Expanding a row or
+  changing a filter no longer yanks you to the bottom, so you can stop and read something while the
+  session keeps going.
+- **Choose what the transcript window is made of.** Settings ▸ General ▸ Transcript picks between
+  Solid, Frosted, Desktop through and Glass. Solid is the default and stays the most readable: it is
+  the only one whose contrast does not depend on the wallpaper behind it. The picker says what each
+  one costs rather than what it looks like, because the other three get harder to read the busier
+  the desktop is.
+- **Start sessions in Ghostty.** Ghostty joins Terminal and iTerm in the terminal picker, and is
+  offered only if you have it. It was left out on the belief that it could not run a session's
+  startup script; measured against the call Armada actually makes, it runs it, starts in the right
+  folder, and closes the surface when the session ends. One wart, and it is Ghostty's: launching it
+  cold opens its own default window beside the session's.
+
+### Fixed
+
+- **Armada no longer quits while you resize a window.** Remembering a window's size wrote it out
+  from inside the window's own layout pass, and that write could land back in the layout pass that
+  was still running — which macOS refuses to re-enter, taking the app down with it. Resizing the
+  main window or Settings could end the app outright. Sizes are still remembered, and one saved by
+  an earlier version is still restored.
 
 ## [1.3.0] - 2026-09-18
 
