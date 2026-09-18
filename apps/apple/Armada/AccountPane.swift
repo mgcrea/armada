@@ -165,6 +165,12 @@ struct AccountPaneView: View {
                   FocusSession.focus(host, cwd: session.registry.cwd, session: session)
                 }
               }
+              if let transcript = session.transcript {
+                Button("Read Transcript") {
+                  TranscriptWindow.shared.show(
+                    url: transcript, name: session.displayName)
+                }
+              }
               // The fastest route to the thing people actually want a second window
               // for: another session on the same account, in the same project. No
               // folder to pick, because the row already names it.

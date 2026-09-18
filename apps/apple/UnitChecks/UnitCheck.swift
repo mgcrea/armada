@@ -25,6 +25,7 @@ struct UnitCheck {
     jsonLines()
     transcriptTitle()
     transcriptContext()
+    transcriptLog()
     transcriptQuota()
     contextWindow()
     usageForecast()
@@ -123,6 +124,169 @@ struct UnitCheck {
   }
 
   // MARK: - JSONLines
+
+  /// The reader behind the transcript pane.
+  ///
+  /// Everything checked here fails silently in the app: a line that throws during decode is
+  /// skipped, so a shape this parser does not expect renders as a conversation with a hole
+  /// in it rather than as an error. The three that actually bit during the measuring —
+  /// string `content`, base64 images, and a cut landing mid-character — each have a case.
+  static func transcriptLog() {
+    section("TranscriptLog")
+
+    func entries(_ lines: [String], options: TranscriptLog.Options = .init())
+      -> [TranscriptLog.Entry]
+    {
+      TranscriptLog.entries(
+        inChunk: Data(lines.joined(separator: "\n").utf8), droppingFirstLine: false,
+        options: options)
+    }
+
+    let turn = """
+      {"type":"user","uuid":"u1","timestamp":"2026-09-18T10:00:00.000Z",\
+      "message":{"role":"user","content":[{"type":"text","text":"why is it slow"}]}}
+      """
+    let reply = """
+      {"type":"assistant","uuid":"a1","timestamp":"2026-09-18T10:00:01.000Z",\
+      "message":{"role":"assistant","model":"claude-opus-5","content":[\
+      {"type":"thinking","thinking":"weighing it up"},\
+      {"type":"text","text":"because of the images"},\
+      {"type":"tool_use","name":"Bash","input":{"command":"du -sh .","description":"size"}}]}}
+      """
+    let result = """
+      {"type":"user","uuid":"u2","message":{"role":"user","content":[\
+      {"type":"tool_result","content":"3.5G\\t."}]}}
+      """
+
+    let conversation = entries([turn, reply, result])
+    expectEqual(
+      "a turn, a thought, a reply, a call and its result",
+      conversation.map(\.kind), [.user, .thinking, .assistant, .toolUse, .toolResult])
+    expectEqual("the model rides on the assistant's blocks", conversation[2].model, "claude-opus-5")
+    expectEqual("a tool call is named", conversation[3].tool, "Bash")
+    expectEqual(
+      "and summarised by the argument that says which, not by its whole input",
+      conversation[3].text, "du -sh .")
+    expectEqual(
+      "one line becomes several rows with ids of their own",
+      Set(conversation.map(\.id)).count, conversation.count)
+    expectEqual(
+      "the timestamp is passed through unparsed", conversation[0].at, "2026-09-18T10:00:00.000Z")
+
+    // The shape that made the first JSONDecoder version drop 56 lines of a 24MB file.
+    let bare = """
+      {"type":"user","uuid":"u3","message":{"role":"user","content":"just a string"}}
+      """
+    expectEqual(
+      "content as a bare string is a turn, not a dropped line",
+      entries([bare]).map(\.text), ["just a string"])
+
+    // 34% of a 24MB transcript. The payload must never become a String.
+    let image = """
+      {"type":"user","uuid":"u4","message":{"role":"user","content":[{"type":"tool_result",\
+      "content":[{"type":"image","source":{"type":"base64","media_type":"image/png",\
+      "data":"iVBORw0KGgoAAAANSUhEUg"}}]}]}}
+      """
+    expectEqual(
+      "an image is named, never decoded", entries([image]).map(\.text), ["[image]"])
+
+    // A sidechain is a conversation of its own; meta is injected context nobody typed.
+    let sidechain = """
+      {"type":"assistant","uuid":"s1","isSidechain":true,\
+      "message":{"role":"assistant","content":[{"type":"text","text":"subagent"}]}}
+      """
+    let meta = """
+      {"type":"user","uuid":"m1","isMeta":true,\
+      "message":{"role":"user","content":[{"type":"text","text":"injected"}]}}
+      """
+    check("subagent and meta turns are left out by default", entries([sidechain, meta]).isEmpty)
+    expectEqual(
+      "and come back when asked for",
+      entries([sidechain, meta], options: .init(includeSidechain: true, includeMeta: true)).count,
+      2)
+    check(
+      "thinking can be left out",
+      entries([reply], options: .init(includeThinking: false)).allSatisfy { $0.kind != .thinking })
+
+    // Entry types that are most of a transcript's lines and none of its conversation.
+    let noise = [
+      #"{"type":"ai-title","aiTitle":"Why it is slow"}"#,
+      #"{"type":"file-history-snapshot","snapshot":{"a":1}}"#,
+      #"{"type":"attachment","attachment":{"type":"model"}}"#,
+      #"{"type":"queue-operation","operation":"add"}"#,
+    ]
+    check(
+      "titles, snapshots, attachments and queue operations are not conversation",
+      entries(noise).isEmpty)
+
+    let compact = """
+      {"type":"system","uuid":"c1","compactMetadata":{"trigger":"manual",\
+      "preTokens":497468,"postTokens":17143}}
+      """
+    let boundary = entries([compact])
+    expectEqual("a compaction is a notice", boundary.map(\.kind), [.notice])
+    check(
+      "and says what it did",
+      boundary[0].text == "Compacted (manual): 497468 tokens became 17143.")
+
+    // The cut, which is the whole reason this file exists.
+    let long = String(repeating: "x", count: 5_000)
+    let big = """
+      {"type":"user","uuid":"u5","message":{"role":"user","content":[\
+      {"type":"tool_result","content":"\(long)"}]}}
+      """
+    let cut = entries([big])
+    expectEqual("a long result is cut to the cap", cut[0].text.utf8.count, 2_048)
+    expectEqual("and reports its uncut size in bytes", cut[0].fullBytes, 5_000)
+    check("and says it was cut", cut[0].truncated)
+    check("a short one is not", conversation[4].truncated == false)
+    expectEqual(
+      "the cap is a setting", entries([big], options: .init(cap: 100))[0].text.utf8.count, 100)
+
+    // A cut landing inside a multi-byte character must not produce a replacement glyph.
+    let accented = String(repeating: "é", count: 2_000)  // two bytes each
+    let unicode = """
+      {"type":"user","uuid":"u6","message":{"role":"user","content":[\
+      {"type":"tool_result","content":"\(accented)"}]}}
+      """
+    let trimmed = entries([unicode], options: .init(cap: 101))[0]
+    check("a cut backs up to a scalar boundary", trimmed.text.utf8.count == 100)
+    check("so no character is broken", !trimmed.text.contains("\u{FFFD}"))
+
+    // The byte range is what makes "show all" possible without an index.
+    let file = FileManager.default.temporaryDirectory
+      .appending(path: "armada-unit-\(UUID().uuidString).jsonl")
+    let text = ([turn, reply, big].joined(separator: "\n") + "\n")
+    try? Data(text.utf8).write(to: file)
+    defer { try? FileManager.default.removeItem(at: file) }
+    if let whole = TranscriptLog.whole(of: file) {
+      expectEqual("a file reads to the same entries as its buffer", whole.count, 5)
+      let cutEntry = whole.first { $0.truncated }
+      check("the cut entry is found again", cutEntry != nil)
+      if let cutEntry {
+        expectEqual(
+          "and reopens at full length from its byte range",
+          TranscriptLog.fullText(of: cutEntry, in: file)?.count, 5_000)
+        check(
+          "its range really is where the line sits",
+          Data(text.utf8)[cutEntry.line].starts(with: Data(#"{"type":"user""#.utf8)))
+      }
+      // A tail must not report an offset relative to the window it read.
+      if let tail = TranscriptLog.tail(of: file, bytes: 200) {
+        check(
+          "a tail's ranges are file offsets, not window offsets",
+          tail.allSatisfy { $0.line.lowerBound >= 0 && $0.line.upperBound <= text.utf8.count })
+        check(
+          "and a tail's entries reopen too",
+          tail.filter(\.truncated).allSatisfy { TranscriptLog.fullText(of: $0, in: file) != nil })
+      }
+    } else {
+      check("a file reads", false)
+    }
+
+    check("an empty buffer yields nothing", entries([]).isEmpty)
+    check("a line that is not JSON is skipped", entries(["{not json", turn]).count == 1)
+  }
 
   static func jsonLines() {
     section("JSONLines")

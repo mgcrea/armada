@@ -124,6 +124,9 @@ struct SessionDetail: View {
         }
         FocusButton(
           host: host, cwd: session.registry.cwd, session: session, didLookUp: didLookUpHost)
+        // Below Focus, above Fork: Focus takes you to the live session, this reads it
+        // without disturbing it, and Fork is the one that starts something new.
+        TranscriptButton(session: session)
         ForkButton(availability: .claude(session, in: account))
       }
       // Above "Session": the context is the live fact worth checking, while the

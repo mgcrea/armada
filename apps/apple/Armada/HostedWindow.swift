@@ -13,6 +13,7 @@ import SwiftUI
 /// menu that an `LSUIElement` app does not have.
 @MainActor
 final class HostedWindow {
+  /// The name the window is built with. `retitle` changes the live window, not this.
   private let title: String
   private let autosaveName: String
   private let contentSize: NSSize?
@@ -62,6 +63,16 @@ final class HostedWindow {
       width: max(minimum.width, degenerateContentSize.width),
       height: max(minimum.height, degenerateContentSize.height))
     return content.width >= required.width - 1 && content.height >= required.height - 1
+  }
+
+  /// Rename the window after it has been built.
+  ///
+  /// For a window whose content retargets — one Transcript window showing whichever
+  /// session was last asked for — the title set at `init` is the name of the *kind* of
+  /// window, and this is the name of what is in it. Safe before the first `show()`: the
+  /// stored title is what the window is then created with.
+  func retitle(_ title: String) {
+    window?.title = title
   }
 
   func show() {
