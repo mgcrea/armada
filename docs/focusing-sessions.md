@@ -62,8 +62,21 @@ Sessions with no host at all, where the button is replaced by an explanation:
 runs shells under a daemonized `iTermServer-3.5.x` that calls `setsid` and reparents to
 launchd, so the ppid walk reaches pid 1 without passing through iTerm. But that server
 lives *inside* the bundle, so the executable path names the application the process tree
-does not. Untested — neither iTerm2 nor Ghostty is installed on the Mac this was measured
-on.
+does not. Untested — iTerm2 is not installed on the Mac this was measured on.
+
+**Ghostty is not a special case, measured 2026-09-18** on 1.3.1, now that it is installed.
+The walk reaches it in three hops and needs nothing added:
+
+```
+48361 48344 ttys009  /bin/zsh                     ← the startup script
+48344 48343 ttys009  -/bin/zsh                    ← the login shell
+48343 38738 ttys009  /usr/bin/login               ← the containerPID, as for a Terminal tab
+38738     1 ??       /Applications/Ghostty.app/…/ghostty
+```
+
+So `SessionHost` resolves it like Terminal.app: `login` is the last ancestor below the
+application, and the tty is real (`/dev/ttys009`) rather than the `??` every VS Code-hosted
+session shows. Nothing daemonizes and nothing reparents to launchd.
 
 ## The window, by title
 
@@ -392,7 +405,9 @@ Needs `INFOPLIST_KEY_NSAppleEventsUsageDescription` and an Automation grant — 
 entitlements file**: `com.apple.security.automation.apple-events` is a sandbox entitlement
 and `ENABLE_APP_SANDBOX = NO`. Probe with `AEDeterminePermissionToAutomateTarget(…,
 askUserIfNeeded: false)` first so a denial degrades silently. Ghostty ships no scripting
-dictionary and would always fall back.
+dictionary and would always fall back — which costs it the tab, not the window: its
+ancestry walk and window title both work, so Focus reaches the Ghostty window exactly as
+it reaches a Terminal one.
 
 Note that **the tty is nil for every VS Code-hosted session** — measured, all 20 `claude`
 processes on this Mac show `??` under `ps -o tty`, because the extension speaks to the CLI

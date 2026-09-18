@@ -222,10 +222,16 @@ Each of these cost time here, and none is visible from the code that depends on 
   The same asymmetry `ClaudeConfigFolder.usageJSON` records: exporting the default
   folder's own path is not a no-op, it makes the session look signed out.
 - **A terminal only qualifies if opening a `.command` file *runs* it.** Terminal.app does,
-  measured; the file must also be `chmod 700` or it opens in an editor instead. That is
-  the whole of `TerminalApp.known`, and why Ghostty, WezTerm, kitty and Alacritty are not
-  in it — they take a command as an argument (`-e`) rather than as a document, which is a
-  second launch mechanism nobody here can test against. Adding one is a row plus a branch.
+  measured; the file must also be `chmod 700` or it opens in an editor instead. WezTerm,
+  kitty and Alacritty are out on the belief that they take a command as an argument (`-e`)
+  rather than as a document — which is an assumption, not a measurement, and the way to
+  settle it for any of them is to read `CFBundleDocumentTypes` in the bundle.
+- **Ghostty was out on that same assumption and it was wrong.** Ghostty 1.3.1 declares
+  `.command` and five other script extensions as "Terminal scripts", and measured on
+  2026-09-18 it runs the file, honours the script's own `cd`, and closes the surface on a
+  clean exit — which is what the startup script's wait-only-on-failure ending depends on.
+  It needed **no branch in `NewSession.start`**: the document path is Terminal.app's. A
+  cold launch opens Ghostty's own default window beside the session's; a warm one does not.
 - **`codex` is not on `PATH` on a Mac that runs Codex.** It ships inside the Codex app
   (`ChatGPT.app/Contents/Resources/codex`, `codex-cli 0.153.4` here) and inside the VS
   Code extension (`~/.vscode/extensions/openai.chatgpt-<version>/bin/<arch>/codex`).
