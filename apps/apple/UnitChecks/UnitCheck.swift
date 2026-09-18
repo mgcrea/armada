@@ -314,6 +314,54 @@ struct UnitCheck {
       check("a file reads", false)
     }
 
+    // Following reads from an offset, not a tail, so a burst bigger than any tail window
+    // cannot drop turns. The docs record a real ~140KB burst after a single turn.
+    let growing = FileManager.default.temporaryDirectory
+      .appending(path: "armada-unit-\(UUID().uuidString).jsonl")
+    let opening = ([turn, reply].joined(separator: "\n") + "\n")
+    try? Data(opening.utf8).write(to: growing)
+    defer { try? FileManager.default.removeItem(at: growing) }
+    if let first = TranscriptLog.whole(of: growing), let mark = first.last?.line.upperBound {
+      expectEqual("a first read takes everything", first.count, 4)
+      expectEqual(
+        "and a follow-up from its end finds nothing new",
+        TranscriptLog.entries(of: growing, from: mark)?.count, 0)
+
+      // A burst far larger than any tail window, so a tail-based follower would miss the
+      // beginning of it and this must not.
+      let filler = Array(
+        repeating: #"{"type":"file-history-snapshot","snapshot":{"a":1}}"#, count: 4_000)
+      // The turn goes FIRST and the noise on top of it: that is the shape of the real
+      // burst — a turn, then edits appending file-history entries after it — and the only
+      // arrangement where a tail-based reader actually loses something.
+      let burst = (([result] + filler).joined(separator: "\n") + "\n")
+      if let handle = try? FileHandle(forWritingTo: growing) {
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: Data(burst.utf8))
+        try? handle.close()
+      }
+      check("the burst is bigger than a 64KB tail", burst.utf8.count > 64 * 1024)
+      let appended = TranscriptLog.entries(of: growing, from: mark)
+      expectEqual("a read from the mark finds the turn buried under it", appended?.count, 1)
+      expectEqual("and it is the right one", appended?.first?.kind, .toolResult)
+      check(
+        "a tail of the same file would have missed it",
+        TranscriptLog.tail(of: growing, bytes: 64 * 1024)?.isEmpty == true)
+      // The offset a mid-file read reports has to be a file offset, or reopening a cut
+      // entry would seek into the wrong line.
+      if let entry = appended?.first, let bytes = try? Data(contentsOf: growing) {
+        check("its range is a file offset, not a window offset", entry.line.lowerBound > mark)
+        check("and lands on the start of a line", bytes[entry.line].first == UInt8(ascii: "{"))
+      }
+      // A file that shrank was replaced; old offsets mean nothing and must not be trusted.
+      try? Data("{}\n".utf8).write(to: growing)
+      expectEqual(
+        "a shrunken file yields nothing rather than garbage",
+        TranscriptLog.entries(of: growing, from: mark)?.count, 0)
+    } else {
+      check("a growing file reads", false)
+    }
+
     check("an empty buffer yields nothing", entries([]).isEmpty)
     check("a line that is not JSON is skipped", entries(["{not json", turn]).count == 1)
   }

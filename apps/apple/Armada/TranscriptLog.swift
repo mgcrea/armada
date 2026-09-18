@@ -174,6 +174,32 @@ nonisolated enum TranscriptLog {
       inChunk: chunk, droppingFirstLine: start > 0, baseOffset: Int(start), options: options)
   }
 
+  /// Everything appended since byte `offset`.
+  ///
+  /// **What following must use, rather than a fixed tail.** A 64KB tail is the right read for
+  /// a watcher sampling a file it does not track, but a follower knows exactly where it
+  /// stopped, and the difference is not academic: `docs/claude-code-sessions.md` records a
+  /// burst of edits appending **~140KB** of `file-history` entries after a single turn. A
+  /// follower on a 64KB window would have skipped everything before the last 64KB of that
+  /// burst, silently, and the conversation would simply be missing turns.
+  ///
+  /// `offset` is an entry's `line.upperBound`, which is the index of that line's newline —
+  /// a line boundary — so the read needs no `droppingFirstLine` and the empty first line is
+  /// skipped by `JSONLines` anyway.
+  ///
+  /// Returns nil when the file cannot be read, and an empty array when nothing is new.
+  static func entries(of url: URL, from offset: Int, options: Options = Options()) -> [Entry]? {
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
+    guard let size = try? handle.seekToEnd() else { return nil }
+    // A file that shrank was replaced or truncated; the caller's offsets mean nothing now.
+    guard size > UInt64(offset) else { return [] }
+    try? handle.seek(toOffset: UInt64(offset))
+    guard let chunk = try? handle.readToEnd() else { return nil }
+    return entries(
+      inChunk: chunk, droppingFirstLine: false, baseOffset: offset, options: options)
+  }
+
   /// Every entry in the file.
   ///
   /// **Call this off the main actor.** 16ms for a 6MB transcript, 31ms for a 24MB one, 47ms
