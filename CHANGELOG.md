@@ -5,8 +5,23 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.4.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.5.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.5.0] - 2026-09-21
+
+### Added
+
+- **Continue a Claude Code session on another account.** A session stopped at one account's limit
+  had no way onto the other. "Continue on" followed by the account's name, next to Fork Session in
+  a session's details, in its right-click menu and in the menu bar popover, copies the conversation
+  to that account and opens it there in a terminal. With more than two accounts it is a menu of
+  them, and with one account it is not shown at all. The session you started from keeps running,
+  untouched: the copy gets a session id of its own and arrives under the other account as a
+  separate row. Earlier turns stay counted against the account that spent them. This is the one
+  write Armada makes into Claude Code's own folders. It copies that session's transcript and
+  nothing else, and it refuses rather than overwrite a different conversation already there.
+  Claude Code sessions only, and only one that has been prompted at least once.
 
 ## [1.4.0] - 2026-09-18
 

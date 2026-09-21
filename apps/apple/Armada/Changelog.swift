@@ -210,7 +210,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_4_0, v1_3_0, v1_2_0, v1_1_0, v1_0_0]
+  static let releases: [Release] = [v1_5_0, v1_4_0, v1_3_0, v1_2_0, v1_1_0]
+
+  // swift-format-ignore
+  private static let v1_5_0: Release = Release(
+    version: "1.5.0",
+    date: "2026-09-21",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Continue a Claude Code session on another account.",
+            body: [
+              "A session stopped at one account's limit had no way onto the other. \"Continue on\" followed by the account's name, next to Fork Session in a session's details, in its right-click menu and in the menu bar popover, copies the conversation to that account and opens it there in a terminal. With more than two accounts it is a menu of them, and with one account it is not shown at all. The session you started from keeps running, untouched: the copy gets a session id of its own and arrives under the other account as a separate row. Earlier turns stay counted against the account that spent them. This is the one write Armada makes into Claude Code's own folders. It copies that session's transcript and nothing else, and it refuses rather than overwrite a different conversation already there. Claude Code sessions only, and only one that has been prompted at least once.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_4_0: Release = Release(
@@ -562,120 +580,6 @@ nonisolated enum Changelog {
             headline: "A renamed session keeps its name.",
             body: [
               "Claude Code goes on writing AI titles after a rename, and Armada showed whichever title was newest, so a rename reverted as soon as the next AI title landed. The newest title you set now wins, and an AI title is shown only when there is none.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_0_0: Release = Release(
-    version: "1.0.0",
-    date: "2026-09-14",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Sessions, per account.",
-            body: [
-              "Every live Claude Code session with its title, project, age and state, read from each config folder's registry and transcripts. Sortable by what needs you and groupable by project, with a context total per group.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "State read rather than inferred.",
-            body: [
-              "Claude Code's registry carries `status` (`busy` / `waiting` / `idle`) and names what a waiting session wants in `waitingFor`. The older write-recency and unanswered-`tool_use` inference survives only as the fallback for a folder on a build older than 2.1.269.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Context occupancy.",
-            body: [
-              "How full a session's window is, where it started, the rate it has grown at, a projection, and the last compaction — for both vendors, through one renderer so the two panes cannot drift.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "The prefix breakdown behind `/context`.",
-            body: [
-              "`get_context_usage`, asked of a spawned `claude`. It describes a comparable session rather than the watched one, and the pane says so.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Usage, per account.",
-            body: [
-              "The 5-hour and 7-day windows with reset times, asked live through the `get_usage` control request and falling back to the cache on disk, with a badge naming which answered and how old it is. Day-weighted pace forecasting, a Usage overview pane, and usage history recorded to disk.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Codex, as a spike.",
-            body: [
-              "A second sidebar section with its own sessions, plan limits and context, read from `~/.codex` — liveness from the writer locks, limits from `token_count` events in session logs, and a card in the global Usage pane beside the Claude accounts.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Focus.",
-            body: [
-              "A session row brings forward the application hosting it, resolved by walking the process tree, and raises that session's own window where Accessibility allows.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "New sessions.",
-            body: [
-              "The detail pane with nothing selected is an account overview — the folders that account ran in last, a folder picker, and a tally of what its sessions are doing. Starting one opens a terminal running `claude` or `codex` in that folder on that account: Armada writes a startup script and hands it to Terminal, never owns the process, and the new session arrives through the watchers like any other.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "Fork a session.",
-            body: [
-              "A copy of the session you are looking at, opened from where it stands, on the same account and in the same folder — from the detail pane, a row's right-click, or the menu bar popover. It is each vendor's own flag doing the work (`--resume … --fork-session` for Claude Code, `codex fork` for Codex), which is what makes it safe to offer for a session that is still running: forking mints a new id and leaves the original alone, where resuming would put two writers on one transcript. Claude Code records nothing linking the copy to its original and the pane says so; Codex writes `forked_from_id` into the new session's log.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "Mouse bindings.",
-            body: [
-              "Middle and extra mouse buttons can cycle the session list or send a keystroke, through a `CGEventTap` whose mask is two event types wide.",
-            ]),
-          Entry(
-            ordinal: 10,
-            headline: "Menu bar.",
-            body: [
-              "An accessory app with a per-account popover, and a template glyph that fills while anything is working and rings when a session wants attention, on a configurable ladder. Star one plan limit, in Usage or above an account's sessions, and its percentage sits beside the glyph in small type.",
-            ]),
-          Entry(
-            ordinal: 11,
-            headline: "Settings",
-            body: [
-              "on `swift-support-kit`'s shared scaffold, with About and Help panes.",
-            ]),
-          Entry(
-            ordinal: 12,
-            headline: "What's New",
-            body: [
-              ", a Settings pane generated from this file, with a dot in the menu bar popover while a release is unread.",
-            ]),
-          Entry(
-            ordinal: 13,
-            headline: "Updates, off until you say otherwise.",
-            body: [
-              "Sparkle reads one file, `armada.mgcrea.io/appcast.xml`, only once automatic checks are on or Check Now is pressed, and sends no identifier with it. A one-time card in the main window asks.",
-            ]),
-          Entry(
-            ordinal: 14,
-            headline: "A licence, and a 30-minute trial.",
-            body: [
-              "One key covers every 1.x release on every Mac you own and is verified offline, on the Mac. Without one Armada watches nothing and says so where the sessions would be; the trial runs everything, and is started by hand.",
-            ]),
-          Entry(
-            ordinal: 15,
-            headline: "A supervisor for the fleet, off until you turn it on.",
-            body: [
-              "Settings ▸ Supervisor runs a read-only MCP server on 127.0.0.1 and starts a Claude Code session with it attached, so you can ask one session which of the others need you, what any of them is doing or last said, and how much plan is left. Five tools, none of which can change a session, start one or write anywhere. The session runs on your own plan, and its connection details never touch your Claude configuration.",
-            ]),
-          Entry(
-            ordinal: 16,
-            headline: "A network claim you can check.",
-            body: [
-              "Armada reaches no network on its own apart from the opt-in update check, and listens on one socket, the supervisor's MCP endpoint, on 127.0.0.1 only. `SECURITY.md` says so, and `make audit` asserts it against the built app.",
             ]),
         ]),
     ])
