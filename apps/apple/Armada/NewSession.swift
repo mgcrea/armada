@@ -17,7 +17,9 @@ import Foundation
 /// vendor's own CLI the session id it already publishes — `--fork-session` for Claude
 /// Code, `codex fork` for Codex — and both of them do the copying. Armada reads no
 /// transcript to do it and writes nothing into either vendor's folder, so the one line
-/// this adds to the script is the whole of the feature.
+/// this adds to the script is the whole of the feature. The one exception is continuing a
+/// Claude Code session on another account, which has to copy the transcript across before
+/// this fork can find it: see `TranscriptHandover`.
 ///
 /// **Everything the session needs goes in the script, because nothing else survives
 /// the trip.** The new window's environment comes from the terminal, not from Armada

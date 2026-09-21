@@ -128,6 +128,7 @@ struct SessionDetail: View {
         // without disturbing it, and Fork is the one that starts something new.
         TranscriptButton(session: session)
         ForkButton(availability: .claude(session, in: account))
+        HandoverButton(availability: .claude(session, in: account))
       }
       // Above "Session": the context is the live fact worth checking, while the
       // pid and the folder are reference you look up once.

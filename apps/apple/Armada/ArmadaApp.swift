@@ -709,11 +709,13 @@ struct SummaryRow: View {
       SessionRowMenu(
         host: host, cwd: session.registry.cwd,
         fork: ForkAvailability.claude(session, in: account).target,
+        handovers: HandoverAvailability.claude(session, in: account).targets,
         session: session))
   }
 }
 
-/// The popover row's right-click: "Focus in Ghostty", "Fork Session", or neither.
+/// The popover row's right-click: "Focus in Ghostty", "Fork Session", "Continue on <account>",
+/// or none of them.
 ///
 /// **Still conditional, and that is the whole reason this is a modifier.** An
 /// unconditional `contextMenu` with no buttons in it opens an empty menu on
@@ -728,12 +730,14 @@ struct SessionRowMenu: ViewModifier {
   let host: SessionHost?
   let cwd: String
   let fork: ForkTarget?
+  /// Other Claude accounts this session can continue on. Empty for Codex and Grok rows.
+  var handovers: [HandoverTarget] = []
   /// For the tab `FocusSession` can ask for. Codex rows have none: they never have a
   /// host either, so they never focus.
   var session: Session? = nil
 
   func body(content: Content) -> some View {
-    if host != nil || fork != nil {
+    if host != nil || fork != nil || !handovers.isEmpty {
       content.contextMenu {
         if let host {
           Button("Focus in \(host.name)") {
@@ -752,6 +756,9 @@ struct SessionRowMenu: ViewModifier {
               fork.agent, in: fork.project, start: fork.start)
             MenuBarPanel.dismiss()
           }
+        }
+        HandoverContextItems(targets: handovers, fromMenuBar: true) {
+          MenuBarPanel.dismiss()
         }
       }
     } else {

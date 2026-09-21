@@ -49,6 +49,7 @@ struct UnitCheck {
     addedHomes()
     editorLaunch()
     claudeTrust()
+    transcriptHandover()
     messageHook()
     mouseChord()
     modifierHold()
@@ -2402,6 +2403,80 @@ struct UnitCheck {
   }
 
   // MARK: - ClaudeTrust
+
+  static func transcriptHandover() {
+    section("TranscriptHandover.stage")
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appending(
+      path: "armada-handover-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? fileManager.removeItem(at: root) }
+    let source = root.appending(path: "a/projects/-work-armada", directoryHint: .isDirectory)
+    let target = root.appending(path: "b/projects", directoryHint: .isDirectory)
+    let sidecar = source.appending(path: "s1/subagents", directoryHint: .isDirectory)
+    try? fileManager.createDirectory(at: sidecar, withIntermediateDirectories: true)
+    let transcript = source.appending(path: "s1.jsonl")
+    try? Data("{\"a\":1}\n{\"b\":2}\n{\"c\":".utf8).write(to: transcript)
+    try? Data("sub\n".utf8).write(to: sidecar.appending(path: "agent-1.jsonl"))
+    try? Data("tool\n".utf8).write(to: source.appending(path: "s1/result.txt"))
+
+    let landed = try? TranscriptHandover.stage(transcript: transcript, into: target)
+    let expected = target.appending(path: "-work-armada/s1.jsonl")
+    expectEqual("lands under the source's own folder name", landed?.path, expected.path)
+    expectEqual(
+      "stops at the last whole line",
+      (try? Data(contentsOf: expected)).map { String(decoding: $0, as: UTF8.self) },
+      "{\"a\":1}\n{\"b\":2}\n")
+    check(
+      "copies the sidecar's nested files",
+      fileManager.fileExists(
+        atPath: target.appending(path: "-work-armada/s1/subagents/agent-1.jsonl").path))
+    check(
+      "copies the sidecar's top-level files",
+      fileManager.fileExists(atPath: target.appending(path: "-work-armada/s1/result.txt").path))
+
+    // A second handover after the original grew replaces the earlier copy.
+    try? Data("{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n".utf8).write(to: transcript)
+    check(
+      "an earlier copy is refreshed",
+      (try? TranscriptHandover.stage(transcript: transcript, into: target)) != nil)
+    expectEqual(
+      "the refreshed copy has the new line",
+      (try? Data(contentsOf: expected)).map { String(decoding: $0, as: UTF8.self) },
+      "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n")
+
+    // A different conversation under the same id is left alone.
+    try? Data("{\"other\":1}\n".utf8).write(to: expected)
+    var conflict = false
+    do { try TranscriptHandover.stage(transcript: transcript, into: target) } catch let failure
+      as TranscriptHandover.Failure
+    {
+      conflict = failure == .conflict(expected)
+    } catch {}
+    check("refuses to overwrite another conversation", conflict)
+    expectEqual(
+      "and leaves it as it was",
+      (try? Data(contentsOf: expected)).map { String(decoding: $0, as: UTF8.self) },
+      "{\"other\":1}\n")
+
+    let partial = source.appending(path: "s2.jsonl")
+    try? Data("{\"half\":".utf8).write(to: partial)
+    var empty = false
+    do { try TranscriptHandover.stage(transcript: partial, into: target) } catch let failure
+      as TranscriptHandover.Failure
+    {
+      empty = failure == .empty
+    } catch {}
+    check("refuses a transcript with no whole line", empty)
+    check(
+      "and writes nothing for it",
+      !fileManager.fileExists(atPath: target.appending(path: "-work-armada/s2.jsonl").path))
+
+    var missing = false
+    do {
+      try TranscriptHandover.stage(transcript: source.appending(path: "nope.jsonl"), into: target)
+    } catch { missing = true }
+    check("a missing source throws", missing)
+  }
 
   static func claudeTrust() {
     section("ClaudeTrust.trusting")

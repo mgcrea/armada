@@ -188,6 +188,8 @@ struct AccountPaneView: View {
                     target.agent, in: target.project, start: target.start)
                 }
               }
+              HandoverContextItems(
+                targets: HandoverAvailability.claude(session, in: account).targets)
               Divider()
               ProjectContextButton(
                 path: session.registry.cwd, agent: .claude(accountID: account.id))
