@@ -10,7 +10,7 @@ import SwiftUI
 /// Reads, from left to right: the solid fill is spent, the ghost past it is where the
 /// current rate lands by the reset, the tick and the caret above it are where the pace
 /// profile says you would be, and the chevron appears only when the ghost runs off
-/// the end.
+/// the end — or, before there is a ghost, when the fill is well past the tick.
 struct UsageBar: View {
   let percent: Int
   let forecast: UsageForecast?
@@ -103,7 +103,7 @@ struct UsageBar: View {
         }
       }
       .overlay(alignment: .trailing) {
-        if let projected = forecast?.projected, projected > 1, !voided {
+        if forecast?.isOverrunning == true, !voided {
           Image(systemName: "chevron.compact.right")
             .font(.system(size: height + 3, weight: .bold))
             .foregroundStyle(.red)

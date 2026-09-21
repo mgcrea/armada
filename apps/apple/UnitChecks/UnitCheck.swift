@@ -793,6 +793,15 @@ struct UnitCheck {
     check(
       "a quiet first day is on pace rather than forfeiting a week it has barely begun",
       firstDay(used: 1)?.verdict == .onPace)
+    check(
+      "a first day well past its pace raises the overrun chevron with no projection",
+      burst?.projected == nil && burst?.isOverrunning == true)
+    check(
+      "a first day just past its pace does not",
+      firstDay(used: 5)?.isOverrunning == false)
+    check(
+      "once projected, the projection alone decides the chevron",
+      even?.isOverrunning == false && hot?.isOverrunning == true)
 
     // A week from Monday 00:00, worked 09:00 to 17:00 and nothing outside that: 56
     // working hours, four of them gone by 13:00 on the Monday.

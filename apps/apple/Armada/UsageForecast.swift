@@ -102,6 +102,21 @@ nonisolated struct UsageForecast: Sendable, Hashable {
   /// Points ahead of pace before it is worth a caption.
   static let significantDelta = 8.0
 
+  /// Points ahead of pace that raise the bar's overrun chevron while there is no
+  /// projection yet. Lower than `significantDelta` because the chevron is a mark,
+  /// not a line of text, and 16% spent against 9% expected is worth one.
+  static let earlyOverrunDelta = 5.0
+
+  /// Whether the bar should say this window is on course past its limit.
+  ///
+  /// The projection answers that once it exists. Before `minimumElapsed` it does
+  /// not, and without this a week opened at twice the pace drew a calm green bar
+  /// for its first ten percent — the stretch where slowing down is cheapest.
+  var isOverrunning: Bool {
+    if let projected { return projected > 1 }
+    return deltaPoints > Self.earlyOverrunDelta
+  }
+
   /// Points of forfeit worth warning about, and how close the reset has to be.
   static let significantForfeit = 25.0
   static let forfeitHorizon: TimeInterval = 24 * 60 * 60
