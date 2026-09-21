@@ -72,14 +72,39 @@ export const FEEDBACK_URL = "/feedback/";
 export const X_HANDLE = "@mgcrea";
 
 /**
- * The Cloudflare Web Analytics site token, or null while there is none.
+ * The Cloudflare Web Analytics site token, or null when the beacon is not ours to
+ * render.
  *
- * Each sibling has its own token, and one for armada.mgcrea.io has to be created
- * in the Cloudflare dashboard. Until it is, Layout.astro renders no beacon and the
- * privacy page does not describe one: a beacon with a borrowed token would count
- * this site's visits into another site's report.
+ * Deliberately null, and it must stay that way: armada.mgcrea.io is counted by the
+ * zone-wide Web Analytics site on `mgcrea.io`, which Cloudflare injects at the edge
+ * on every `*.mgcrea.io` response. Setting a token here would render a *second*
+ * beacon on every page, and the site would report into two places at once.
+ *
+ * It is null for a different reason than it looks. Cloudflare caps hostname-based
+ * (snippet) sites at ten per account on every plan, Free through Enterprise, and the
+ * ten siblings that predate this one hold all ten slots. A per-site token for armada
+ * could not be created even if someone wanted one. The zone site has no such cap.
+ *
+ * Because the beacon arrives from the edge rather than from Layout.astro, this constant
+ * no longer answers "is this site counted". `CF_ANALYTICS_COUNTED` does, and the privacy
+ * page reads that one.
  */
 export const CF_ANALYTICS_TOKEN: string | null = null;
+
+/**
+ * Whether this site's page views are counted at all, by a beacon from any source.
+ *
+ * Separate from `CF_ANALYTICS_TOKEN` because the two stopped being the same question
+ * when counting moved to the zone: the token says who renders the beacon, this says
+ * whether one runs. The privacy page must read this one. Gating that page on the token
+ * made it claim "It does not count page views today" while the edge-injected beacon was
+ * running — a privacy page denying a counter that does run is a false statement, and the
+ * more damaging direction of the two.
+ *
+ * True while the `mgcrea.io` zone has Web Analytics enabled. If that is ever turned off
+ * and no per-site token replaces it, set this back to false.
+ */
+export const CF_ANALYTICS_COUNTED = true;
 
 /**
  * Whether there is something to download. True from 1.0.0, 2026-09-14.

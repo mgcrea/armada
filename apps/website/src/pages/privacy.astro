@@ -10,15 +10,19 @@
  * The claims are the ones SECURITY.md is being reworded to. If that file and this
  * page disagree, SECURITY.md is right and this page is stale.
  *
- * "This site" describes Cloudflare Web Analytics only while CF_ANALYTICS_TOKEN is
- * set, because the beacon only renders then. A privacy page describing a counter
- * that does not run is still a false statement.
+ * "This site" describes Cloudflare Web Analytics while CF_ANALYTICS_COUNTED is true,
+ * which is whether a beacon runs — not CF_ANALYTICS_TOKEN, which is only whether we
+ * are the ones rendering it. Armada's beacon is injected by Cloudflare at the edge
+ * for the whole mgcrea.io zone, so the token is null and the counter runs anyway.
+ *
+ * A privacy page describing a counter that does not run is a false statement, and one
+ * denying a counter that does run is a worse one.
  */
 import Footer from "../components/Footer.astro";
 import Nav from "../components/Nav.astro";
 import {
   APP_NAME,
-  CF_ANALYTICS_TOKEN,
+  CF_ANALYTICS_COUNTED,
   DOCS,
   DOWNLOAD,
   FEEDBACK_API,
@@ -221,7 +225,7 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
         does not name. Cloudflare keeps its own request logs, as any host does.
       </p>
       {
-        CF_ANALYTICS_TOKEN ? (
+        CF_ANALYTICS_COUNTED ? (
           <p class={prose}>
             It counts page views with Cloudflare Web Analytics. That sets no cookie and stores nothing
             on your device, so there is no banner asking you to accept it. What it records is the page
