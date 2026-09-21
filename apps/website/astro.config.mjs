@@ -39,7 +39,7 @@ export default defineConfig({
        * `'self'` has to be repeated here. The per-script hashes are still appended.
        */
       scriptDirective: {
-        resources: ["'self'", "https://static.cloudflareinsights.com/beacon.min.js"],
+        resources: ["'self'", "https://static.cloudflareinsights.com"],
       },
       // The glance diagram's bars and the section glows carry computed widths and
       // gradients in per-element `style` attributes. CSP hashes never cover style
