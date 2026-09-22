@@ -25,6 +25,7 @@ designed and not started. See [implementation.md](implementation.md).
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
 | [landscape.md](landscape.md) | Competitors and standards (A2A) |
 | [spike/](spike/README.md) | Throwaway code the measurements came from |
+| [market-intel.md](market-intel.md) | Ledger of feature ideas accepted and rejected outside design.md's table. **Read before proposing a feature**, with design.md's "Rejected:" clauses |
 | [releasing.md](releasing.md) | Cutting a release: the secrets CI needs, the version copies it checks, and the push order |
 
 ## Related repos
