@@ -44,6 +44,7 @@ struct CodexPaneView: View {
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
+    .sessionClosingAlerts()
     .onReceive(clock) { now = $0 }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }

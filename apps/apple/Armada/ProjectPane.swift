@@ -235,6 +235,7 @@ struct ProjectsPaneView: View {
     .navigationTitle("Projects")
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
+    .sessionClosingAlerts()
     .confirmationDialog(
       "Remove “\(removing?.displayName ?? "")” from Projects?",
       isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),

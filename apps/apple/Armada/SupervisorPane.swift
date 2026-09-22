@@ -50,6 +50,7 @@ struct SupervisorPane: View {
     .onChange(of: enabled) { controller.sync() }
     .onChange(of: port) { controller.sync() }
     .newSessionFailureAlert()
+    .sessionClosingAlerts()
   }
 
   // MARK: - Server

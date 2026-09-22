@@ -70,6 +70,7 @@ struct AccountPaneView: View {
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
+    .sessionClosingAlerts()
     .onReceive(clock) { now = $0 }
     // When the rows change and when Armada is activated, never on the clock: every
     // answer is Accessibility IPC with the windows the sessions sit in.
@@ -193,6 +194,11 @@ struct AccountPaneView: View {
               Divider()
               ProjectContextButton(
                 path: session.registry.cwd, agent: .claude(accountID: account.id))
+              // Last and fenced off, as the one item here that ends something.
+              Divider()
+              Button("Close Session") {
+                SessionClosing.shared.close(session, in: account)
+              }
             }
           }
           .onChange(of: scrollTarget) { _, target in

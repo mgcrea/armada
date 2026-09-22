@@ -45,6 +45,7 @@ struct UnitCheck {
     usageIngest()
     projectStats()
     launchScript()
+    sessionClosePolicy()
     newAccount()
     addedHomes()
     editorLaunch()
@@ -1696,6 +1697,31 @@ struct UnitCheck {
       prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
     expectEqual(
       "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
+  }
+
+  // MARK: - SessionClosePolicy
+
+  static func sessionClosePolicy() {
+    section("SessionClosePolicy")
+    let now = date("2026-09-21T10:00:00Z")
+    let recent = now.addingTimeInterval(-2)
+    expectEqual(
+      "an agent waits out a close made two seconds ago",
+      SessionClosePolicy.recentClose(for: .agent, last: recent, now: now, throttle: 5), 2)
+    check(
+      "and closes once the throttle has run",
+      SessionClosePolicy.recentClose(
+        for: .agent, last: now.addingTimeInterval(-5), now: now, throttle: 5) == nil)
+    check(
+      "an agent with no close behind it goes at once",
+      SessionClosePolicy.recentClose(for: .agent, last: nil, now: now, throttle: 5) == nil)
+    check(
+      "a person clearing rows is never told to wait",
+      SessionClosePolicy.recentClose(for: .person, last: recent, now: now, throttle: 5) == nil)
+    check("an agent's close arms the throttle", SessionClosePolicy.armsThrottle(.agent))
+    check(
+      "a person's does not, so their click cannot refuse an agent",
+      !SessionClosePolicy.armsThrottle(.person))
   }
 
   // MARK: - NewAccount

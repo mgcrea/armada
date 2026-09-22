@@ -20,8 +20,10 @@ import Foundation
 /// here: a registry with no `startedAt` is refused rather than trusted, because the cost of being
 /// wrong is ending a stranger's process rather than raising the wrong app.
 ///
-/// **Throttled.** One close per `throttle` seconds, so a supervisor caught in a loop closes one
-/// session and is told to wait rather than emptying the fleet.
+/// **Throttled, for an agent.** One close per `throttle` seconds, so a supervisor caught in a
+/// loop closes one session and is told to wait rather than emptying the fleet. A person's close
+/// (`SessionClosing`) comes through the same checks and the same signal, without the throttle:
+/// see `SessionClosePolicy`.
 nonisolated struct SessionCloserBridge: SessionCloser {
   static let throttle: TimeInterval = 5
   /// Ten times the measured exit, for a session tearing down many MCP servers on a busy Mac.
@@ -47,14 +49,22 @@ nonisolated struct SessionCloserBridge: SessionCloser {
   }
 
   func closeSession(_ request: CloseSessionRequest) async -> CloseSessionOutcome {
-    switch await MainActor.run(body: { Self.prepare(request, now: Date()) }) {
+    await Self.close(request, origin: .agent)
+  }
+
+  static func close(_ request: CloseSessionRequest, origin: CloseOrigin) async
+    -> CloseSessionOutcome
+  {
+    switch await MainActor.run(body: { prepare(request, origin: origin, now: Date()) }) {
     case .refused(let message): return .refused(message)
-    case .ready(let target): return await Self.terminate(target)
+    case .ready(let target): return await terminate(target)
     }
   }
 
   @MainActor
-  static func prepare(_ request: CloseSessionRequest, now: Date) -> Preparation {
+  static func prepare(_ request: CloseSessionRequest, origin: CloseOrigin, now: Date)
+    -> Preparation
+  {
     guard EntitlementMonitor.shared.current.isEntitled else {
       return .refused("Armada has no licence and no trial running, so it closes nothing.")
     }
@@ -68,11 +78,20 @@ nonisolated struct SessionCloserBridge: SessionCloser {
 
     let name = session.displayName
     let state = session.state
-    if !request.force, state == .working || state == .runningTool {
+    if !request.force, state.isBusy {
       let doing = state == .runningTool ? "probably running a tool" : "working"
-      return .refused(
-        "\(name) is \(doing) now, so closing it would stop that work mid-turn. Ask the person, "
-          + "then pass `force: true` to close it anyway.")
+      switch origin {
+      case .agent:
+        return .refused(
+          "\(name) is \(doing) now, so closing it would stop that work mid-turn. Ask the "
+            + "person, then pass `force: true` to close it anyway.")
+      // Armada asks before it sends `force`, so this is a session that was idle when the
+      // button was pressed and had started a turn by the time the check ran.
+      case .person:
+        return .refused(
+          "\(name) started a turn as you closed it and is \(doing) now, so Armada left it "
+            + "running. Close it again to stop it mid-turn.")
+      }
     }
 
     let pid = session.registry.pid
@@ -85,12 +104,14 @@ nonisolated struct SessionCloserBridge: SessionCloser {
         "Armada cannot confirm that process \(pid) is still \(name), so it sends it nothing.")
     }
 
-    if let last = lastCloseAt, now.timeIntervalSince(last) < throttle {
+    if let elapsed = SessionClosePolicy.recentClose(
+      for: origin, last: lastCloseAt, now: now, throttle: throttle)
+    {
       return .refused(
-        "An agent closed a session \(Int(now.timeIntervalSince(last))) seconds ago. Wait a "
-          + "moment before closing another.")
+        "An agent closed a session \(Int(elapsed)) seconds ago. Wait a moment before closing "
+          + "another.")
     }
-    lastCloseAt = now
+    if SessionClosePolicy.armsThrottle(origin) { lastCloseAt = now }
 
     return .ready(
       Target(

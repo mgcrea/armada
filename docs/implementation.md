@@ -109,6 +109,7 @@ transcripts, separate rate limits.
 | `MessageHook` | the Stop hook's script and command, and the byte-level edit that adds or removes it in a `settings.json`; `make unit` runs the real script |
 | `MessageDelivery` / `SessionInbox` | Settings ▸ Supervisor ▸ Deliver messages: writes the script, syncs every account's `settings.json` to the switch at launch and on change; the inbox a message is written to, and whether a hook is listening |
 | `SessionCloser` (package) / `SessionCloserBridge` | `armada_close_session`'s door: one main-actor hop that re-checks the session's state and ties its pid to it by start time, then `SIGTERM`, a wait, and `SIGKILL` for one still there |
+| `SessionClosing` / `SessionClosePolicy` | Close Session in the details, the row menus and the popover: asks before closing a session that is mid-turn, sends it through `SessionCloserBridge` as a person, and holds the refusal for whichever pane is up; the policy is the one difference from an agent's close, no throttle, and `make unit` checks it |
 | `SessionFocuser` (package) / `SessionFocuserBridge` | `armada_focus_session`'s door: finds the session's host on the main actor, runs the rows' `FocusSession.focus`, and falls back to LaunchServices when Armada, not frontmost, has its activation declined; one focus per two seconds |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
 | `ArmadaMCP` (package) | the eleven tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, the transcript condenser; `make -C apps/apple test` |
@@ -600,7 +601,8 @@ listener was driven over a real socket with that table; the rest is known and un
   on 2026-09-16 against Claude Code 2.1.273 sessions in a pty: busy refused without `force`,
   closed with it in 0.66s with its running command gone, idle closed in 0.7s, a second close
   inside five seconds refused. What the Claude Code panel in VS Code does when its CLI is ended
-  underneath it was not tried.
+  underneath it was not tried. Close Session in the app reaches such a session too, by the same
+  signal.
 - **A fresh `sessionId` is unverified through the app.** The flag was measured (see
   claude-code-sessions.md), and resume was driven end to end, but no fresh Terminal launch was:
   the debug build had "start in VS Code" on, which by design returns no id.

@@ -61,6 +61,12 @@ enum SessionState: String, Sendable {
   /// usually reports `.waiting` before this ever fires.
   var isBestEffort: Bool { self == .runningTool }
 
+  /// Mid-turn, so closing now would stop work part-way. What `armada_close_session` refuses
+  /// without `force` and what Armada asks about before closing.
+  ///
+  /// Not `.waiting`: a session stopped at a prompt is doing nothing that a close interrupts.
+  var isBusy: Bool { self == .working || self == .runningTool }
+
   /// The registry's vocabulary, or nil for an absent or unrecognised status.
   ///
   /// Nil rather than a default: an unknown string is a Claude Code that has grown a

@@ -129,6 +129,7 @@ struct SessionDetail: View {
         TranscriptButton(session: session)
         ForkButton(availability: .claude(session, in: account))
         HandoverButton(availability: .claude(session, in: account))
+        CloseSessionButton(session: session, account: account)
       }
       // Above "Session": the context is the live fact worth checking, while the
       // pid and the folder are reference you look up once.

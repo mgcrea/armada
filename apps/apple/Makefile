@@ -247,6 +247,7 @@ UNIT_SRC := \
 	Armada/UsageIngest.swift \
 	Armada/ProjectStats.swift \
 	Armada/LaunchScript.swift \
+	Armada/SessionClosePolicy.swift \
 	Armada/NewAccount.swift \
 	Armada/CodexHome.swift \
 	Armada/GrokHome.swift \
