@@ -44,6 +44,7 @@ struct UnitCheck {
     usageLines()
     usageIngest()
     projectStats()
+    recentSessions()
     launchScript()
     sessionClosePolicy()
     newAccount()
@@ -1680,6 +1681,50 @@ struct UnitCheck {
     expectEqual(
       "and by folder, relative to the project", stats["outer"]?.byFolder.map(\.key).sorted(),
       ["", "apps/apple"])
+  }
+
+  // MARK: - RecentSessions
+
+  static func recentSessions() {
+    section("RecentSessions")
+    func row(
+      _ id: String, _ cwd: String, _ lastAt: String, account: String = "/a",
+      vendor: UsageVendor = .claude, isChild: Bool = false
+    ) -> UsageSessionRow {
+      UsageSessionRow(
+        account: account, vendor: vendor, sessionID: id, cwd: cwd,
+        firstAt: date(lastAt).addingTimeInterval(-600), lastAt: date(lastAt), isChild: isChild)
+    }
+    let candidates = [
+      ProjectPath.Candidate(id: "outer", keys: ["/work/armada"]),
+      ProjectPath.Candidate(id: "inner", keys: ["/work/armada/apps/website"]),
+    ]
+    let rows = [
+      row("old", "/work/armada", "2026-09-18T09:00:00Z"),
+      row("new", "/work/armada/apps/apple", "2026-09-21T09:00:00Z"),
+      row("mid", "/work/armada", "2026-09-20T09:00:00Z"),
+      row("live", "/work/armada", "2026-09-21T10:00:00Z"),
+      row("site", "/work/armada/apps/website", "2026-09-21T11:00:00Z"),
+      row("codex", "/work/armada", "2026-09-21T12:00:00Z", vendor: .codex),
+      row("child", "/work/armada", "2026-09-21T13:00:00Z", isChild: true),
+      row("elsewhere", "/work/other", "2026-09-21T14:00:00Z"),
+      row("new", "/work/armada/apps/apple", "2026-09-21T09:00:00Z", account: "/b"),
+    ]
+    func ids(_ project: String, limit: Int = 8) -> [String] {
+      RecentSessions.pick(
+        from: rows, project: project, candidates: candidates, live: ["live"], limit: limit
+      ).map(\.sessionID)
+    }
+    expectEqual(
+      "newest first, without the live one, another vendor's, a child's or another folder's",
+      ids("outer"), ["new", "mid", "old"])
+    expectEqual("a nested project keeps its own, as the stats count them", ids("inner"), ["site"])
+    expectEqual("the limit keeps the newest", ids("outer", limit: 2), ["new", "mid"])
+    expectEqual(
+      "an id the ledger holds under two accounts is one row, on the account that sorts first",
+      RecentSessions.pick(
+        from: rows, project: "outer", candidates: candidates, live: [], limit: 8
+      ).filter { $0.sessionID == "new" }.map(\.account), ["/a"])
   }
 
   // MARK: - LaunchScript

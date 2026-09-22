@@ -448,6 +448,7 @@ struct ProjectDetail: View {
     Form {
       newSessionSection
       liveSection
+      RecentSessionsSection(project: project)
       ProjectUsageSection(project: project)
       projectSection
     }

@@ -22,10 +22,6 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// A transcript written this recently may belong to a session Armada does not watch — one over
   /// ssh, or on a folder it has not discovered — so it is not resumed.
   static let recentWrite: TimeInterval = 30
-  /// How much of a transcript's head is read for the folder it ran in. Every entry after the
-  /// first few carries `cwd`, so this is generous.
-  static let cwdSearchBytes = 256 * 1024
-
   func startSession(_ request: StartSessionRequest) async -> StartSessionOutcome {
     await MainActor.run { Self.start(request, now: Date()) }
   }
@@ -112,32 +108,24 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// Continue a Claude Code session in a terminal, in the folder it ran in, on the account whose
   /// folder holds its transcript.
   ///
-  /// **Never one that is open.** Resuming a live session puts two writers on one transcript,
-  /// which is why the app's own action is Fork. Three checks stand in front of that: no watched
-  /// session has the id, the transcript has not been written in `recentWrite` seconds, and the
-  /// account is found by where the transcript is rather than by what the agent says. The folder
-  /// must be inside a saved project, the same boundary a fresh start keeps.
+  /// **Never one that is open.** The checks are `SessionResume.prepare`'s, shared with Resume in
+  /// the Projects pane; what is the agent's own is the wording, the throttle and the opening
+  /// message.
   @MainActor
   private static func resume(
     _ id: String, prompt: String?, now: Date, fallBackToGrok: Bool
   ) -> StartSessionOutcome {
-    let accounts = Accounts.shared.all
-    for account in accounts {
-      if let live = account.sessions.sessions.first(where: { $0.id == id }) {
-        return .refused(
-          "\(live.displayName) is still open in \(live.registry.projectName). Close it with "
-            + "armada_close_session first, or start a fresh session.")
-      }
-    }
-
-    var found: (Account, URL)?
-    for account in accounts {
-      if let url = TranscriptLocator.find(sessionId: id, cwd: "", in: account.folder.projectsDir) {
-        found = (account, url)
-        break
-      }
-    }
-    guard let (account, transcript) = found else {
+    let account: Account
+    let cwd: String
+    let project: Project
+    switch SessionResume.prepare(id, now: now) {
+    case .ready(let target):
+      (account, cwd, project) = (target.account, target.cwd, target.project)
+    case .refused(.live(let live)):
+      return .refused(
+        "\(live.displayName) is still open in \(live.registry.projectName). Close it with "
+          + "armada_close_session first, or start a fresh session.")
+    case .refused(.noTranscript):
       // An id with no vendor named is looked for in Grok Build too: both mint UUIDs, and an
       // agent resuming a session it read from the fleet should not have to know which kind.
       if fallBackToGrok,
@@ -146,30 +134,17 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         return resumeGrok(id, prompt: prompt, now: now)
       }
       return .refused("No Claude Code account on this Mac has a transcript for session \(id).")
-    }
-
-    let path = transcript.path(percentEncoded: false)
-    if let modified = try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]
-      as? Date, now.timeIntervalSince(modified) < recentWrite
-    {
+    case .refused(.recentWrite(let seconds)):
       return .refused(
-        "Session \(id) wrote to its transcript \(max(0, Int(now.timeIntervalSince(modified)))) "
-          + "seconds ago, so something may still have it open. Try again in a minute.")
-    }
-
-    guard let cwd = recordedFolder(of: transcript) else {
+        "Session \(id) wrote to its transcript \(seconds) seconds ago, so something may still "
+          + "have it open. Try again in a minute.")
+    case .refused(.noFolder):
       return .refused("Session \(id)'s transcript records no folder to resume it in.")
-    }
-    let store = ProjectStore.shared
-    guard let project = store.project(containing: cwd) else {
+    case .refused(.notInProject(let cwd)):
       return .refused(
         "Session \(id) ran in \((cwd as NSString).abbreviatingWithTildeInPath), which is not in "
           + "a saved project. Only sessions in saved projects are resumed.")
-    }
-    var isDirectory: ObjCBool = false
-    guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
-      isDirectory.boolValue
-    else {
+    case .refused(.folderGone(let cwd)):
       return .refused("\((cwd as NSString).abbreviatingWithTildeInPath) is not there any more.")
     }
 
@@ -252,21 +227,6 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         project: project.displayName, path: cwd, vendor: "grok", accountID: account.id,
         account: account.displayName, terminal: launcher.terminal.name,
         withPrompt: prompt != nil, sessionID: id, resumed: true))
-  }
-
-  /// The `cwd` the transcript's entries carry, from the first one that has it.
-  private static func recordedFolder(of transcript: URL) -> String? {
-    guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
-    defer { try? handle.close() }
-    guard let head = try? handle.read(upToCount: cwdSearchBytes) else { return nil }
-    for line in head.split(separator: 0x0A) {
-      guard line.range(of: Data(#""cwd":"#.utf8)) != nil,
-        let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-        let cwd = object["cwd"] as? String, !cwd.isEmpty
-      else { continue }
-      return cwd
-    }
-    return nil
   }
 
   /// The agent to launch: the account named, else the project's own when the vendor matches,

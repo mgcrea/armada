@@ -109,6 +109,7 @@ transcripts, separate rate limits.
 | `MessageHook` | the Stop hook's script and command, and the byte-level edit that adds or removes it in a `settings.json`; `make unit` runs the real script |
 | `MessageDelivery` / `SessionInbox` | Settings ▸ Supervisor ▸ Deliver messages: writes the script, syncs every account's `settings.json` to the switch at launch and on change; the inbox a message is written to, and whether a hook is listening |
 | `SessionCloser` (package) / `SessionCloserBridge` | `armada_close_session`'s door: one main-actor hop that re-checks the session's state and ties its pid to it by start time, then `SIGTERM`, a wait, and `SIGKILL` for one still there |
+| `RecentSessions` / `RecentSessionsSection` / `SessionResume` | a project's Recently ended: a filter over the ledger's `sessions` rows by the stats' own ownership rule (`make unit` checks it), titles read from each transcript's tail off the main actor, a click to read and a button to resume; `SessionResume.prepare` is the not-live, not-just-written, folder-in-a-saved-project check, shared with `armada_start_session`'s resume, with typed refusals each caller words |
 | `SessionClosing` / `SessionClosePolicy` | Close Session in the details, the row menus and the popover: asks before closing a session that is mid-turn, sends it through `SessionCloserBridge` as a person, and holds the refusal for whichever pane is up; the policy is the one difference from an agent's close, no throttle, and `make unit` checks it |
 | `SessionFocuser` (package) / `SessionFocuserBridge` | `armada_focus_session`'s door: finds the session's host on the main actor, runs the rows' `FocusSession.focus`, and falls back to LaunchServices when Armada, not frontmost, has its activation declined; one focus per two seconds |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
@@ -611,6 +612,29 @@ listener was driven over a real socket with that table; the rest is known and un
   second for as long as it watches.
 - **The supervisor is Claude-only.** Codex takes an MCP server through `-c mcp_servers`, so a
   Codex supervisor is a launch-script change, not a server change.
+
+### Where closing and resuming from the app are thin
+
+Built 2026-09-21: Close Session (`SessionClosing`) and a project's Recently ended
+(`RecentSessionsSection`). Checked by the Debug build, `make unit` and the package suite only.
+
+- **Neither was driven in the running app.** Not yet observed: the question before a busy
+  session closes, a close from the popover opening the main window to ask it, "Closing…" on
+  the button, a refusal reaching an alert in a pane other than the account's, a row appearing
+  under Recently ended, and Resume opening a terminal on the right account. The signal itself
+  is the one measured on 2026-09-16, reached by a new caller.
+- **Recently ended is as fresh as the usage index, not as the watchers.** A session that has
+  just ended is listed after the indexer's next pass: a minute after a watcher reports a write,
+  otherwise every five minutes while anything is working and every thirty when not
+  (`UsageIndex`). Resume refuses for 30 seconds after the last write in any case.
+- **What has no ledger row is never listed.** `UsageIndexer` writes a `sessions` row only for a
+  file that counted at least one message, so a session that was never prompted is absent, and
+  so is a pure mirror: a transcript whose every message id was already claimed by another file,
+  which is what Continue on another account stages. Dedupe is global and first-seen wins, so
+  which of two files is "the mirror" depends on which the indexer read first. **Unverified:**
+  whether a first pass can read the staged copy before the original, which would list the
+  conversation under the target account with the original's later turns as a second row.
+  `RecentSessions.pick` collapses rows by id for that reason.
 
 ### Where voice is thin
 
