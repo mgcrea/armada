@@ -192,6 +192,7 @@ struct AccountPaneView: View {
               HandoverContextItems(
                 targets: HandoverAvailability.claude(session, in: account).targets)
               Divider()
+              CopySessionIDButton(id: session.id)
               ProjectContextButton(
                 path: session.registry.cwd, agent: .claude(accountID: account.id))
               // Last and fenced off, as the one item here that ends something.

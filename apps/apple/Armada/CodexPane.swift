@@ -121,6 +121,7 @@ struct CodexPaneView: View {
                 }
               }
               Divider()
+              CopySessionIDButton(id: session.id)
               ProjectContextButton(path: session.meta.cwd, agent: .codex(homeID: account.id))
             }
           }

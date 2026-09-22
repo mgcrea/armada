@@ -78,6 +78,7 @@ struct GrokPaneView: View {
             }
           }
           Divider()
+          CopySessionIDButton(id: session.id)
           ProjectContextButton(path: session.summary.cwd, agent: .grok(homeID: account.id))
         }
       }
