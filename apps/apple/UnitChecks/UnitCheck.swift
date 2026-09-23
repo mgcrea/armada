@@ -198,6 +198,10 @@ struct UnitCheck {
     expectEqual("the model rides on the assistant's blocks", conversation[2].model, "claude-opus-5")
     expectEqual("a tool call is named", conversation[3].tool, "Bash")
     expectEqual(
+      "a copied transcript labels and times each entry, a blank line between",
+      TranscriptLog.plainText(Array(conversation.prefix(2))),
+      "You · 10:00:00\nwhy is it slow\n\nThinking · 10:00:01\nweighing it up")
+    expectEqual(
       "and summarised by the argument that says which, not by its whole input",
       conversation[3].text, "du -sh .")
     expectEqual(
@@ -300,6 +304,9 @@ struct UnitCheck {
         expectEqual(
           "and reopens at full length from its byte range",
           TranscriptLog.fullText(of: cutEntry, in: file)?.count, 5_000)
+        check(
+          "a copy is read uncut, not at the window's cap",
+          TranscriptLog.plainText(of: file)?.contains(String(repeating: "x", count: 5_000)) == true)
         check(
           "its range really is where the line sits",
           Data(text.utf8)[cutEntry.line].starts(with: Data(#"{"type":"user""#.utf8)))

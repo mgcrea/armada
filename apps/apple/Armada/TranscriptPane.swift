@@ -273,6 +273,9 @@ struct TranscriptPane: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .monospacedDigit()
+      Button("Copy") { TranscriptCopy.copy(url, thinking: showThinking, tools: showTools) }
+        .disabled(reader.entries.isEmpty)
+        .help("Copy the transcript as plain text, uncut, with what the filters show")
       Button("Refresh") { reader.refresh() }
         .disabled(follow)
     }
@@ -365,7 +368,7 @@ private struct EntryRow: View, Equatable {
   @ViewBuilder private var header: some View {
     HStack(spacing: 6) {
       Image(systemName: symbol).foregroundStyle(tint).font(.caption)
-      Text(label).font(.caption.weight(.semibold)).foregroundStyle(tint)
+      Text(entry.label).font(.caption.weight(.semibold)).foregroundStyle(tint)
       if let at = entry.at {
         // The timestamp is a raw ISO8601 string and stays one until a row is on screen.
         // Thirty conversions rather than two thousand — see `TranscriptLog.Entry.at`.
@@ -417,17 +420,6 @@ private struct EntryRow: View, Equatable {
 
   private var size: String {
     ByteCountFormatter.string(fromByteCount: Int64(entry.fullBytes), countStyle: .file)
-  }
-
-  private var label: String {
-    switch entry.kind {
-    case .user: "You"
-    case .assistant: "Agent"
-    case .thinking: "Thinking"
-    case .toolUse: entry.tool ?? "Tool"
-    case .toolResult: "Result"
-    case .notice: "Session"
-    }
   }
 
   private var symbol: String {

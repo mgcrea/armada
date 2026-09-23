@@ -80,6 +80,7 @@ struct RecentSessionsSection: View {
       Button("Read Transcript") {
         TranscriptWindow.shared.show(url: entry.transcript, name: entry.displayName)
       }
+      CopyTranscriptButton(url: entry.transcript)
     }
   }
 

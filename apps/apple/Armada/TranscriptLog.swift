@@ -108,6 +108,18 @@ nonisolated enum TranscriptLog {
     let block: Int
 
     var truncated: Bool { fullBytes > text.utf8.count }
+
+    /// Who or what the row is, as the window's header and a copied transcript both name it.
+    var label: String {
+      switch kind {
+      case .user: "You"
+      case .assistant: "Agent"
+      case .thinking: "Thinking"
+      case .toolUse: tool ?? "Tool"
+      case .toolResult: "Result"
+      case .notice: "Session"
+      }
+    }
   }
 
   struct Options: Sendable {
@@ -225,6 +237,34 @@ nonisolated enum TranscriptLog {
       case .blocks(let blocks) = line.message?.content, entry.block < blocks.count
     else { return nil }
     return blocks[entry.block].readableText(cap: .max)?.text
+  }
+
+  // MARK: - Copying
+
+  /// A whole transcript as plain text, for the pasteboard.
+  ///
+  /// **Re-read uncut rather than built from what a window holds.** A window's entries are
+  /// cut to `displayCap`, and a copy that stopped every long tool result at 2KB would be a
+  /// transcript with holes in it that says nothing about them. Only a tool call's arguments
+  /// stay at `argumentCap`: they are a header here as much as on screen.
+  ///
+  /// `thinking` and `tools` are the window's two filters, so a copy from the window holds
+  /// what the window shows. **Call this off the main actor**, as `whole(of:)`.
+  static func plainText(of url: URL, thinking: Bool = true, tools: Bool = true) -> String? {
+    guard
+      let all = whole(of: url, options: Options(includeThinking: thinking, cap: .max))
+    else { return nil }
+    return plainText(tools ? all : all.filter { $0.kind != .toolUse && $0.kind != .toolResult })
+  }
+
+  /// One block per entry, a label and the time over its text, a blank line between.
+  static func plainText(_ entries: [Entry]) -> String {
+    entries.map { entry in
+      var header = entry.label
+      // `HH:mm:ss` out of the ISO8601 string, as the window draws it.
+      if let at = entry.at { header += " · " + at.dropFirst(11).prefix(8) }
+      return header + "\n" + entry.text
+    }.joined(separator: "\n\n")
   }
 
   // MARK: - The narrow shape

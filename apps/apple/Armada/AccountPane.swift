@@ -172,6 +172,7 @@ struct AccountPaneView: View {
                     url: transcript, name: session.displayName)
                 }
               }
+              CopyTranscriptButton(url: session.transcript)
               // The fastest route to the thing people actually want a second window
               // for: another session on the same account, in the same project. No
               // folder to pick, because the row already names it.
