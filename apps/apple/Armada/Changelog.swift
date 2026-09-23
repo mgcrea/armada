@@ -210,7 +210,54 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_5_0, v1_4_0, v1_3_0, v1_2_0, v1_1_0]
+  static let releases: [Release] = [v1_6_0, v1_5_0, v1_4_0, v1_3_0, v1_2_0]
+
+  // swift-format-ignore
+  private static let v1_6_0: Release = Release(
+    version: "1.6.0",
+    date: "2026-09-23",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Close a session from Armada.",
+            body: [
+              "Close Session, last in a Claude Code session's details, its right-click menu and the menu bar popover, ends the session the way quitting it in its terminal would. An idle session or one waiting on you closes straight away, since the conversation stays on disk and can be picked up again. One that is working or running a tool asks first, because closing it stops the turn part-way. Closing several rows is that many clicks, with no wait in between.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Pick up a session that has ended.",
+            body: [
+              "Recently ended, under Live sessions in a project's details, lists the last eight Claude Code sessions that ran in that project and are no longer open, however they stopped. Click one to read its transcript, or press Resume to continue it in a terminal on the account it ran on. A session still open elsewhere is not listed, so one conversation never gets two writers.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Copy a transcript.",
+            body: [
+              "Copy Transcript, in a Claude Code session's right-click menu and in the Recently ended list, puts the whole conversation on the clipboard as plain text, each turn labelled and timed. Copy, in the transcript window's footer, does the same for what the Thinking and Tools checkboxes are showing. Either way every entry is copied at full length, including the long tool results the window cuts short.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Copy a session's id.",
+            body: [
+              "Copy Session ID, in the right-click menu of a Claude Code, Codex or Grok Build session, copies exactly the id `claude --resume` or `codex resume` takes, with nothing around it.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 4,
+            headline: "A burst early in the week now shows the overrun chevron.",
+            body: [
+              "For the first tenth of a weekly window there is too little history to project from, so usage far ahead of pace drew a calm bar. Until the projection is ready, the chevron now comes up once usage runs 5 points ahead of pace.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_5_0: Release = Release(
@@ -468,118 +515,6 @@ nonisolated enum Changelog {
             headline: "Grok Build turns no longer hang while a supervisor can message sessions.",
             body: [
               "Grok Build reads Claude Code's hooks out of the same `settings.json`, so the delivery hook held every Grok Build turn open until it timed out. It now recognises a Grok Build turn and steps out of the way at once.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_1_0: Release = Release(
-    version: "1.1.0",
-    date: "2026-09-16",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Projects.",
-            body: [
-              "A new pane under Usage lists the folders you work in, and starts a Claude Code or Codex session in one with a click, on the account the project remembers or on any other, even in a folder that has never had a session. Select a project to see the live sessions inside it, subfolders and worktrees included. Add several folders at once from the picker or by dropping them from Finder, and \"Add to Projects\" is on every session row and recent folder.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Tokens spent, per project.",
-            body: [
-              "A project's pane shows the tokens used in it over 7 days, 30 days and all time, split by model, account and subfolder. They are read in the background from every Claude Code transcript and Codex rollout on the Mac, each response counted once even when a resumed or forked session copies it, and kept after Claude Code clears old transcripts.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "`armada_get_projects`.",
-            body: [
-              "The MCP server's sixth read-only tool: each saved project's default agent and account, its live sessions, and its tokens over 7 days, 30 days and all time, with a split by model and account for one project. It says when older transcripts are still being read, so an agent does not quote a low total as final.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Agents can start sessions, when you allow it.",
-            body: [
-              "Settings ▸ Supervisor has an Allow writes switch, off by default. Turned on, the MCP server adds `armada_start_session`, which opens your terminal on a fresh Claude Code or Codex session in one of your saved projects, on its own account or one the agent names, optionally with an opening message. The session asks you for every permission as usual, the supervisor is not pre-allowed to call it, and a message that would be read as a flag, a shell command or a slash command is refused.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Connect a client with one click.",
-            body: [
-              "Settings ▸ Supervisor lists the MCP clients on your Mac, Claude Code once per account plus ChatGPT & Codex, Cursor and Visual Studio Code, and adds Armada to any of them with Configure or takes it back out with Remove. Nothing else in the client's config changes, the previous file is kept beside it as a backup, and a server of someone else's that already uses the name is never replaced without asking. Regenerating the token or changing the port updates every client configured this way. The copy-paste setup is still there for any other client.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Talk to Armada.",
-            body: [
-              "Settings ▸ Voice gives Armada a global shortcut: press it, or hold it, anywhere on the Mac, ask about your sessions out loud, and a card at the top of the screen shows the question and then the answer while it is spoken. Your speech is recognised on the Mac by Parakeet v3, which works out which of 25 languages you are speaking, or by Apple's dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text through your own `claude`, on the account you pick, and a follow-up continues the same conversation. Off by default; it reads the fleet through the MCP server in Settings ▸ Supervisor.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "A more natural voice for replies, on this Mac.",
-            body: [
-              "Settings ▸ Voice can download Kokoro, about 95 MB from huggingface.co, and read answers with it instead of a system voice. It runs on the Mac, reads English, and never makes an answer wait: a sentence goes to the system voice while Kokoro is still loading or when Kokoro cannot read it. Not offered on macOS 26.4 and 26.5, where an Apple bug crashes it.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Working hours for the weekly pace.",
-            body: [
-              "Settings ▸ Usage takes the hours you usually work and how much the rest of the day counts, so an evening's work is no longer measured against a week of round-the-clock days. The pace tick on a usage bar gains a caret above it, and hovering the bar says how many points ahead of or behind pace you are.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "Focus from the row.",
-            body: [
-              "Session rows in the menu bar popover and in an account's session list carry a Focus button that brings forward the app hosting the session. It is drawn bright when it will reach the session itself, and dimmer when it will stop at the window or the app.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "Focus reaches a session's own tab in VS Code.",
-            body: [
-              "For a session in the Claude Code extension, Focus raises the right window and then asks the extension to show that session's tab, which Accessibility cannot do. It asks only once the window in front is shown to hold the session, so a session is never opened a second time in another window. VS Code asks once whether Claude Code may open the link.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 10,
-            headline: "Sessions in a saved project skip Claude Code's trust dialog.",
-            body: [
-              "Starting a Claude Code session in a project you saved marks its folder trusted on that account, the flag \"Yes, I trust this folder\" sets, so the session opens on its prompt. It is the one thing Armada writes to Claude Code's configuration: one field in `.claude.json`, written under Claude Code's own lock and edited in place, with the rest of the file left exactly as it was.",
-            ]),
-          Entry(
-            ordinal: 11,
-            headline: "Armada runs a `claude` of its own while you talk to it.",
-            body: [
-              "Voice starts your installed `claude` headless with no built-in tools and only Armada's six read tools, keeps it for follow-up questions, and closes it after five idle minutes. It is the one agent process Armada owns rather than watches.",
-            ]),
-          Entry(
-            ordinal: 12,
-            headline: "One entitlement: the microphone.",
-            body: [
-              "The app is signed with `com.apple.security.device.audio-input`, used only while voice listens. `make audit` and `make sign` allow exactly that key and fail on any other.",
-            ]),
-          Entry(
-            ordinal: 13,
-            headline: "A second thing Armada can download: voice's speech models.",
-            body: [
-              "When Parakeet v3 or Kokoro is not already in FluidAudio's shared models folders, Settings ▸ Voice offers it, about 480 MB and 95 MB from huggingface.co, and fetches each only when you press its Download button. `make audit` allows FluidAudio's download code in its own framework, `ArmadaSpeech`, and nowhere else.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 14,
-            headline: "A renamed session keeps its name.",
-            body: [
-              "Claude Code goes on writing AI titles after a rename, and Armada showed whichever title was newest, so a rename reverted as soon as the next AI title landed. The newest title you set now wins, and an AI title is shown only when there is none.",
             ]),
         ]),
     ])

@@ -5,8 +5,37 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.5.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.6.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.6.0] - 2026-09-23
+
+### Added
+
+- **Close a session from Armada.** Close Session, last in a Claude Code session's details, its
+  right-click menu and the menu bar popover, ends the session the way quitting it in its terminal
+  would. An idle session or one waiting on you closes straight away, since the conversation stays on
+  disk and can be picked up again. One that is working or running a tool asks first, because closing
+  it stops the turn part-way. Closing several rows is that many clicks, with no wait in between.
+- **Pick up a session that has ended.** Recently ended, under Live sessions in a project's details,
+  lists the last eight Claude Code sessions that ran in that project and are no longer open, however
+  they stopped. Click one to read its transcript, or press Resume to continue it in a terminal on the
+  account it ran on. A session still open elsewhere is not listed, so one conversation never gets two
+  writers.
+- **Copy a transcript.** Copy Transcript, in a Claude Code session's right-click menu and in the
+  Recently ended list, puts the whole conversation on the clipboard as plain text, each turn labelled
+  and timed. Copy, in the transcript window's footer, does the same for what the Thinking and Tools
+  checkboxes are showing. Either way every entry is copied at full length, including the long tool
+  results the window cuts short.
+- **Copy a session's id.** Copy Session ID, in the right-click menu of a Claude Code, Codex or Grok
+  Build session, copies exactly the id `claude --resume` or `codex resume` takes, with nothing
+  around it.
+
+### Fixed
+
+- **A burst early in the week now shows the overrun chevron.** For the first tenth of a weekly
+  window there is too little history to project from, so usage far ahead of pace drew a calm bar.
+  Until the projection is ready, the chevron now comes up once usage runs 5 points ahead of pace.
 
 ## [1.5.0] - 2026-09-21
 
