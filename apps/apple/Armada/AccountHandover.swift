@@ -21,10 +21,24 @@ nonisolated struct HandoverTarget: Hashable, Sendable {
   var agent: NewSession.Agent { .claude(folder) }
   var start: NewSession.Start { .fork(sessionID: sessionID) }
 
-  var title: String { "Continue on \(accountName)" }
+  /// Settings ▸ General's "without opening a terminal": copy the transcript and stop there.
+  ///
+  /// For someone who continues in an editor rather than a terminal, switching a window's
+  /// account by hand and opening the conversation from Claude Code's own history. That opens
+  /// it under the id it already has, not a fork, so the note says to close this one first.
+  static let copyOnlyDefaultsKey = "armada.handoverCopyOnly"
+
+  /// Read at the click, like `NewSessionLauncher.terminal`.
+  static var copiesOnly: Bool { UserDefaults.standard.bool(forKey: copyOnlyDefaultsKey) }
+
+  var title: String {
+    Self.copiesOnly ? "Copy to \(accountName)" : "Continue on \(accountName)"
+  }
 
   var note: String {
-    "Armada copies this conversation to \(accountName) and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under \(accountName) as a separate, untitled row. Earlier turns stay counted against this account."
+    Self.copiesOnly
+      ? "Armada copies this conversation to \(accountName) and starts nothing. Open it from Claude Code's past conversations in a window on \(accountName), after closing this session, since it keeps the same session id there. Earlier turns stay counted against this account."
+      : "Armada copies this conversation to \(accountName) and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under \(accountName) as a separate, untitled row. Earlier turns stay counted against this account."
   }
 }
 
@@ -81,6 +95,7 @@ extension NewSessionLauncher {
       if fromMenuBar { AppDelegate.shared?.showMain() }
       return
     }
+    if HandoverTarget.copiesOnly { return }
     if fromMenuBar {
       startFromMenuBar(target.agent, in: target.project, start: target.start)
     } else {
@@ -106,6 +121,8 @@ extension NewSessionLauncher {
 /// "Continue on <account>", a menu of accounts when there are several, or why neither.
 struct HandoverButton: View {
   let availability: HandoverAvailability
+  /// Watched here, so the details pane redraws when Settings flips it.
+  @AppStorage(HandoverTarget.copyOnlyDefaultsKey) private var copiesOnly = false
 
   var body: some View {
     switch availability {
@@ -123,11 +140,15 @@ struct HandoverButton: View {
         Menu {
           HandoverMenuItems(targets: targets)
         } label: {
-          Label("Continue on Another Account", systemImage: "arrow.right.arrow.left")
+          Label(
+            copiesOnly ? "Copy to Another Account" : "Continue on Another Account",
+            systemImage: "arrow.right.arrow.left")
         }
         .fixedSize()
         Text(
-          "Armada copies this conversation to the account you pick and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under that account as a separate, untitled row."
+          copiesOnly
+            ? "Armada copies this conversation to the account you pick and starts nothing. Open it from Claude Code's past conversations in a window on that account, after closing this session, since it keeps the same session id there."
+            : "Armada copies this conversation to the account you pick and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under that account as a separate, untitled row."
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -166,7 +187,7 @@ struct HandoverContextItems: View {
 
   var body: some View {
     if targets.count > 1 {
-      Menu("Continue on Another Account") {
+      Menu(HandoverTarget.copiesOnly ? "Copy to Another Account" : "Continue on Another Account") {
         HandoverMenuItems(targets: targets, fromMenuBar: fromMenuBar, onStart: onStart)
       }
     } else {
