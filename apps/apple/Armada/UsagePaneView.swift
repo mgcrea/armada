@@ -15,7 +15,7 @@ struct UsagePaneView: View {
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
   @State private var history = UsageHistory.shared
-  @State private var now = Date()
+  @State private var now = AppClock.now
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
   @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
@@ -59,7 +59,7 @@ struct UsagePaneView: View {
     }
     .navigationTitle("Usage")
     .navigationSubtitle(subtitle)
-    .onReceive(clock) { now = $0 }
+    .onReceive(clock) { _ in now = AppClock.now }
   }
 
   private var profile: PaceProfile {

@@ -65,7 +65,7 @@ struct RecentSessionsSection: View {
             .truncationMode(.head)
         }
         Spacer(minLength: 8)
-        Text(entry.row.lastAt, format: .relative(presentation: .numeric))
+        Text(entry.row.lastAt, format: .clockRelative(presentation: .numeric))
           .font(.caption2)
           .foregroundStyle(.tertiary)
           .lineLimit(1)

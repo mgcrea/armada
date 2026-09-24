@@ -230,7 +230,7 @@ struct UsageResetLine: View {
   /// row short enough to leave the bar room.
   enum Style { case full, compact }
 
-  private static let compactFormat = Date.RelativeFormatStyle(
+  private static let compactFormat = ClockRelativeFormat(
     presentation: .numeric, unitsStyle: .narrow)
 
   var body: some View {
@@ -333,7 +333,7 @@ struct UsageVerdictLine: View {
       switch forecast.verdict {
       case .exhausting(let date):
         line(
-          "At this rate, 100% \(date, format: .relative(presentation: .named))", .orange,
+          "At this rate, 100% \(date, format: .clockRelative(presentation: .named))", .orange,
           help: "Projected from the rate so far in this window.")
       case .ahead(let points):
         line("\(Int(points.rounded())) points ahead of pace", .orange, help: Self.paceHelp)

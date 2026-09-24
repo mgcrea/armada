@@ -65,7 +65,7 @@ final class UsageIndex {
   /// day changed. Called from view bodies.
   func projectUsage(store: ProjectStore) -> [String: ProjectUsage] {
     let candidates = store.candidates
-    let now = Date()
+    let now = AppClock.now
     let day = LocalDay.key(now, calendar: .current)
     if let memo, memo.generation == ledger.generation, memo.day == day,
       memo.candidates == candidates
@@ -146,3 +146,11 @@ final class UsageIndex {
       || info.thermalState == .critical
   }
 }
+
+#if DEBUG
+  extension UsageIndex {
+    /// A capture's ledger. The indexer is never started, so no SQLite file is
+    /// opened. See `DemoSeed`.
+    func demoInstall(_ ledger: UsageLedgerSnapshot) { self.ledger = ledger }
+  }
+#endif

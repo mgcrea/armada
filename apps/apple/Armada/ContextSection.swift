@@ -214,7 +214,7 @@ private struct GrowthLine: View {
         .font(.caption2)
         .foregroundStyle(.secondary)
       if let full = growth.projectedFull(from: total, limit: limit, now: now) {
-        Text("~full \(full, format: .relative(presentation: .named))")
+        Text("~full \(full, format: .clockRelative(presentation: .named))")
           .font(.caption2)
           .foregroundStyle(.orange)
       }
@@ -240,7 +240,7 @@ private struct CompactionLine: View {
         Image(systemName: "arrow.down.right.and.arrow.up.left")
           .imageScale(.small)
         if let at = compaction.at {
-          Text("Compacted \(at, format: .relative(presentation: .named))")
+          Text("Compacted \(at, format: .clockRelative(presentation: .named))")
         } else {
           Text("Compacted")
         }
@@ -281,9 +281,10 @@ private struct PromptCacheLine: View {
         Image(systemName: warm ? "timer" : "snowflake")
           .imageScale(.small)
         if warm {
-          Text("Cache warm, expires ~\(cache.expiresAt, format: .relative(presentation: .named))")
+          Text(
+            "Cache warm, expires ~\(cache.expiresAt, format: .clockRelative(presentation: .named))")
         } else {
-          Text("Cache expired ~\(cache.expiresAt, format: .relative(presentation: .named))")
+          Text("Cache expired ~\(cache.expiresAt, format: .clockRelative(presentation: .named))")
         }
       }
       .font(.caption2)

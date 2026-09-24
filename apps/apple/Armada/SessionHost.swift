@@ -65,6 +65,10 @@ enum SessionHostLookup {
   }
 
   static func host(for registry: SessionRegistry) -> SessionHost? {
+    // A capture's pids are invented, and a lookup would walk whatever real process
+    // happens to hold one. The start-time guard in `resolve` would reject it, but a
+    // screenshot should not depend on which processes are running when it is taken.
+    if ScreenshotMode.isEnabled { return nil }
     let pid = registry.pid
     let start = ProcessAncestry.startTime(of: pid)
     // One syscall, and it covers both a session that has ended and a pid that has

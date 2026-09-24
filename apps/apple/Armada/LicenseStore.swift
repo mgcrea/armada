@@ -14,8 +14,10 @@ import Foundation
 /// DIVERGES from bastion and cupertino, which carry a `demoLicensed` branch for
 /// their screenshot captures — fenced `#if DEBUG`, because unfenced it would let a
 /// shipped binary answer the licence question from a flag rather than from a
-/// signature. Armada has no capture pipeline, so it has no branch at all: the only
-/// way to a licensed state here is a key that verifies.
+/// signature. Armada has a capture pipeline but no branch here at all: a capture
+/// hands `EntitlementMonitor` a licence directly, from `DemoSeed`, which is `#if
+/// DEBUG` in its entirety and never starts a watcher on the strength of it. The
+/// only way to a licensed state in a shipped build is a key that verifies.
 nonisolated enum LicenseStore {
   private static let defaultsKey = "license"
 

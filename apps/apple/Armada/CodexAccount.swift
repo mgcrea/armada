@@ -111,3 +111,10 @@ final class CodexAccounts {
   var awaitingInputCount: Int { all.reduce(0) { $0 + $1.sessions.awaitingInputCount } }
   var liveCount: Int { all.reduce(0) { $0 + $1.sessions.liveSessions.count } }
 }
+
+#if DEBUG
+  extension CodexAccounts {
+    /// A capture's Codex homes. See `DemoSeed`.
+    func demoInstall(_ accounts: [CodexAccount]) { all = accounts }
+  }
+#endif

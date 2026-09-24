@@ -45,6 +45,21 @@ final class MainWindowRoute {
     AppDelegate.shared?.showMain()
   }
 
+  #if DEBUG
+    /// Open the main window on a capture's stage, without writing the selection.
+    ///
+    /// `open(_:session:)` persists the sidebar selection, which a capture must not do,
+    /// and would lose anyway: `DemoSeed` pins that key in the argument domain, which
+    /// outranks anything written here. So the sidebar half is already in place and
+    /// this is only the parked session and the window.
+    func stageForScreenshot(_ item: SidebarItem, session: String?) {
+      target = item
+      self.session = session
+      token &+= 1
+      AppDelegate.shared?.showMain()
+    }
+  #endif
+
   /// Show the Projects pane with the project `id` selected. The row parked for that pane is
   /// a project rather than a session, and it is taken the same way.
   func open(project id: String) {

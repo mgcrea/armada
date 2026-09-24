@@ -10,7 +10,7 @@ struct CodexPaneView: View {
   let account: CodexAccount
 
   @State private var selection: String?
-  @State private var now = Date()
+  @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
   @State private var route = MainWindowRoute.shared
@@ -45,7 +45,7 @@ struct CodexPaneView: View {
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
     .sessionClosingAlerts()
-    .onReceive(clock) { now = $0 }
+    .onReceive(clock) { _ in now = AppClock.now }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
     }
@@ -225,7 +225,7 @@ struct CodexUsageHeader: View {
   private func lastTurn(_ observedAt: Date) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 3) {
       Text("last turn").font(.caption2).foregroundStyle(.tertiary)
-      Text(observedAt, format: .relative(presentation: .named))
+      Text(observedAt, format: .clockRelative(presentation: .named))
         .font(.caption)
         .foregroundStyle(.secondary)
     }

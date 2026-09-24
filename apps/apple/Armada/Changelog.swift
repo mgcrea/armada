@@ -152,13 +152,15 @@ nonisolated enum Changelog {
 
   /// Whether to draw an indicator anywhere.
   ///
-  /// DIVERGES from bastion and cupertino, which return false under a screenshot
-  /// capture. Armada has no `DemoSeed` and no capture pipeline, so there is
-  /// nothing to guard. The day it gets one, this guard arrives in the same change
-  /// as the four `HostedWindow`/`DockPresence` guards — see
-  /// `fleet-direct-conventions`, "the five guards move together".
+  /// False under a screenshot capture, as in bastion and cupertino: an indicator
+  /// is news about *this* install, and a plate that carries one depends on which
+  /// release the capturing Mac last read the notes for.
+  ///
+  /// One of the five screenshot guards, which move together — this one, and in
+  /// `HostedWindow` the frame restore, the frame saver and the activation, and the
+  /// activation in `DockPresence`. See `fleet-direct-conventions`.
   static var hasUnseen: Bool {
-    !unseen.isEmpty
+    !ScreenshotMode.isEnabled && !unseen.isEmpty
   }
 
   // MARK: - Rendering

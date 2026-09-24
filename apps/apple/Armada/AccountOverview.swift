@@ -99,7 +99,7 @@ struct NewSessionSection: View {
             }
             Spacer(minLength: 8)
             if let started = project.lastStartedAt {
-              Text(started, format: .relative(presentation: .numeric))
+              Text(started, format: .clockRelative(presentation: .numeric))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)

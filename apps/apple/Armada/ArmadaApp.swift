@@ -62,7 +62,7 @@ private struct MenuBarLabel: View {
   /// For `UsageWindow.hasRolled` alone: a starred window that turns over while
   /// nothing is polling must still drop its figure for the dash. A minute is finer
   /// than any window's reset needs, and the figures themselves arrive by observation.
-  @State private var now = Date()
+  @State private var now = AppClock.now
   private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -74,7 +74,7 @@ private struct MenuBarLabel: View {
       }
     }
     .accessibilityLabel(accessibilityLabel)
-    .onReceive(clock) { now = $0 }
+    .onReceive(clock) { _ in now = AppClock.now }
   }
 
   private var starred: (limit: MenuBarLimit, window: UsageWindow)? {
@@ -192,6 +192,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
+    // A screenshot capture, instead of everything below. Nothing real starts: no
+    // watcher, no probe, no MCP server, no hotkey, no event tap, no updater, and
+    // nothing written to the person's folders. `DockPresence` still observes, because
+    // its policy flip is what gives an `LSUIElement` app a window worth capturing.
+    #if DEBUG
+      if ScreenshotMode.isEnabled {
+        DemoSeed.apply()
+        DockPresence.observe()
+        DemoSeed.openStagedWindow()
+        return
+      }
+    #endif
     // Before any view reads `Changelog.hasUnseen`, or a fresh install draws the
     // What's New dot on its very first launch.
     Changelog.markSeenIfUnset()
@@ -266,7 +278,8 @@ struct StatusMenu: View {
   /// 4h" — and keeps it in step with the panes while it is open.
   var body: some View {
     TimelineView(.periodic(from: .now, by: 1)) { timeline in
-      panel(now: timeline.date)
+      // The timeline's date is the system clock; a capture draws at `AppClock`'s.
+      panel(now: AppClock.pinned ?? timeline.date)
     }
     // Belt and braces beside the timeline. The timeline keeps the *rendering* honest;
     // this asks for a fresh *reading* the moment the panel is opened, rather than

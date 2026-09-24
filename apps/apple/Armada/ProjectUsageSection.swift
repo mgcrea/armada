@@ -64,7 +64,7 @@ struct ProjectUsageSection: View {
         LabeledContent("Sessions", value: (usage?.sessions[window] ?? 0).formatted())
         if let last = usage?.lastActive {
           LabeledContent("Last active") {
-            Text(last, format: .relative(presentation: .named))
+            Text(last, format: .clockRelative(presentation: .named))
           }
         }
       }

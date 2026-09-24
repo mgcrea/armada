@@ -22,6 +22,11 @@ enum AppInfo {
   /// The marketing version alone, for the places that show it in passing rather
   /// than as an About line: the menu bar popover and the sidebar footer.
   static var shortVersion: String {
+    // Pinned under a capture, so the sidebar footer on every plate says the same
+    // thing whichever build took it — and never "-dev", which a capture always is.
+    #if DEBUG
+      if ScreenshotMode.isEnabled { return DemoSeed.version }
+    #endif
     let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     return short + developmentSuffix
   }

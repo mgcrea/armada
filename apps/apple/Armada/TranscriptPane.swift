@@ -67,6 +67,11 @@ final class TranscriptReader {
         entries = loaded
         known = Set(loaded.map(\.id))
         readThrough = loaded.last?.line.upperBound ?? 0
+        #if DEBUG
+          // The one screen a capture has to wait for: the file is read on a detached
+          // task, so the window is up and still empty for a moment before this.
+          DemoSeed.signalReady(from: .transcript)
+        #endif
       } else {
         failure = "\(url.lastPathComponent) could not be read."
       }

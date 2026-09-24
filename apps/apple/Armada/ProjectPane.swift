@@ -546,7 +546,7 @@ struct ProjectDetail: View {
               }
               Spacer(minLength: 8)
               if let last = session.lastActivity {
-                Text(last, format: .relative(presentation: .numeric))
+                Text(last, format: .clockRelative(presentation: .numeric))
                   .font(.caption2)
                   .foregroundStyle(.tertiary)
                   .lineLimit(1)

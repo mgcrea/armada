@@ -220,3 +220,12 @@ struct LicenceStatusLine: View {
     }
   }
 }
+
+#if DEBUG
+  extension EntitlementMonitor {
+    /// A capture's entitlement, set rather than verified. It unlocks nothing: in a
+    /// capture `apply()` is never called, so no watcher starts on the strength of
+    /// it. See `DemoSeed` and `LicenseStore`.
+    func demoInstall(_ entitlement: Entitlement) { current = entitlement }
+  }
+#endif

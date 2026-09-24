@@ -8,7 +8,7 @@ struct GrokPaneView: View {
   let account: GrokAccount
 
   @State private var selection: String?
-  @State private var now = Date()
+  @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
   @State private var route = MainWindowRoute.shared
 
@@ -23,7 +23,7 @@ struct GrokPaneView: View {
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
     .sessionClosingAlerts()
-    .onReceive(clock) { now = $0 }
+    .onReceive(clock) { _ in now = AppClock.now }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
     }
@@ -293,7 +293,7 @@ struct GrokSessionDetail: View {
         }
         if let created = session.summary.createdAt {
           LabeledContent("Started") {
-            Text(created, format: .relative(presentation: .named))
+            Text(created, format: .clockRelative(presentation: .named))
           }
         }
       } header: {

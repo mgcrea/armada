@@ -557,3 +557,10 @@ final class SessionWatcher {
     return awaiting
   }
 }
+
+#if DEBUG
+  extension SessionWatcher {
+    /// A capture's sessions, never scanned. See `DemoSeed`.
+    func demoInstall(_ sessions: [Session]) { self.sessions = sessions }
+  }
+#endif

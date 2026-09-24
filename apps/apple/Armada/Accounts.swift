@@ -285,3 +285,11 @@ final class Accounts {
     }
   }
 }
+
+#if DEBUG
+  extension Accounts {
+    /// A capture's accounts. `start()` is never called, so no timer, probe or
+    /// FSEvents stream exists to replace them. See `DemoSeed`.
+    func demoInstall(_ accounts: [Account]) { all = accounts }
+  }
+#endif

@@ -11,7 +11,7 @@ struct AccountPaneView: View {
   let account: Account
 
   @State private var selection: String?
-  @State private var now = Date()
+  @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
   @State private var route = MainWindowRoute.shared
@@ -71,7 +71,7 @@ struct AccountPaneView: View {
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
     .sessionClosingAlerts()
-    .onReceive(clock) { now = $0 }
+    .onReceive(clock) { _ in now = AppClock.now }
     // When the rows change and when Armada is activated, never on the clock: every
     // answer is Accessibility IPC with the windows the sessions sit in.
     .task(id: account.sessions.sessions.map(\.id) + ["\(focusEpoch)"]) {
@@ -506,7 +506,7 @@ struct StalenessBadge: View {
           .lineLimit(1)
         case .compact:
           Text(
-            "\(source == .live ? "checked" : "figures from") \(fetchedAt, format: .relative(presentation: .named))"
+            "\(source == .live ? "checked" : "figures from") \(fetchedAt, format: .clockRelative(presentation: .named))"
           )
           .font(.caption2)
           .foregroundStyle(
@@ -531,7 +531,7 @@ struct StalenessBadge: View {
 
   /// The age itself, as `.full` and `.inline` both write it.
   private func relative(_ fetchedAt: Date, age: TimeInterval) -> some View {
-    Text(fetchedAt, format: .relative(presentation: .named))
+    Text(fetchedAt, format: .clockRelative(presentation: .named))
       .font(.caption)
       .foregroundStyle(age > Self.fresh ? .secondary : .primary)
   }

@@ -99,6 +99,17 @@ final class HostedWindow {
 
   func show() {
     if window == nil {
+      // The size a capture is composed at, when this launch is one. See
+      // `DemoSeed.contentSize(for:)` for why it has to be the size the window is born
+      // with rather than a resize afterwards.
+      #if DEBUG
+        let contentSize =
+          ScreenshotMode.isEnabled
+          ? DemoSeed.contentSize(for: autosaveName) ?? self.contentSize : self.contentSize
+      #else
+        let contentSize = self.contentSize
+      #endif
+
       let hosting = NSHostingController(rootView: content())
       // The minimum and nothing else. An `NSHostingController` will otherwise
       // push SwiftUI's preferred size onto the window as well, and for a window
@@ -138,7 +149,12 @@ final class HostedWindow {
       // The answer is not to stop persisting but to persist somewhere that is not inside
       // a layout pass, which is `FrameSaver` below. The return value is the question that
       // used to be asked of `UserDefaults` directly: has anybody ever sized this window?
-      let remembered = created.setFrameUsingName(autosaveName)
+      //
+      // Not under a capture, which short-circuits the restore as well as answering the
+      // question: a remembered frame is the developer's, and a screenshot must not
+      // inherit whatever size they last dragged this window to. One of the five
+      // screenshot guards — see `Changelog.hasUnseen`.
+      let remembered = !ScreenshotMode.isEnabled && created.setFrameUsingName(autosaveName)
       // A remembered frame wins — but only if the content can live in it. AppKit
       // restores whatever was last written under that key, including a frame no
       // layout can satisfy, and a SwiftUI `NavigationSplitView` handed one of
@@ -169,7 +185,11 @@ final class HostedWindow {
         created.saveFrame(usingName: autosaveName)
       }
       window = created
-      frameSaver = FrameSaver(window: created, name: autosaveName)
+      // A capture opens one window, shoots it and exits; it has nothing to remember,
+      // and remembering would write its staged size into the developer's defaults.
+      if !ScreenshotMode.isEnabled {
+        frameSaver = FrameSaver(window: created, name: autosaveName)
+      }
 
       // SwiftUI sizes a `NavigationSplitView` window to its own idea of the
       // content's width, on a layout pass that lands after `show()` has already
@@ -195,7 +215,15 @@ final class HostedWindow {
     // cooperative call asks the frontmost app to yield and is refused when nobody
     // does, which is every time the request arrives from a menu bar extra: the
     // user is in some other app, and that app was never asked.
-    NSApp.activate(ignoringOtherApps: true)
+    //
+    // Withheld under a `--no-activate` capture, which must never take the screen. A
+    // FOCUSED capture keeps it, and needs it: on macOS 14+ activation is cooperative,
+    // and appshot cannot raise an app that has never been active — every shot fails
+    // with "would not come to the front" without this call. The staged app activating
+    // itself is what the driver's own re-activation before each shot builds on.
+    if !ScreenshotMode.staysInBackground {
+      NSApp.activate(ignoringOtherApps: true)
+    }
     DockPresence.update()
   }
 }

@@ -188,6 +188,9 @@ final class ProjectStore {
   }
 
   func folderExists(_ project: Project) -> Bool {
+    // A capture's projects are invented and absent by construction — `DemoSeed`
+    // refuses to run if one exists — so every row would draw "not there any more".
+    if ScreenshotMode.isEnabled { return true }
     var isDirectory: ObjCBool = false
     return FileManager.default.fileExists(atPath: project.path, isDirectory: &isDirectory)
       && isDirectory.boolValue
@@ -268,3 +271,11 @@ extension NewSession.Agent {
     }
   }
 }
+
+#if DEBUG
+  extension ProjectStore {
+    /// A capture's projects, never loaded from or written to `projects.json`.
+    /// See `DemoSeed`.
+    func demoInstall(_ projects: [Project]) { set(projects, persist: false) }
+  }
+#endif

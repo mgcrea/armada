@@ -167,6 +167,10 @@ final class CodexWatcher {
   /// Coalesce: a burst of writes during a turn is one scan, and a scan that
   /// arrives while one is running sets a flag rather than piling up.
   func scheduleScan() {
+    // A capture's sessions are seeded in memory and its home does not exist, so a scan
+    // would find nothing and replace them with it. The menu bar panel asks for one on
+    // every appearance.
+    guard !ScreenshotMode.isEnabled else { return }
     guard !isScanning else {
       wantsAnotherScan = true
       return
@@ -376,3 +380,14 @@ final class CodexWatcher {
     return running ? .working : .awaitingInput
   }
 }
+
+#if DEBUG
+  extension CodexWatcher {
+    /// A capture's sessions and limits, never read from a rollout. See `DemoSeed`.
+    func demoInstall(_ sessions: [CodexSession], rateLimits: CodexRateLimits) {
+      self.sessions = sessions
+      self.rateLimits = rateLimits
+      didScan = true
+    }
+  }
+#endif

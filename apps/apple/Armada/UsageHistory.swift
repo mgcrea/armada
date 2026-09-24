@@ -133,3 +133,10 @@ final class UsageHistory {
     }
   }
 }
+
+#if DEBUG
+  extension UsageHistory {
+    /// A capture's history, never loaded and never written. See `DemoSeed`.
+    func demoInstall(_ samples: [String: [UsageSample]]) { self.samples = samples }
+  }
+#endif

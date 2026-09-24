@@ -104,6 +104,9 @@ final class Account: Identifiable {
   /// therefore never allowed to overwrite a live one that is still current — see
   /// `adopt`.
   func refreshConfig() {
+    // A capture's accounts are seeded in memory and their folders do not exist, so a
+    // read here would blank the fixture's model id rather than refresh anything.
+    guard !ScreenshotMode.isEnabled else { return }
     didReadUsage = true
     // One field, and only because nothing else on disk records a model id with its
     // variant suffix — see `ClaudeConfigFolder.settingsJSON`. A missing or
@@ -130,6 +133,8 @@ final class Account: Identifiable {
   /// `ClaudeControl`'s check before a process is spawned and this declines to adopt
   /// whatever a probe already running brings back.
   func probeUsage() async {
+    // Spawns `claude`, which talks to the network as whoever is signed in.
+    guard !ScreenshotMode.isEnabled else { return }
     guard let probed = await Self.probe(folder), !Task.isCancelled else { return }
     adopt(probed)
   }
@@ -160,3 +165,19 @@ final class Account: Identifiable {
     UsageHistory.shared.record(new, for: id)
   }
 }
+
+#if DEBUG
+  extension Account {
+    /// A capture's account, filled in memory. See `DemoSeed`.
+    func demoInstall(
+      identity: AccountIdentity?, usage: UsageSnapshot, modelID: String,
+      recentProjects: [RecentProject]
+    ) {
+      self.identity = identity
+      self.usage = usage
+      self.modelID = modelID
+      self.recentProjects = recentProjects
+      didReadUsage = true
+    }
+  }
+#endif

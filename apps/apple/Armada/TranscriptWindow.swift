@@ -65,6 +65,7 @@ struct TranscriptWindowView: View {
 
   var body: some View {
     content
+      .screenshotSubject()
       // The window's own background is chrome, not content, so the change has to reach the
       // `NSWindow` as well as the view that draws the material.
       .onChange(of: storedStyle) { target.applyStoredStyle() }

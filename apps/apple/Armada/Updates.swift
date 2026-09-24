@@ -18,9 +18,11 @@ import SwiftUI
 /// refuses to ship without rather than a sentence in a settings pane.
 ///
 /// Cupertino's controller, copied, less what Armada does not have: no screenshot
-/// capture to stay out of, no bridge that can start the app in the background,
-/// and no child processes of its own to stop before a relaunch — the `claude`
-/// probes `ClaudeControl` spawns answer one question and exit.
+/// guard of its own (a capture returns from `applicationDidFinishLaunching` before
+/// `startIfConsented` is reached, so the updater never exists in one), no bridge
+/// that can start the app in the background, and no child processes of its own to
+/// stop before a relaunch — the `claude` probes `ClaudeControl` spawns answer one
+/// question and exit.
 @MainActor
 @Observable
 final class UpdateController: NSObject {
@@ -244,6 +246,6 @@ struct UpdatesPane: View {
   /// as a missing value rather than as the answer.
   private var lastCheck: String {
     guard let last = updates.lastCheck else { return "Not checked yet" }
-    return "Last checked \(last.formatted(.relative(presentation: .named)))"
+    return "Last checked \(last.formatted(.clockRelative(presentation: .named)))"
   }
 }

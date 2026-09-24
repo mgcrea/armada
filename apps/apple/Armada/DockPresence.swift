@@ -30,7 +30,11 @@ enum DockPresence {
     NSApp.setActivationPolicy(wanted)
     // Becoming `.regular` does not bring the app forward on its own, and the
     // window that triggered this is the reason the user is here.
-    if wanted == .regular {
+    //
+    // Not under a `--no-activate` capture, which exists so that a run never takes the
+    // screen from whoever is working. The policy flip above still happens; only the
+    // activation is withheld. One of the five screenshot guards — see `Changelog.hasUnseen`.
+    if wanted == .regular, !ScreenshotMode.staysInBackground {
       NSApp.activate(ignoringOtherApps: true)
     }
   }

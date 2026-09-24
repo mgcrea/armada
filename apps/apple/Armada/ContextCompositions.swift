@@ -33,6 +33,9 @@ final class ContextCompositions {
   /// Probe this directory unless it is already known, already running, or already
   /// known to fail.
   func probe(cwd: String) async {
+    // Spawns `claude` in the session's folder. A capture's folders are absent by
+    // construction, which the check below would catch too; this says so up front.
+    guard !ScreenshotMode.isEnabled else { return }
     guard byDirectory[cwd] == nil, !inFlight.contains(cwd), !failed.contains(cwd) else { return }
     // Not a directory any more — a project deleted while Armada watched it. The
     // subprocess would fail on `currentDirectoryURL` anyway; this is the cheap check.

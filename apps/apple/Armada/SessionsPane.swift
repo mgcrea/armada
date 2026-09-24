@@ -86,7 +86,7 @@ struct PromptCacheBadge: View {
         .imageScale(.small)
         .foregroundStyle(.orange)
         .help(
-          "Prompt cache expires ~\(cache.expiresAt.formatted(.relative(presentation: .named))). "
+          "Prompt cache expires ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
             + "Reply before then and the next turn reads the \(TokenCount.short(cache.tokens)) "
             + "prompt from the cache, instead of writing it back at full cost."
         )
@@ -96,7 +96,7 @@ struct PromptCacheBadge: View {
         .imageScale(.small)
         .foregroundStyle(.secondary)
         .help(
-          "Prompt cache expired ~\(cache.expiresAt.formatted(.relative(presentation: .named))). "
+          "Prompt cache expired ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
             + "The next turn writes the \(TokenCount.short(cache.tokens)) prompt back into the "
             + "cache, which costs more than reading it and counts against your limits."
         )

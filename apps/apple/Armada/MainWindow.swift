@@ -95,6 +95,12 @@ struct MainWindowView: View {
       splitView
     }
     .sheet(item: $addingAccount) { AddAccountSheet(vendor: $0) }
+    .screenshotSubject()
+    #if DEBUG
+      // Every store a capture draws from is seeded before this window exists, so the
+      // body running is the content existing. See `DemoSeed.signalReady(from:)`.
+      .task { DemoSeed.signalReady(from: .main) }
+    #endif
   }
 
   private var splitView: some View {
