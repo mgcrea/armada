@@ -1,76 +1,104 @@
 # Armada
 
 > Every coding agent you have running, on one screen. A macOS menu bar app for someone running
-> many Claude Code and Codex sessions at once: what each session is doing, how full its context
-> window is, and how much of each plan is left, read locally from what the agents already write
-> to disk.
+> many Claude Code, Codex and Grok Build sessions at once: what each session is doing, how full
+> its context window is, and how much of each plan is left, read locally from what the agents
+> already write to disk.
 
 Released: a Developer ID signed, notarized zip published on GitHub releases, downloadable at
 https://armada.mgcrea.io/download, with a licence at https://armada.mgcrea.io/buy. macOS 26 or
-later, and macOS only. Not affiliated with Anthropic or OpenAI.
+later, and macOS only. Not affiliated with Anthropic, OpenAI or xAI.
 
 ## What it shows
 
 - Sessions, per account: every live Claude Code session with its title, project, age and state
   (busy, waiting or idle), read from Claude Code's own session registry rather than inferred. A
-  waiting session says what it wants. Sorted by what needs you, groupable by project.
+  waiting session says what it wants. Sorted by what needs you, groupable by project. Codex and
+  Grok Build sessions each get a section of their own.
 - Context: how full each session's context window is, where it started, how fast it has grown,
   and when it was last compacted.
 - Plan limits: the 5-hour and 7-day windows per account, with reset times, a pace line and a
-  forecast. Claude accounts and Codex homes side by side. Claude limits are asked of the
-  account's own `claude` in a request that costs no tokens, falling back to the cache on disk,
-  with a badge saying which answered and how old the figure is.
+  forecast, and the Grok Build weekly allowance. Claude limits are asked of the account's own
+  `claude` in a request that costs no tokens, falling back to the cache on disk, with a badge
+  saying which answered and how old the figure is. Grok Build's is asked of your own `grok`, the
+  same question its `/usage` asks.
+- Projects: the folders you work in, their live sessions, and the tokens spent in each over 7
+  days, 30 days and all time, split by model, account and subfolder.
+- Transcripts: a Claude Code session's conversation in a window of its own, with thinking and
+  tool calls as filters, and Follow to keep the newest turn in view as it lands.
 - Accounts: `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and
-  `CODEX_HOME`.
+  `CODEX_HOME`; `~/.grok` and `GROK_HOME`. Add Account opens an agent on a new folder where you
+  sign in with its own sign-in.
 
 ## What it does
 
-- Starts `claude` or `codex` in a chosen folder on a chosen account, in a terminal. Armada never
-  owns the agent process.
+- Starts `claude`, `codex` or `grok` in a chosen folder on a chosen account, in Terminal, iTerm or
+  Ghostty, or a Claude Code session as a tab in the project's VS Code window. Armada never owns
+  the agent process.
 - Forks a session from where it stands, through each vendor's own fork command. The original is
   left alone.
-- Focus brings forward the application a Claude Code session runs in. Codex sessions have no
-  Focus, because Codex records no process id on disk.
-- Middle and extra mouse buttons can cycle the session list or send a keystroke.
+- Continues a Claude Code session on another account, for one stopped at a limit. The
+  conversation is copied to that account and opened there; the original keeps running.
+- Closes a Claude Code session the way quitting it would, asking first if it is mid-turn.
+  Recently ended lists a project's last eight closed sessions, to read or resume.
+- Copies a session's transcript as plain text, or its id as `claude --resume` or `codex resume`
+  takes it.
+- Focus brings forward the application a Claude Code session runs in, down to its own tab in VS
+  Code. Codex sessions have no Focus, because Codex records no process id on disk.
+- Middle and extra mouse buttons can cycle the session list or send a keystroke, one button or
+  both thumb buttons together, with the modifier you choose.
 - The menu bar glyph fills while a session is working and rings when one wants attention.
 
 ## The supervisor
 
-- Off until you turn it on in Settings ▸ Supervisor. Armada then serves a read-only MCP endpoint on
+- Off until you turn it on in Settings ▸ Supervisor. Armada then serves an MCP endpoint on
   127.0.0.1 (port 8790 unless changed), answering only a bearer token kept in the Keychain.
-- One button opens a Claude Code session with that endpoint attached, its tools pre-allowed and a
-  brief written, so you can ask one session which of the others need you, what any of them last
-  said, and how much plan is left.
-- Five tools, all read-only: what needs me, fleet overview, one session, what a session said, and
-  plan limits. None can start, stop, steer or write anything.
-- The session runs on your own plan, and its connection details never touch your Claude
-  configuration.
+- One button opens a Claude Code session with that endpoint attached, its read tools pre-allowed
+  and a brief written, so you can ask one session which of the others need you, what any of them
+  last said, and how much plan is left. Configure adds Armada to Claude Code, ChatGPT & Codex,
+  Cursor or VS Code, keeping a backup of the file it changes.
+- Eleven tools. Seven are read-only: what needs me, fleet overview, one session, what a session
+  said, plan limits, projects, and wait for a change.
+- Four more exist only while Allow writes is on, which it is not by default, and none is
+  pre-allowed: start or resume a session in a saved project, close a Claude Code session, bring
+  one forward, and message one. Messaging also needs Deliver messages to sessions turned on.
+- Voice, off by default: press a shortcut anywhere and ask about your sessions out loud. Speech
+  is recognised on the Mac, the question goes to Anthropic as text through your own `claude`, and
+  the answer is spoken.
 
 ## Not built yet
 
-- Messaging between agents across accounts and vendors: designed, not started.
-- Voice for the supervisor: researched, not started.
-- A config folder created while Armada is running appears only after a relaunch.
-- New Session needs a terminal that runs a script it is handed, such as Terminal or iTerm.
+- Messaging between agents across vendors: a supervisor can message Claude Code sessions only.
+- Codex and Grok Build folders are not scanned for: a second one is found only when made with
+  Add Account. Claude Code's `~/.claude-*` folders are found on their own, without a relaunch.
+- New Session needs a terminal that runs a script it is handed, such as Terminal, iTerm or
+  Ghostty.
 
 ## Privacy and security
 
-- Armada reaches no network on its own. The one exception is the update check, off until you
-  turn it on. It reads one file, armada.mgcrea.io/appcast.xml, which redirects to the GitHub
-  release, and sends no identifier: not your licence key, not a machine id.
+- Armada reaches no network on its own, with two exceptions, both off until you act. The update
+  check reads one file, armada.mgcrea.io/appcast.xml, which redirects to the GitHub release, and
+  sends no identifier: not your licence key, not a machine id. And a Download button in Settings ▸
+  Voice fetches the speech models, Parakeet v3 (about 480 MB) or Kokoro (about 95 MB), from
+  huggingface.co.
 - The licence key is verified offline, on your Mac, with a signature check. No licence server is
   ever contacted by the app.
-- It never writes to Claude Code's or Codex's configuration; `~/.claude*` and `~/.codex` are read
-  only. It holds no vendor credentials and never opens Codex's `auth.json`.
-- What it writes: its preferences, usage history in
-  `~/Library/Application Support/io.mgcrea.armada` (kept 30 days, deletable from Settings), and a
-  startup script in its own temporary folder when you start a session.
-- `make audit` checks the no-network claim against every build: every Mach-O swept for URL
-  loading, DNS and TLS symbols, with two narrowly named allowances: Sparkle, and the supervisor's
-  listener, which must bind 127.0.0.1 and nothing else.
+- It holds no vendor credentials and never opens Codex's `auth.json`.
+- It reads the agents' folders, and writes into Claude Code's in three named places only: the
+  "trust this folder" flag in `.claude.json` when you start a session in a saved project, one hook
+  in each account's `settings.json` while message delivery is on (removed when you turn it off),
+  and a copied transcript when you continue a session on another account. Codex's and Grok
+  Build's folders are only read.
+- What else it writes: its preferences, usage history and saved projects in
+  `~/Library/Application Support/io.mgcrea.armada` (usage history kept 30 days, deletable from
+  Settings), and a startup script in its own temporary folder when you start a session.
+- `make audit` checks the network claim against every build: every Mach-O swept for URL loading,
+  DNS and TLS symbols, with three narrowly named allowances: Sparkle, the speech-model
+  downloader, and the supervisor's listener, which must bind 127.0.0.1 and nothing else. The one
+  entitlement is the microphone, used only while voice listens.
 - Not sandboxed, by design: it has to read other tools' folders.
-- The `claude` it asks for plan limits talks to Anthropic over your own sign-in. That is the
-  program's job, not Armada's.
+- The `claude` and `grok` it asks for plan limits, and the `claude` voice asks, talk to their
+  vendors over your own sign-in. That is those programs' job, not Armada's.
 
 ## Price
 
