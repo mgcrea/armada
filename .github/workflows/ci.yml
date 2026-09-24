@@ -89,25 +89,11 @@ jobs:
         run: |
           pnpm -C apps/website typecheck
           pnpm -C apps/website build
-      # Warns, never fails. `@mgcrea/feedback-contract` does not register "armada"
-      # in any published version yet, so a failing gate would be red on every push
-      # and block every deploy until it does. The rest of what it asserts (the CSP
-      # origin, the field names, diagnostics left visible, a page linking to the
-      # form) fails silently in a browser, so each problem is raised as an
-      # annotation on the run rather than left in a log nobody opens. Make this a
-      # plain `run: pnpm -C apps/website run feedback:check` once the contract ships.
+      # The feedback form's failures are runtime-only — a CSP that refuses the
+      # Worker, a renamed field, a hidden diagnostic, a slug the Worker would 403.
+      # This reads the built page and fails the job on any of them.
       - name: Feedback form wiring 🔍
-        run: |
-          if out=$(pnpm -C apps/website run feedback:check 2>&1); then status=0; else status=$?; fi
-          printf '%s\n' "$out"
-          printf '%s\n' "$out" | awk '
-            /^feedback:check WARNING: / { sub(/^feedback:check WARNING: /, ""); print "::warning title=feedback:check::" $0; next }
-            /^feedback:check FAILED/ { failed = 1; next }
-            failed && /^  - / { sub(/^  - /, ""); print "::warning title=feedback:check::" $0 }
-          '
-          if [ "$status" -ne 0 ]; then
-            echo "::warning title=feedback:check::exited $status; not gating on it until the feedback contract registers armada"
-          fi
+        run: pnpm -C apps/website run feedback:check
       # The licence Worker's suite runs in the Workers runtime (miniflare) against a
       # local D1, and includes the check that it mints byte-identical keys to
       # scripts/lib/license.mjs — the half of the money loop nothing else tests.
