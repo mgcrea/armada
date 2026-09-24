@@ -1,0 +1,38 @@
+---
+/**
+ * One plan window as the app draws it: the used fill, a lighter segment out to where the
+ * window lands at reset, and the pace tick. A projection past the limit is capped at the bar's
+ * end and said in words instead, because a bar cannot show 121%.
+ */
+import { type ExampleLimits, type ExampleWindow, fillFor } from "../data/fleet";
+
+interface Props {
+  window: ExampleWindow;
+  source: ExampleLimits["source"];
+}
+
+const { window: w, source } = Astro.props;
+const fill = fillFor(w, source);
+const lands = w.projected === undefined ? undefined : Math.min(w.projected, 100);
+---
+
+<div class="relative h-1.5 rounded-full bg-white/7">
+  {
+    lands !== undefined && (
+      <div
+        class:list={["absolute inset-y-0 left-0 rounded-full opacity-30", fill]}
+        style={`width:${lands}%`}
+        aria-hidden="true"
+      />
+    )
+  }
+  <div
+    class:list={["bar relative", fill, source === "cache" && "opacity-60"]}
+    style={`width:${w.used}%`}
+  />
+  <span
+    class="absolute -top-[3px] block h-3 w-px bg-fg-dim"
+    style={`left:${w.pace}%`}
+    aria-hidden="true"
+  />
+</div>

@@ -7,7 +7,8 @@
  * account's own headless `claude`, the cache on disk as the fallback, and a
  * forecast that declines a reading too old to be sound.
  */
-import { fillFor, LIMITS } from "../data/fleet";
+import { LIMITS, landsLabel } from "../data/fleet";
+import LimitBar from "./LimitBar.astro";
 import SectionCopy from "./SectionCopy.astro";
 ---
 
@@ -53,26 +54,19 @@ import SectionCopy from "./SectionCopy.astro";
                   <span class="text-[12.5px] text-fg-dim">
                     {w.label} <span class="text-fg">{w.used}%</span>
                   </span>
-                  <span class="font-mono text-[11px] text-fg-muted">{w.reset}</span>
+                  <span class="font-mono text-[11px] text-fg-muted">
+                    {landsLabel(w)} · {w.reset}
+                  </span>
                 </div>
-                <div class="relative h-1.5 rounded-full bg-white/7">
-                  <div
-                    class:list={["bar", fillFor(w, l.source), l.source === "cache" && "opacity-60"]}
-                    style={`width:${w.used}%`}
-                  />
-                  <span
-                    class="absolute -top-[3px] block h-3 w-px bg-fg-dim"
-                    style={`left:${w.pace}%`}
-                    aria-hidden="true"
-                  />
-                </div>
+                <LimitBar window={w} source={l.source} />
               </div>
             ))}
           </div>
         ))
       }
       <span class="font-mono text-[11px] text-fg-muted">
-        Figures are examples · the tick is where an even pace would be by now
+        Figures are examples · the tick is your pace by now, the weekly one weighted by the days and hours
+        you work · the lighter bar is where the window lands at reset
       </span>
     </div>
   </div>

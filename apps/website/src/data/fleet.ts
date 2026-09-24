@@ -145,11 +145,17 @@ export const sessionsOf = (account: string) => SESSIONS.filter((s) => s.account 
 
 export const accountOf = (name: string) => ACCOUNTS.find((a) => a.name === name)!;
 
-/** A window's reading. `pace` is where an even pace would have used by now. */
+/**
+ * A window's reading. `pace` is where the account should be by now; the 7-day one is
+ * weighted by the days and hours you work. `projected` is where it lands at reset if the current rate holds, as the
+ * app's `UsageForecast` computes it (`used / pace`), and is absent where the app declines to
+ * forecast: on a reading too old to be sound.
+ */
 export interface ExampleWindow {
   label: string;
   used: number;
   pace: number;
+  projected?: number;
   reset: string;
 }
 
@@ -166,8 +172,8 @@ export const LIMITS: ExampleLimits[] = [
     source: "live",
     age: "12s ago",
     windows: [
-      { label: "5-hour window", used: 41, pace: 52, reset: "resets 14:00" },
-      { label: "7-day window", used: 62, pace: 57, reset: "resets Sun" },
+      { label: "5-hour window", used: 41, pace: 52, projected: 79, reset: "resets 14:00" },
+      { label: "7-day window", used: 48, pace: 57, projected: 84, reset: "resets Sun" },
     ],
   },
   {
@@ -175,8 +181,8 @@ export const LIMITS: ExampleLimits[] = [
     source: "live",
     age: "40s ago",
     windows: [
-      { label: "5-hour window", used: 88, pace: 64, reset: "resets 12:30" },
-      { label: "7-day window", used: 94, pace: 78, reset: "resets Fri" },
+      { label: "5-hour window", used: 88, pace: 64, projected: 138, reset: "resets 12:30" },
+      { label: "7-day window", used: 94, pace: 78, projected: 121, reset: "resets Fri" },
     ],
   },
   {
@@ -199,3 +205,11 @@ export const fillFor = (w: ExampleWindow, source: ExampleLimits["source"]) =>
       : w.used >= 80
         ? "bg-warn"
         : "bg-ok";
+
+/** What the forecast says in words, beside the bar. */
+export const landsLabel = (w: ExampleWindow) =>
+  w.projected === undefined
+    ? "no forecast, reading too old"
+    : w.projected >= 100
+      ? "runs out before reset"
+      : `lands at ${w.projected}%`;

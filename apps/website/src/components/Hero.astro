@@ -1,16 +1,19 @@
 ---
 import { APP_VERSION, DOWNLOAD, PRICING, TRIAL } from "../config";
-import { ACCOUNTS, at, LIMITS, SESSIONS, STATE, TOTAL_SESSIONS } from "../data/fleet";
+import { ACCOUNTS, at, LIMITS, landsLabel, SESSIONS, STATE, TOTAL_SESSIONS } from "../data/fleet";
 import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
 import Desktop from "./Desktop.astro";
-import Logo from "./Logo.astro";
+import LimitBar from "./LimitBar.astro";
 
 /** The five rows the hero has room for, still in what-needs-you order. */
 const rows = [0, 1, 2, 6, 7].map((i) => at(SESSIONS, i));
 const vendors = new Set(ACCOUNTS.map((a) => a.vendor)).size;
-const strip = at(LIMITS, 0);
-const fiveHour = at(strip.windows, 0);
+/** The weekly window of the two live accounts: one on course, one running out. */
+const weeks = [0, 1].map((i) => {
+  const l = at(LIMITS, i);
+  return { account: l.account, source: l.source, week: at(l.windows, 1) };
+});
 ---
 
 <section class="relative overflow-hidden pt-[88px]">
@@ -43,7 +46,7 @@ const fiveHour = at(strip.windows, 0);
       <p class="m-0 max-w-[52ch] text-[16.5px] leading-[1.62] text-pretty text-fg-dim">
         Armada is a menu bar app that watches every Claude Code, Codex and Grok Build session on your
         Mac, across accounts and across vendors: which one is waiting on you, how full its context is,
-        and how much of each plan is left.
+        how much of each plan is left, and where each week will land before it resets.
       </p>
 
       <div class="flex flex-wrap items-center gap-3 pt-1">
@@ -104,17 +107,31 @@ const fiveHour = at(strip.windows, 0);
       <span class="self-center text-[15px] text-fg/30" aria-hidden="true">↓</span>
 
       <div
-        class="flex items-center gap-2.5 rounded-[11px] border border-accent/30 bg-bg-3 px-3.5 py-3 shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)]"
+        class="flex flex-col gap-3.5 rounded-[11px] border border-accent/30 bg-bg-3 px-3.5 py-3.5 shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)]"
       >
-        <Logo size={18} />
-        <span class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg">
-          {strip.account}
-          <span class="text-fg-muted">· 5-hour window, {fiveHour.used}% used</span>
-        </span>
-        <span class="flex-none font-mono text-[10.5px] text-warn">{fiveHour.reset}</span>
+        {
+          weeks.map(({ account, source, week }) => (
+            <div class="flex flex-col gap-[7px]">
+              <div class="flex items-baseline justify-between gap-2.5 font-mono text-[11px]">
+                <span class="min-w-0 truncate text-fg">
+                  {account} <span class="text-fg-muted">· 7-day, {week.used}% used</span>
+                </span>
+                <span
+                  class:list={[
+                    "flex-none",
+                    (week.projected ?? 0) >= 100 ? "text-danger-ink" : "text-ok-ink",
+                  ]}
+                >
+                  {landsLabel(week)}
+                </span>
+              </div>
+              <LimitBar window={week} source={source} />
+            </div>
+          ))
+        }
       </div>
       <span class="font-mono text-[11px] text-fg-muted">
-        Asked of the account · the cache on disk when it cannot answer
+        Where each week lands at your pace · weighted by the days and hours you work
       </span>
     </figure>
   </div>
