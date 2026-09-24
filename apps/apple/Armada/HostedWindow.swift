@@ -13,8 +13,8 @@ import SwiftUI
 /// menu that an `LSUIElement` app does not have.
 @MainActor
 final class HostedWindow {
-  /// The name the window is built with. `retitle` changes the live window, not this.
-  private let title: String
+  /// The name the window is built with, and the one `retitle` last asked for.
+  private var title: String
   private let autosaveName: String
   private let contentSize: NSSize?
   private let content: () -> AnyView
@@ -71,7 +71,13 @@ final class HostedWindow {
   /// session was last asked for — the title set at `init` is the name of the *kind* of
   /// window, and this is the name of what is in it. Safe before the first `show()`: the
   /// stored title is what the window is then created with.
+  ///
+  /// Stored as well as applied. Applying alone did nothing before the first `show()`, so
+  /// the first transcript opened came up titled "Transcript" — until SwiftUI's
+  /// `navigationTitle` got round to it, on some opens and not others. The screenshot gate
+  /// is what caught it: the same plate captured with either title from one run to the next.
   func retitle(_ title: String) {
+    self.title = title
     window?.title = title
   }
 
