@@ -84,11 +84,12 @@ later, and macOS only. Not affiliated with Anthropic, OpenAI or xAI.
 - The licence key is verified offline, on your Mac, with a signature check. No licence server is
   ever contacted by the app.
 - It holds no vendor credentials and never opens Codex's `auth.json`.
-- It reads the agents' folders, and writes into Claude Code's in three named places only: the
-  "trust this folder" flag in `.claude.json` when you start a session in a saved project, one hook
-  in each account's `settings.json` while message delivery is on (removed when you turn it off),
-  and a copied transcript when you continue a session on another account. Codex's and Grok
-  Build's folders are only read.
+- It reads the agents' folders, and writes into them in four named places, each from something
+  you did: the "trust this folder" flag in `.claude.json` when you start a session in a saved
+  project, one hook in each Claude Code account's `settings.json` while message delivery is on
+  (removed when you turn it off), a copied transcript when you continue a session on another
+  account, and Armada's own MCP entry in a Claude Code or Codex config when you press Configure,
+  with the previous file kept as a backup. Grok Build's folders are only read.
 - What else it writes: its preferences, usage history and saved projects in
   `~/Library/Application Support/io.mgcrea.armada` (usage history kept 30 days, deletable from
   Settings), and a startup script in its own temporary folder when you start a session.
