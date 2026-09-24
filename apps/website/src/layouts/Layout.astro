@@ -21,10 +21,11 @@ export interface Props {
 /**
  * The title tracks the H1, so the tab, the search result and the page make the
  * same promise. It names the agents because that is what a searcher types, and
- * it stays under the ~60 characters Google shows.
+ * doubles as the Show HN title, so it may run past the ~60 characters Google shows:
+ * only ", on one screen" is cut there.
  */
 const {
-  title = "Armada · every Claude Code, Codex and Grok Build session",
+  title = "Armada – Every Claude Code and Codex session and limit, on one screen",
   description =
     "A macOS menu bar app for running many Claude Code, Codex and Grok Build sessions: which one is waiting on you, how full each context window is, and how much of each plan is left. Read locally.",
   ogImage = "/og-image.png",
