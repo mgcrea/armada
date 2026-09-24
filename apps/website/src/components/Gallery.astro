@@ -1,0 +1,100 @@
+---
+/**
+ * The rest of the app, captured: the menu bar panel, the Projects pane, a Codex home
+ * and the transcript window, from the capture pipeline (see `Capture`).
+ *
+ * Tiles rather than full-width plates, because the two screens that earn full width,
+ * the main window and the Usage pane, already have them above and below. At tile size
+ * the window's text is too small to read in place, so every tile opens at full size.
+ *
+ * Each row's columns are sized from the images' own aspect ratios so the two tiles in a
+ * row end at the same height: 2400x1564 against 640x998 on the first row, 2400x1564
+ * against 1760x1344 on the second. A re-capture at a different window size moves those
+ * ratios, and these column weights have to follow.
+ *
+ * The menu bar panel is the panel's own view in a stand-in window: the real one is a
+ * status-bar panel the capture cannot reach, and glass that would have photographed the
+ * capturing Mac's desktop is a solid background here. See `DemoSeed.PanelStand`.
+ */
+import codex from "../assets/screenshots/codex.png";
+import menubar from "../assets/screenshots/menubar.png";
+import projects from "../assets/screenshots/projects.png";
+import transcript from "../assets/screenshots/transcript.png";
+import Capture from "./Capture.astro";
+import SectionHeader from "./SectionHeader.astro";
+
+const ROWS = [
+  {
+    grid: "lg:grid-cols-[2.39fr_1fr]",
+    tiles: [
+      {
+        src: projects,
+        title: "Projects",
+        caption:
+          "Tokens per folder across Claude Code and Codex, read from the transcripts on your Mac and kept after the agents delete them.",
+        alt: "Armada's Projects pane: saved project folders with their token totals and live session counts, and the selected project's live sessions and usage by window.",
+        sizes: "(min-width: 1240px) 800px, (min-width: 1024px) 66vw, calc(100vw - 40px)",
+      },
+      {
+        src: menubar,
+        title: "The menu bar",
+        caption: "Every account's windows and what its sessions are doing, one click away.",
+        alt: "Armada's menu bar panel: each account with its sessions, its 5-hour and 7-day meters with reset times, and a forecast line.",
+        sizes: "(min-width: 1240px) 336px, (min-width: 1024px) 28vw, calc(100vw - 40px)",
+      },
+    ],
+  },
+  {
+    grid: "sm:grid-cols-[1.17fr_1fr]",
+    tiles: [
+      {
+        src: codex,
+        title: "Codex",
+        caption: "A Codex home beside the Claude accounts: its limits and live sessions, in the same shape.",
+        alt: "Armada showing a Codex home: its session and weekly limits, sessions grouped by project, and the selected session's context window and details.",
+        sizes: "(min-width: 1240px) 610px, (min-width: 640px) 52vw, calc(100vw - 40px)",
+      },
+      {
+        src: transcript,
+        title: "Read Transcript",
+        caption: "The turns, the thinking and every tool call, in a window sized to read in.",
+        alt: "Armada's transcript window: a Claude Code session's prompt, thinking, replies and tool calls with their results, with filters for thinking and tools.",
+        sizes: "(min-width: 1240px) 520px, (min-width: 640px) 44vw, calc(100vw - 40px)",
+      },
+    ],
+  },
+] as const;
+---
+
+<section id="app" class="scroll-mt-20 py-[96px]">
+  <div class="wrap flex flex-col gap-12">
+    <SectionHeader
+      eyebrow="In the app"
+      heading="The rest of it, as it actually looks."
+      class="mb-0!"
+    >
+      Captured from Armada itself, running on invented accounts rather than anyone's real sessions.
+      Select any of them to see it at full size.
+    </SectionHeader>
+
+    {
+      ROWS.map((row) => (
+        <div class:list={["grid grid-cols-1 items-start gap-6", row.grid]}>
+          {row.tiles.map((t) => (
+            <figure class="reveal m-0 flex flex-col gap-3">
+              <Capture src={t.src} alt={t.alt} sizes={t.sizes} link />
+              <figcaption class="flex flex-col gap-1">
+                <span class="text-[14.5px] font-semibold tracking-[-0.01em]">{t.title}</span>
+                <span class="text-[13.5px] leading-[1.6] text-pretty text-fg-dim">{t.caption}</span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      ))
+    }
+
+    <span class="font-mono text-[11px] text-fg-muted">
+      Captures of the app in demo mode · accounts, sessions and figures are examples
+    </span>
+  </div>
+</section>

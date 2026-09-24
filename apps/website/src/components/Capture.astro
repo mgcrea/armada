@@ -1,0 +1,68 @@
+---
+/**
+ * One screenshot of the app, from the capture pipeline.
+ *
+ * The images in src/assets/screenshots/ are PIPELINE-OWNED: `make screenshots-website`
+ * (apps/apple/Makefile, "Screenshots") deletes every .png there and writes them again
+ * from the app's demo mode. Nothing hand-made may be parked in that folder, and none of
+ * these may be edited by hand: re-capture instead. The accounts, sessions and figures
+ * in them are `DemoSeed`'s fixtures, not the fleet in data/fleet.ts that the drawings
+ * use.
+ *
+ * The captures keep the window's transparent rounded corners, so the shadow is a
+ * `drop-shadow` filter, which follows the alpha, rather than a `box-shadow`, which
+ * would draw a rectangle around the corners. No border for the same reason: the
+ * window's own edge is in the pixels.
+ *
+ * `link` makes the image open at full size. Every capture on the page uses it: the
+ * gallery tiles are about half the window's real size on a desktop, and on a phone
+ * even the full-width ones are a third of it, too small to read in place.
+ */
+import type { ImageMetadata } from "astro";
+import { Image } from "astro:assets";
+
+export interface Props {
+  src: ImageMetadata;
+  alt: string;
+  /** The `sizes` attribute: how wide the image is drawn at each breakpoint. */
+  sizes: string;
+  link?: boolean;
+  /** Load it before it scrolls into view. Only for a capture near the top. */
+  eager?: boolean;
+  class?: string;
+}
+
+const { src, alt, sizes, link = false, eager = false, class: className } = Astro.props;
+// The capture's own width is its 2x pixel size; nothing is ever served wider.
+const widths = [640, 960, 1280, 1600, 2400].filter((w) => w <= src.width);
+---
+
+{
+  link ? (
+    <a
+      href={src.src}
+      target="_blank"
+      rel="noopener"
+      class:list={["group block", className]}
+      aria-label={`${alt} (opens full size)`}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        widths={widths}
+        sizes={sizes}
+        loading={eager ? "eager" : "lazy"}
+        class="block h-auto w-full drop-shadow-[0_24px_40px_rgba(0,0,0,.55)] transition-transform duration-300 group-hover:-translate-y-0.5"
+      />
+    </a>
+  ) : (
+    <Image
+      src={src}
+      alt={alt}
+      widths={widths}
+      sizes={sizes}
+      loading={eager ? "eager" : "lazy"}
+      class:list={["block h-auto w-full drop-shadow-[0_30px_50px_rgba(0,0,0,.6)]", className]}
+    />
+  )
+}

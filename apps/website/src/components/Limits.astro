@@ -1,73 +1,55 @@
 ---
 /**
- * Plan limits, one card per account, each with the badge the app puts on a reading:
- * where it came from and how old it is. The tick on each bar is the pace line.
+ * Plan limits, captured: the Usage pane, one card per account, each with the badge the
+ * app puts on a reading, where it came from and how old it is. The tick on each bar is
+ * the pace line, and the lighter bar is where the window lands at reset.
  *
- * The copy is CHANGELOG.md's "Usage, per account": `get_usage` asked of the
- * account's own headless `claude`, the cache on disk as the fallback, and a
- * forecast that declines a reading too old to be sound.
+ * It used to be drawn cards from data/fleet.ts; it is the app's own pane now, from the
+ * capture pipeline (see `Capture`), full width so the figures are readable. The copy
+ * is CHANGELOG.md's "Usage, per account": `get_usage` asked of the account's own
+ * headless `claude`, the cache on disk as the fallback, and a forecast that declines a
+ * reading too old to be sound.
  */
-import { LIMITS, landsLabel } from "../data/fleet";
-import LimitBar from "./LimitBar.astro";
-import SectionCopy from "./SectionCopy.astro";
+import usage from "../assets/screenshots/usage.png";
+import Capture from "./Capture.astro";
+import SectionHeader from "./SectionHeader.astro";
 ---
 
 <section id="limits" class="scroll-mt-20 py-[96px]">
-  <div class="wrap grid grid-cols-1 items-start gap-12 lg:grid-cols-2 lg:gap-16">
-    <SectionCopy
+  <div class="wrap flex flex-col gap-12 [&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-fg">
+    <SectionHeader
       eyebrow="Plan limits"
       heading="How much is left, per account, and when it comes back."
+      class="mb-0!"
     >
-      <p class="m-0 text-[16px] leading-[1.6] text-pretty text-fg-dim">
-        The 5-hour and 7-day windows for every account, with reset times, a pace line and a
-        forecast. Claude Code's are asked of the account's own <code>claude</code>, in a request
-        that costs no tokens, with the cache on disk as the fallback. A badge says which one answered
-        and how old the figure is, because a stale number that looks live is worse than none.
-      </p>
-      <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
-        Armada holds no vendor credentials. There is no sign-in, and nothing reads or stores a
-        token: every account speaks for itself, through the CLI you already installed. Codex homes
-        sit beside them, read from their session logs, with how old the figure is shown first. Grok
-        Build writes its weekly allowance nowhere on disk, so Armada asks your own <code>grok</code>,
-        the same question its <code>/usage</code> asks, and it costs nothing.
-      </p>
-    </SectionCopy>
+      The 5-hour and 7-day windows for every account, with reset times, a pace line and a forecast.
+      Claude Code's are asked of the account's own <code>claude</code>, in a request that costs no
+      tokens, with the cache on disk as the fallback. A badge says which one answered and how old the
+      figure is, because a stale number that looks live is worse than none. And when one account runs
+      out, a Claude Code session does not have to stop: continue it on another account, from where it
+      stood.
+    </SectionHeader>
 
-    <div class="flex flex-col gap-3">
-      {
-        LIMITS.map((l) => (
-          <div class="reveal flex flex-col gap-4 rounded-[14px] border border-rule bg-bg-2 px-6 py-[22px]">
-            <div class="flex flex-wrap items-baseline justify-between gap-2">
-              <span class="font-mono text-[13px] text-fg">{l.account}</span>
-              <span
-                class:list={[
-                  "rounded-full border border-rule px-2.5 py-[3px] font-mono text-[10px]",
-                  l.source === "live" ? "text-ok-ink" : "text-warn",
-                ]}
-              >
-                {l.source} · {l.age}
-              </span>
-            </div>
-            {l.windows.map((w) => (
-              <div class="flex flex-col gap-[7px]">
-                <div class="flex items-baseline justify-between gap-2.5">
-                  <span class="text-[12.5px] text-fg-dim">
-                    {w.label} <span class="text-fg">{w.used}%</span>
-                  </span>
-                  <span class="font-mono text-[11px] text-fg-muted">
-                    {landsLabel(w)} · {w.reset}
-                  </span>
-                </div>
-                <LimitBar window={w} source={l.source} />
-              </div>
-            ))}
-          </div>
-        ))
-      }
-      <span class="font-mono text-[11px] text-fg-muted">
-        Figures are examples · the tick is your pace by now, the weekly one weighted by the days and hours
-        you work · the lighter bar is where the window lands at reset
-      </span>
-    </div>
+    <figure class="reveal m-0 flex flex-col gap-3">
+      <Capture
+        src={usage}
+        alt="Armada's Usage pane: a card per account with its session and weekly windows, the percentage used, when each resets and where it will land at the current pace, over a chart of the week so far."
+        sizes="(min-width: 1240px) 1160px, calc(100vw - 40px)"
+        link
+      />
+      <figcaption class="font-mono text-[11px] text-fg-muted">
+        A capture of the app in demo mode · figures are examples · the tick is your pace by now, the
+        weekly one weighted by the days and hours you work · the lighter bar is where the window lands
+        at reset
+      </figcaption>
+    </figure>
+
+    <p class="m-0 max-w-[70ch] text-[14px] leading-[1.6] text-pretty text-fg-muted">
+      Armada holds no vendor credentials. There is no sign-in, and nothing reads or stores a token:
+      every account speaks for itself, through the CLI you already installed. Codex homes sit beside
+      them, read from their session logs, with how old the figure is shown first. Grok Build writes
+      its weekly allowance nowhere on disk, so Armada asks your own <code>grok</code>, the same
+      question its <code>/usage</code> asks, and it costs nothing.
+    </p>
   </div>
 </section>
