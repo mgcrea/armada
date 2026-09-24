@@ -19,6 +19,13 @@ import Foundation
 /// **Never overwrites a conversation it does not recognise.** A file already at the target is
 /// replaced only when it is an earlier copy of this one, its bytes a prefix of the snapshot,
 /// which is what a second handover of the same session finds. Anything else is refused.
+///
+/// **Bar the bookkeeping Claude Code adds as a session closes.** A conversation carried back
+/// to the account it came from finds the original there, and that original usually gained
+/// `cost-state`, `last-prompt`, `mode` or `ai-title` lines after the copy left: three of the
+/// five round trips on this Mac on 2026-09-24. Those carry no `uuid`, a message always does,
+/// so trailing lines without one are set aside before comparing. A message the original gained
+/// is a real divergence and is still refused.
 nonisolated enum TranscriptHandover {
   enum Failure: Error, Equatable {
     /// The source has no complete line to copy.
@@ -45,7 +52,11 @@ nonisolated enum TranscriptHandover {
 
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     let existing = try? Data(contentsOf: destination)
-    if let existing, !snapshot.starts(with: existing) { throw Failure.conflict(destination) }
+    if let existing, !snapshot.starts(with: existing),
+      !(conversation(of: existing).map { snapshot.starts(with: $0) } ?? false)
+    {
+      throw Failure.conflict(destination)
+    }
     if existing != snapshot {
       try snapshot.write(to: destination, options: .atomic)
     }
@@ -64,6 +75,24 @@ nonisolated enum TranscriptHandover {
   static func wholeLines(_ data: Data) -> Data {
     guard let last = data.lastIndex(of: UInt8(ascii: "\n")) else { return Data() }
     return data[data.startIndex...last]
+  }
+
+  /// `data` without the trailing lines that carry no `uuid`, or nil when no line does: a file
+  /// with no message in it is not recognisably any conversation.
+  static func conversation(of data: Data) -> Data? {
+    var end = wholeLines(data).endIndex
+    while end > data.startIndex {
+      let body = data[data.startIndex..<(end - 1)]
+      let start = body.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? data.startIndex
+      let line = data[start..<(end - 1)]
+      if let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+        object["uuid"] != nil
+      {
+        return data[data.startIndex..<end]
+      }
+      end = start
+    }
+    return nil
   }
 
   /// Every file under `source` that `target` lacks, keeping the layout.

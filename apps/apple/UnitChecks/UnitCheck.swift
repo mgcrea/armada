@@ -2603,6 +2603,33 @@ struct UnitCheck {
       (try? Data(contentsOf: expected)).map { String(decoding: $0, as: UTF8.self) },
       "{\"other\":1}\n")
 
+    // Carried back to where it came from: the original there gained Claude Code's closing
+    // bookkeeping (no `uuid`) after it left, and is still recognised as an earlier copy.
+    let message = "{\"uuid\":\"m1\",\"type\":\"user\"}\n"
+    let back = source.appending(path: "s3.jsonl")
+    let home = target.appending(path: "-work-armada/s3.jsonl")
+    try? Data((message + "{\"uuid\":\"m2\",\"type\":\"assistant\"}\n").utf8).write(to: back)
+    try? Data((message + "{\"type\":\"cost-state\"}\n{\"type\":\"last-prompt\"}\n").utf8)
+      .write(to: home)
+    check(
+      "a return trip past trailing bookkeeping goes through",
+      (try? TranscriptHandover.stage(transcript: back, into: target)) != nil)
+    expectEqual(
+      "and takes the conversation that came back",
+      (try? Data(contentsOf: home)).map { String(decoding: $0, as: UTF8.self) },
+      message + "{\"uuid\":\"m2\",\"type\":\"assistant\"}\n")
+
+    // A message the original gained after it left is a real divergence.
+    try? Data((message + "{\"uuid\":\"m3\",\"type\":\"user\"}\n{\"type\":\"cost-state\"}\n").utf8)
+      .write(to: home)
+    var diverged = false
+    do { try TranscriptHandover.stage(transcript: back, into: target) } catch let failure
+      as TranscriptHandover.Failure
+    {
+      diverged = failure == .conflict(home)
+    } catch {}
+    check("refuses an original that gained a message", diverged)
+
     let partial = source.appending(path: "s2.jsonl")
     try? Data("{\"half\":".utf8).write(to: partial)
     var empty = false
