@@ -37,6 +37,10 @@ nonisolated struct ContextReading: Sendable, Hashable {
   /// `ContextWindow`.
   let modelID: String?
   let at: Date?
+  /// Which cache this turn wrote into, from `usage.cache_creation`. Nil on a turn that
+  /// wrote nothing, on a transcript too old to split the write, and always for Codex
+  /// and Grok, whose logs never say how long their caches live.
+  var cacheTTL: PromptCacheTTL? = nil
 }
 
 /// Reading context out of a transcript.
@@ -132,7 +136,71 @@ nonisolated enum TranscriptContext {
       freshInput: input,
       output: usage["output_tokens"] as? Int ?? 0,
       modelID: message["model"] as? String,
-      at: (object["timestamp"] as? String).flatMap(UsageSnapshot.parseTimestamp))
+      at: (object["timestamp"] as? String).flatMap(UsageSnapshot.parseTimestamp),
+      cacheTTL: (usage["cache_creation"] as? [String: Any]).flatMap(PromptCacheTTL.init))
+  }
+}
+
+/// How long a prompt-cache write stays warm: Anthropic's two ephemeral lifetimes.
+///
+/// **Read, not guessed.** Every assistant turn splits `cache_creation_input_tokens`
+/// into `cache_creation.ephemeral_5m_input_tokens` and `…ephemeral_1h_input_tokens`,
+/// so the transcript says which lifetime the session is on. Measured on 2026-09-24
+/// against a subscription account: every write was 1h, with 5m always 0.
+nonisolated enum PromptCacheTTL: Sendable, Hashable {
+  case fiveMinutes
+  case oneHour
+
+  var duration: TimeInterval {
+    switch self {
+    case .fiveMinutes: 5 * 60
+    case .oneHour: 60 * 60
+    }
+  }
+
+  /// **The shorter lifetime wins when a turn wrote to both.** The 5m part is the newest
+  /// end of the prompt, and once it lapses the next turn re-writes everything after the
+  /// point it starts, so the long-lived part surviving is little consolation.
+  ///
+  /// Nil when the turn wrote nothing: a full cache hit says nothing about which
+  /// lifetime the prefix was written with.
+  init?(cacheCreation: [String: Any]) {
+    if cacheCreation["ephemeral_5m_input_tokens"] as? Int ?? 0 > 0 {
+      self = .fiveMinutes
+    } else if cacheCreation["ephemeral_1h_input_tokens"] as? Int ?? 0 > 0 {
+      self = .oneHour
+    } else {
+      return nil
+    }
+  }
+}
+
+/// Whether a session's prompt cache is still warm, and until when.
+///
+/// **An upper bound, never a promise.** Every request that hits the cache resets its
+/// clock, so the expiry is the newest request plus the lifetime — but Anthropic may
+/// evict sooner, and the transcript records a turn when its response is written, not
+/// when the request that refreshed the cache went out. A long response therefore makes
+/// the real expiry a little earlier than this one, which is why the UI prefixes it `~`.
+///
+/// What going cold costs is the whole prompt: the next turn writes it all back into the
+/// cache, at 1.25× the input price for 5m and 2× for 1h, where a warm turn reads it at
+/// 0.1×. On a subscription that is spent from the same limits the usage panes show.
+nonisolated struct PromptCache: Sendable, Hashable {
+  let ttl: PromptCacheTTL
+  let lastRequest: Date
+  /// The prompt the next turn re-writes if the cache has lapsed.
+  let tokens: Int
+
+  var expiresAt: Date { lastRequest.addingTimeInterval(ttl.duration) }
+
+  func isWarm(at now: Date) -> Bool { now < expiresAt }
+
+  /// Warm, with a quarter of its lifetime or less to go: the last 15 minutes of an hour,
+  /// the last 75 seconds of five minutes. Late enough that a busy fleet is not lit up
+  /// with warnings, early enough to get back to the session in time.
+  func isExpiringSoon(at now: Date) -> Bool {
+    isWarm(at: now) && expiresAt.timeIntervalSince(now) <= ttl.duration / 4
   }
 }
 

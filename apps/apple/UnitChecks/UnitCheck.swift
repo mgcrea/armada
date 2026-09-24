@@ -614,6 +614,40 @@ struct UnitCheck {
       "the newest compaction is found, with both of its figures",
       compaction?.wasManual == true && compaction?.preTokens == 390_000
         && compaction?.postTokens == 41_000)
+
+    // The split as Claude Code writes it, keys in either order.
+    func split(_ fiveMinute: Int, _ oneHour: Int) -> String {
+      #"{"type":"assistant","timestamp":"2026-09-24T10:00:00Z","message":{"usage":{"input_tokens":2,"cache_creation_input_tokens":\#(fiveMinute + oneHour),"cache_read_input_tokens":389000,"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":\#(oneHour),"ephemeral_5m_input_tokens":\#(fiveMinute)}}}}"#
+    }
+    func ttl(_ line: String) -> PromptCacheTTL? {
+      TranscriptContext.newestReading(inChunk: ndjson([line]), droppingFirstLine: false)?.cacheTTL
+    }
+    expectEqual("a 1h write reads as the hour cache", ttl(split(0, 508)), .oneHour)
+    expectEqual("a 5m write reads as five minutes", ttl(split(329, 0)), .fiveMinutes)
+    expectEqual("a turn writing to both lapses with the shorter", ttl(split(10, 508)), .fiveMinutes)
+    check("a full cache hit names no lifetime", ttl(split(0, 0)) == nil)
+    check(
+      "a usage with no split names no lifetime",
+      ttl(assistant(read: 10, block: 0, at: "2026-09-24T10:00:00Z")) == nil)
+
+    let hour = PromptCache(
+      ttl: .oneHour, lastRequest: date("2026-09-24T10:00:00Z"), tokens: 389_000)
+    check(
+      "warm and quiet with most of the hour left",
+      hour.isWarm(at: date("2026-09-24T10:30:00Z"))
+        && !hour.isExpiringSoon(at: date("2026-09-24T10:30:00Z")))
+    check(
+      "expiring soon in the last quarter", hour.isExpiringSoon(at: date("2026-09-24T10:45:00Z")))
+    check(
+      "cold at the hour, and no longer expiring",
+      !hour.isWarm(at: date("2026-09-24T11:00:00Z"))
+        && !hour.isExpiringSoon(at: date("2026-09-24T11:00:00Z")))
+    let five = PromptCache(
+      ttl: .fiveMinutes, lastRequest: date("2026-09-24T10:00:00Z"), tokens: 389_000)
+    check(
+      "five minutes warns at 75 seconds, not before",
+      !five.isExpiringSoon(at: date("2026-09-24T10:03:44Z"))
+        && five.isExpiringSoon(at: date("2026-09-24T10:03:45Z")))
   }
 
   // MARK: - TranscriptQuota

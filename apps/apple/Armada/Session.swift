@@ -137,6 +137,22 @@ final class Session: Identifiable {
   /// only a fall between two consecutive readings.
   var previousContext: ContextReading?
 
+  /// The lifetime of the newest cache write seen, from this turn or an earlier one.
+  ///
+  /// **Kept once seen, like `sessionModelID`.** A turn that hits the cache in full
+  /// writes nothing and so carries no lifetime, which is not the session changing
+  /// lifetime; the newest turn that did write is the one that says.
+  var cacheTTL: PromptCacheTTL?
+
+  /// The prompt cache as of the newest turn, or nil when the lifetime is unknown.
+  ///
+  /// Nil for a session that is mid-turn: each request it makes resets the clock, so
+  /// a countdown there would only ever describe the past.
+  var promptCache: PromptCache? {
+    guard !state.isBusy, let cacheTTL, let context, let at = context.at else { return nil }
+    return PromptCache(ttl: cacheTTL, lastRequest: at, tokens: context.total)
+  }
+
   /// How fast the window is filling, over the readings in the newest tail.
   var growth: ContextGrowth?
 

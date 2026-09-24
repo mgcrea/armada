@@ -44,12 +44,17 @@ struct SessionRow: View {
             .help("Started this long ago")
         }
         if let tokens = session.context?.total {
-          Text(TokenCount.short(tokens))
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.tertiary)
-            .help(
-              "\(TokenCount.short(tokens)) tokens of context in use. Not what this session has cost — the figure falls when it compacts."
-            )
+          HStack(spacing: 3) {
+            if let cache = session.promptCache {
+              PromptCacheBadge(cache: cache, now: now)
+            }
+            Text(TokenCount.short(tokens))
+              .font(.caption2.monospacedDigit())
+              .foregroundStyle(.tertiary)
+              .help(
+                "\(TokenCount.short(tokens)) tokens of context in use. Not what this session has cost — the figure falls when it compacts."
+              )
+          }
         }
       }
     }
@@ -63,6 +68,40 @@ struct SessionRow: View {
     if hours > 0 { return "\(hours)h \(minutes)m" }
     if minutes > 0 { return "\(minutes)m" }
     return "\(seconds)s"
+  }
+}
+
+/// A mark beside the token count when the prompt cache is about to lapse, or has.
+///
+/// **Nothing while the cache is comfortably warm**, which is the common case: a list of
+/// sixteen sessions each carrying a countdown would be a list of countdowns. The exact
+/// times are in the session's context panel.
+struct PromptCacheBadge: View {
+  let cache: PromptCache
+  let now: Date
+
+  var body: some View {
+    if cache.isExpiringSoon(at: now) {
+      Image(systemName: "timer")
+        .imageScale(.small)
+        .foregroundStyle(.orange)
+        .help(
+          "Prompt cache expires ~\(cache.expiresAt.formatted(.relative(presentation: .named))). "
+            + "Reply before then and the next turn reads the \(TokenCount.short(cache.tokens)) "
+            + "prompt from the cache, instead of writing it back at full cost."
+        )
+        .accessibilityLabel("Prompt cache expiring soon")
+    } else if !cache.isWarm(at: now) {
+      Image(systemName: "snowflake")
+        .imageScale(.small)
+        .foregroundStyle(.secondary)
+        .help(
+          "Prompt cache expired ~\(cache.expiresAt.formatted(.relative(presentation: .named))). "
+            + "The next turn writes the \(TokenCount.short(cache.tokens)) prompt back into the "
+            + "cache, which costs more than reading it and counts against your limits."
+        )
+        .accessibilityLabel("Prompt cache expired")
+    }
   }
 }
 

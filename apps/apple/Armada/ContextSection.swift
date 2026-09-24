@@ -34,6 +34,7 @@ struct ContextSection: View {
         limitHelp: window.source.explanation,
         growth: session.growth,
         compaction: session.compaction,
+        cache: session.promptCache,
         composition: composition,
         now: now)
     }
@@ -101,6 +102,9 @@ struct ContextPanel: View {
   let limitHelp: String
   var growth: ContextGrowth?
   var compaction: Compaction?
+  /// Nil for Codex and Grok, whose logs never say how long their caches live, and for
+  /// a Claude session that is mid-turn. See `Session.promptCache`.
+  var cache: PromptCache?
   /// The probed breakdown of what a fresh session here would load. Nil for Codex,
   /// which has no equivalent, and nil until the probe answers.
   var composition: ContextComposition?
@@ -137,6 +141,9 @@ struct ContextPanel: View {
       }
       if let compaction {
         CompactionLine(compaction: compaction, now: now)
+      }
+      if let cache {
+        PromptCacheLine(cache: cache, now: now)
       }
       if let composition {
         CompositionGroup(composition: composition, limit: limit)
@@ -256,6 +263,45 @@ private struct CompactionLine: View {
       compaction.wasManual
         ? "This session was compacted with /compact."
         : "Claude Code compacted this session automatically when it filled its window.")
+  }
+}
+
+/// Whether the prompt cache is still warm, and what going cold costs.
+///
+/// Prefixed with `~` like `GrowthLine`: the expiry is an upper bound, measured from
+/// when the newest response was written. See `PromptCache`.
+private struct PromptCacheLine: View {
+  let cache: PromptCache
+  let now: Date
+
+  var body: some View {
+    let warm = cache.isWarm(at: now)
+    VStack(alignment: .leading, spacing: 1) {
+      HStack(spacing: 4) {
+        Image(systemName: warm ? "timer" : "snowflake")
+          .imageScale(.small)
+        if warm {
+          Text("Cache warm, expires ~\(cache.expiresAt, format: .relative(presentation: .named))")
+        } else {
+          Text("Cache expired ~\(cache.expiresAt, format: .relative(presentation: .named))")
+        }
+      }
+      .font(.caption2)
+      .foregroundStyle(
+        cache.isExpiringSoon(at: now) ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+
+      if !warm {
+        Text("Next turn re-caches \(TokenCount.short(cache.tokens))")
+          .font(.caption2.monospacedDigit())
+          .foregroundStyle(.tertiary)
+      }
+    }
+    .help(
+      "This session writes to the \(cache.ttl == .oneHour ? "1-hour" : "5-minute") prompt "
+        + "cache, and every request resets its clock. While it is warm the next turn reads "
+        + "the prompt at a tenth of the input price; once it lapses, the whole prompt is "
+        + "written back at \(cache.ttl == .oneHour ? "twice" : "1.25×") the input price. "
+        + "Anthropic can evict sooner, so the time is an upper bound.")
   }
 }
 

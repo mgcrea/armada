@@ -408,6 +408,11 @@ final class SessionWatcher {
     let series = TranscriptContext.series(
       inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
     if series.count >= 2 { session.previousContext = series.dropLast().last }
+    // The newest turn that wrote to the cache names its lifetime; one that hit it in
+    // full names nothing, so it falls through to the requests before it.
+    if let ttl = session.context?.cacheTTL ?? series.reversed().lazy.compactMap(\.cacheTTL).first {
+      session.cacheTTL = ttl
+    }
     if let growth = ContextGrowth(series: series) { session.growth = growth }
 
     // Newest wins, and an absent one leaves what is held: this attachment is written
@@ -458,6 +463,7 @@ final class SessionWatcher {
         guard let self, let session = self.byId[sessionId] else { return }
         if let title = found.title, session.title == nil { session.title = title }
         if let reading = found.reading, session.context == nil { session.context = reading }
+        if let ttl = found.reading?.cacheTTL, session.cacheTTL == nil { session.cacheTTL = ttl }
         session.baseline = found.baseline
         session.compaction = found.compaction
       }
