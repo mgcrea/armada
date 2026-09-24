@@ -2,7 +2,6 @@
 import Cta from "../components/Cta.astro";
 import Footer from "../components/Footer.astro";
 import Gallery from "../components/Gallery.astro";
-import Gaps from "../components/Gaps.astro";
 import Hero from "../components/Hero.astro";
 import How from "../components/How.astro";
 import Limits from "../components/Limits.astro";
@@ -86,9 +85,7 @@ const schema = {
 
 {/*
   The order is the argument: what it looks like, why it exists, how it works,
-  what it adds, what it will not do, what it does not do yet, and only then the
-  price. Known gaps sit before Pricing on purpose, so nobody learns them after
-  paying.
+  what it adds, what it will not do, and only then the price.
 */}
 <Layout schema={[organizationSchema, websiteSchema, schema]}>
   <Nav />
@@ -103,7 +100,6 @@ const schema = {
     <Supervisor />
     <Rules />
     <Vendors />
-    <Gaps />
     <Pricing />
     <SiblingApps />
     <Cta />
