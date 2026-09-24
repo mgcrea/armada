@@ -5,8 +5,35 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.6.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.7.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.7.0] - 2026-09-24
+
+### Added
+
+- **See when a session's prompt cache goes cold.** A stopped Claude Code session's context panel
+  now says how long its prompt cache stays warm, and once it has lapsed, how much the next turn
+  writes back. In the sessions list, a timer appears beside the token count in the last quarter of
+  the cache's life and a snowflake once it has expired. Nothing shows while the cache is
+  comfortably warm or the session is working. Codex and Grok Build are left out, since their logs
+  never say how long their caches last.
+- **Get warned before a prompt cache expires.** Warn before a prompt cache expires, in Settings ▸
+  General, sends one notification per cache in the last quarter of its life, either for sessions
+  waiting on a prompt or for any session between turns, and only for prompts over a size you pick
+  (100k by default). Clicking it brings the session forward. It is off until you turn it on.
+- **Continue on another account without a terminal.** A new toggle in Settings ▸ General makes
+  Continue on Another Account copy the conversation and stop there, for anyone who switches an
+  editor window's account by hand. The action then reads Copy to Another Account, and its note
+  says to close this session before opening the copy from Claude Code's past conversations, since
+  it keeps the same session id.
+
+### Fixed
+
+- **A conversation handed to another account can come back.** Carrying it back to the account it
+  started on used to report a different conversation under the same id, because closing the
+  session there appends a few bookkeeping lines the earlier copy never had. Those are now set
+  aside before comparing. An original that gained a real message is still left alone.
 
 ## [1.6.0] - 2026-09-23
 
