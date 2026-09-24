@@ -490,16 +490,21 @@ license-check: ## Prove a minted licence key verifies in the app's own verifier
 
 # ── Website ───────────────────────────────────────────────────────────────────
 #
-# `pnpm run release`, spelled out: `deploy` is a pnpm builtin that exits 0 and
-# ships nothing, which is why the package script is called `release` fleet-wide —
-# and `run` makes the call a script even if pnpm ever grows a `release` of its own.
+# `pnpm -C apps/website release`, the line every sibling's recipe carries, so a
+# fix reads across from any of them. Never a bare `pnpm deploy`: `deploy` is a
+# pnpm builtin that exits 0 and ships nothing, which is why the package script is
+# called `release` fleet-wide.
 # The curl is the part that proves a deploy happened rather than that a command
 # returned, and `--max-time` is api-deploy's: a host that accepts the connection
 # and never answers would otherwise hold the recipe, and a CI job, until the job's
 # own timeout.
-site-deploy: ## Build and deploy armada.mgcrea.io, then check it answers
-	@pnpm -C apps/website run release
-	@curl -fsS --max-time 20 -o /dev/null https://armada.mgcrea.io && echo "  armada.mgcrea.io answers"
+SITE_URL := https://armada.mgcrea.io/
+
+site-deploy: ## Build and publish the website to Cloudflare
+	pnpm -C apps/website release
+	@# `wrangler deploy` exiting 0 is not proof the site moved. This is.
+	@curl -fsS --max-time 20 -o /dev/null $(SITE_URL)
+	@echo "deployed $(SITE_URL)"
 
 .PHONY: site-deploy
 
@@ -524,10 +529,10 @@ api-deploy: ## Build and publish the licence Worker, refusing on unapplied migra
 	@CLOUDFLARE_ACCOUNT_ID=$(CF_ACCOUNT_ID) pnpm -C apps/api exec wrangler d1 migrations list armada-licenses --remote 2>&1 \
 		| grep -q 'No migrations to apply' \
 		|| { echo 'refusing to deploy: unapplied migrations in apps/api - run: pnpm -C apps/api migrate'; exit 1; }
-	@pnpm -C apps/api run release
+	pnpm -C apps/api release
 	@# A green `wrangler deploy` does not prove the Worker answers. This does.
 	@curl -fsS --max-time 20 -o /dev/null $(API_URL)
-	@echo "  deployed $(API_URL)"
+	@echo "deployed $(API_URL)"
 
 # Sequential sub-makes rather than prerequisites: under -j they may run in
 # parallel, and the Worker the site's /buy flow lands on has to be live first.
