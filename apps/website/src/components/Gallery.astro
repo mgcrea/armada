@@ -8,7 +8,7 @@
  * the window's text is too small to read in place, so every tile opens at full size.
  *
  * Each row's columns are sized from the images' own aspect ratios so the two tiles in a
- * row end at the same height: 2400x1564 against 640x998 on the first row, 2400x1564
+ * row end at the same height: 2400x1564 against 640x1184 on the first row, 2400x1564
  * against 1760x1344 on the second. A re-capture at a different window size moves those
  * ratios, and these column weights have to follow.
  *
@@ -25,7 +25,7 @@ import SectionHeader from "./SectionHeader.astro";
 
 const ROWS = [
   {
-    grid: "lg:grid-cols-[2.39fr_1fr]",
+    grid: "lg:grid-cols-[2.84fr_1fr]",
     tiles: [
       {
         src: projects,
@@ -33,14 +33,14 @@ const ROWS = [
         caption:
           "Tokens per folder across Claude Code and Codex, read from the transcripts on your Mac and kept after the agents delete them.",
         alt: "Armada's Projects pane: saved project folders with their token totals and live session counts, and the selected project's live sessions and usage by window.",
-        sizes: "(min-width: 1240px) 800px, (min-width: 1024px) 66vw, calc(100vw - 40px)",
+        sizes: "(min-width: 1240px) 840px, (min-width: 1024px) 70vw, calc(100vw - 40px)",
       },
       {
         src: menubar,
         title: "The menu bar",
         caption: "Every account's windows and what its sessions are doing, one click away.",
         alt: "Armada's menu bar panel: each account with its sessions, its 5-hour and 7-day meters with reset times, and a forecast line.",
-        sizes: "(min-width: 1240px) 336px, (min-width: 1024px) 28vw, calc(100vw - 40px)",
+        sizes: "(min-width: 1240px) 296px, (min-width: 1024px) 25vw, calc(100vw - 40px)",
       },
     ],
   },
