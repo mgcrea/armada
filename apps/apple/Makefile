@@ -224,6 +224,7 @@ UNIT_SRC := \
 	Armada/JSONLines.swift \
 	Armada/TranscriptTitle.swift \
 	Armada/TranscriptContext.swift \
+	Armada/PromptCacheAlert.swift \
 	Armada/TranscriptLog.swift \
 	Armada/TranscriptStyle.swift \
 	Armada/TranscriptQuota.swift \

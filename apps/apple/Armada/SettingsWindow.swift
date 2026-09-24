@@ -159,6 +159,11 @@ struct GeneralPane: View {
   @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
   @AppStorage(VSCodeLaunch.defaultsKey) private var inVSCode = false
   @AppStorage(VSCodeLaunch.sendPromptDefaultsKey) private var sendPromptInVSCode = true
+  @AppStorage(HandoverTarget.copyOnlyDefaultsKey) private var handoverCopiesOnly = false
+  @AppStorage(PromptCacheAlertScope.defaultsKey) private var cacheAlerts = PromptCacheAlertScope.off
+  @AppStorage(PromptCacheAlertSize.defaultsKey)
+  private var cacheAlertMinimum = PromptCacheAlertSize.fallback
+  @State private var notifier = PromptCacheNotifier.shared
 
   /// Reading resolves the unset case to whichever terminal a launch would actually
   /// use; writing stores the choice. Without the mapping the picker shows blank until
@@ -223,6 +228,53 @@ struct GeneralPane: View {
       }
 
       Section {
+        Picker("Warn before a prompt cache expires", selection: $cacheAlerts) {
+          ForEach(PromptCacheAlertScope.allCases, id: \.self) { option in
+            Text(option.label).tag(option)
+          }
+        }
+        .onChange(of: cacheAlerts) { _, scope in
+          guard scope != .off else { return }
+          Task { await notifier.requestAuthorization() }
+        }
+        if cacheAlerts != .off {
+          Picker("Only for prompts", selection: $cacheAlertMinimum) {
+            ForEach(PromptCacheAlertSize.options, id: \.self) { tokens in
+              Text(tokens == 0 ? "Of any size" : "Over \(TokenCount.short(tokens))").tag(tokens)
+            }
+          }
+          if notifier.isDenied {
+            HStack(spacing: 8) {
+              Text("Notifications for Armada are turned off in System Settings.")
+                .font(.caption)
+                .foregroundStyle(.red)
+              Button("Open System Settings…") {
+                let id = Bundle.main.bundleIdentifier ?? ""
+                if let url = URL(
+                  string:
+                    "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")
+                {
+                  NSWorkspace.shared.open(url)
+                }
+              }
+              .buttonStyle(.borderless)
+              .font(.caption)
+            }
+          }
+        }
+      } header: {
+        Text("Notifications")
+      } footer: {
+        // Says what the warning buys, because "prompt cache" is a term most people have
+        // never had a reason to learn, and the setting is only worth turning on once the
+        // cost is clear.
+        Text(
+          "Claude keeps a session's prompt cached for an hour (or five minutes) after its last request. Reply while it is warm and the next turn reads the whole prompt at a tenth of the price; let it lapse and the next turn writes it all back at up to twice the price, against the same plan limits. Armada warns once, in the last quarter of that time, and clicking the notification brings the session forward. Codex and Grok do not say how long their caches last, so they are never warned about."
+        )
+      }
+      .task { await notifier.refreshAuthorization() }
+
+      Section {
         Picker("Window style", selection: $transcriptStyle) {
           ForEach(TranscriptStyle.allCases, id: \.stored) { option in
             Text(option.label).tag(option.stored)
@@ -277,6 +329,9 @@ struct GeneralPane: View {
               .foregroundStyle(.red)
           }
         }
+        // See `HandoverTarget.copyOnlyDefaultsKey`: for switching an editor window's account
+        // by hand, where a terminal on the other account would go unused.
+        Toggle("Continue on another account without opening a terminal", isOn: $handoverCopiesOnly)
       } header: {
         Text("New sessions")
       } footer: {

@@ -648,6 +648,30 @@ struct UnitCheck {
       "five minutes warns at 75 seconds, not before",
       !five.isExpiringSoon(at: date("2026-09-24T10:03:44Z"))
         && five.isExpiringSoon(at: date("2026-09-24T10:03:45Z")))
+
+    let late = date("2026-09-24T10:50:00Z")
+    func alert(_ scope: PromptCacheAlertScope, waiting: Bool, minimum: Int = 100_000, at: Date)
+      -> Bool
+    {
+      PromptCacheAlert.shouldAlert(
+        hour, isWaiting: waiting, scope: scope, minimumTokens: minimum, now: at)
+    }
+    check("off never alerts", !alert(.off, waiting: true, at: late))
+    check("waiting alerts a session at a prompt", alert(.waiting, waiting: true, at: late))
+    check("waiting leaves an idle session alone", !alert(.waiting, waiting: false, at: late))
+    check("between turns takes an idle session too", alert(.stopped, waiting: false, at: late))
+    check(
+      "a prompt under the minimum is left alone",
+      !alert(.stopped, waiting: true, minimum: 400_000, at: late))
+    check(
+      "no alert with most of the hour left",
+      !alert(.stopped, waiting: true, at: date("2026-09-24T10:30:00Z")))
+    check("no alert once cold", !alert(.stopped, waiting: true, at: date("2026-09-24T11:00:01Z")))
+    expectEqual(
+      "ten minutes left reads as ten", PromptCacheAlert.remaining(hour, now: late), "about 10 min")
+    expectEqual(
+      "the last seconds round up to a minute",
+      PromptCacheAlert.remaining(hour, now: date("2026-09-24T10:59:50Z")), "about 1 min")
   }
 
   // MARK: - TranscriptQuota

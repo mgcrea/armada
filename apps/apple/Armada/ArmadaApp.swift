@@ -202,6 +202,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // yet, since one is started by hand. See `EntitlementMonitor`.
     EntitlementMonitor.shared.apply()
     DockPresence.observe()
+    // Before anything can be delivered, so a click on a banner from before a relaunch
+    // still has a delegate to land on. Posts nothing until a scope is chosen.
+    PromptCacheNotifier.shared.start()
     SessionHostLookup.observeHostTermination()
     MouseTap.shared.sync()
     // The Accessibility grant can arrive long after launch — somebody allows it in
