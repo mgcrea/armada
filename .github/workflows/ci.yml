@@ -26,6 +26,90 @@ permissions:
 # `id-token: write`. actions/checkout and actions/setup-node ride their major tags.
 # To move a pin: gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
 jobs:
+  # The Node half's gates, on ubuntu. They used to be the first steps of `app`,
+  # which runs on macos-latest, and both deploys needed `app`: a site or Worker
+  # change waited behind the scarcest queue, and a Swift compile error anywhere
+  # held back a deploy that ships no Swift at all. Nothing here compiles Swift,
+  # so nothing here needs a Mac. bastion's `manifest`, in armada's terms.
+  node:
+    name: Node
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      # `24`, not `lts/*`: `lts/*` moves to the next major every October, which
+      # would put CI on a runtime no release has been built with.
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+      - name: Install 📦
+        run: pnpm install --frozen-lockfile
+      # Root-only commands: one oxlint and one oxfmt config cover both halves.
+      - name: Lint and format 🔍
+        run: |
+          pnpm lint
+          pnpm format:check
+      - name: Script tests 🧪
+        run: pnpm test:scripts
+      # The licence Worker's suite runs in the Workers runtime (miniflare) against a
+      # local D1, and includes the check that it mints byte-identical keys to
+      # scripts/lib/license.mjs — the half of the money loop nothing else tests.
+      #
+      # The generated Env types are checked first, against .dev.vars.example, which
+      # is what worker-configuration.d.ts was generated from, so no real .dev.vars is
+      # needed. A binding added to wrangler.jsonc without regenerating would
+      # otherwise typecheck against the Env it no longer matches.
+      #
+      # The `--` is load-bearing: without it pnpm 11 takes `--env-file` as its own
+      # and hands it to node, which exits 9 on "node: .dev.vars.example: not found".
+      - name: API tests 🧪
+        run: |
+          pnpm -C apps/api exec -- wrangler types --check --env-file=.dev.vars.example
+          pnpm -C apps/api typecheck
+          pnpm -C apps/api test
+
+  # The site is built on every push so a broken page fails here, on the pull
+  # request, rather than in the deploy job after it has merged. Its own job, and
+  # the only verify job that pulls LFS, for the reason the deploy job does: the
+  # icons and the social card are LFS objects, and a build over pointer files
+  # passes today only because Astro copies public/ without reading it. The first
+  # image imported through astro:assets would fail inside sharp with a complaint
+  # about the image format rather than about the checkout.
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+      - name: Install 📦
+        run: pnpm install --frozen-lockfile
+      # `astro check` first, through the root `check` every sibling's website job
+      # calls, because Vite strips types without checking them: a type error in a
+      # page or in config.ts builds, and deploys.
+      - name: Check 🔍
+        run: pnpm check
+      # `feedback:check` runs `astro build` first, then reads dist/, so this is the
+      # build step plus the assertions a build cannot make. The feedback form's
+      # failures are runtime-only — a CSP that refuses the Worker, a renamed field,
+      # a hidden diagnostic, a slug the Worker would 403.
+      - name: Build and check the feedback form 📦
+        run: pnpm -C apps/website run feedback:check
+
   app:
     name: App
     runs-on: macos-latest
@@ -39,7 +123,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -50,15 +134,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The fast gates first: none of them compiles anything, so there is no
-      # reason to spend an Xcode build discovering a misformatted file.
-      - name: Lint and format (node) 🔍
-        run: |
-          pnpm lint
-          pnpm format:check
+      # reason to spend an Xcode build discovering a misformatted file. The Node
+      # half's lint, format and script tests are in `node`, on ubuntu.
       - name: Format (swift) 🔍
         run: make format-swift-check
-      - name: Script tests 🧪
-        run: pnpm test:scripts
       # A stale Changelog.swift would ship What's New notes that describe a
       # different build than the one they are inside.
       - name: Changelog drift 🔍
@@ -79,37 +158,9 @@ jobs:
           echo "$APPSHOT_SHA256  $RUNNER_TEMP/$name.tar.gz" | shasum -a 256 -c -
           tar -xzf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP"
           PATH="$RUNNER_TEMP/$name:$PATH" make icon-check
-      # The site is built on every push so a broken page fails here, on the pull
-      # request, rather than in the deploy job after it has merged. Public assets
-      # are LFS pointers in this checkout; Astro copies public/ verbatim, so the
-      # build does not need their bytes — the deploy job does, and pulls them.
-      # `astro check` first, because Vite strips types without checking them: a type
-      # error in a page or in config.ts builds, and deploys.
-      - name: Build the website 🌐
-        run: |
-          pnpm -C apps/website typecheck
-          pnpm -C apps/website build
-      # The feedback form's failures are runtime-only — a CSP that refuses the
-      # Worker, a renamed field, a hidden diagnostic, a slug the Worker would 403.
-      # This reads the built page and fails the job on any of them.
-      - name: Feedback form wiring 🔍
-        run: pnpm -C apps/website run feedback:check
-      # The licence Worker's suite runs in the Workers runtime (miniflare) against a
-      # local D1, and includes the check that it mints byte-identical keys to
-      # scripts/lib/license.mjs — the half of the money loop nothing else tests.
+      # The site build and the licence Worker's suite are in `website` and `node`,
+      # on ubuntu, which is what the deploys wait for.
       #
-      # The generated Env types are checked first, against .dev.vars.example, which
-      # is what worker-configuration.d.ts was generated from, so no real .dev.vars is
-      # needed. A binding added to wrangler.jsonc without regenerating would
-      # otherwise typecheck against the Env it no longer matches.
-      #
-      # The `--` is load-bearing: without it pnpm 11 takes `--env-file` as its own
-      # and hands it to node, which exits 9 on "node: .dev.vars.example: not found".
-      - name: API tests 🧪
-        run: |
-          pnpm -C apps/api exec -- wrangler types --check --env-file=.dev.vars.example
-          pnpm -C apps/api typecheck
-          pnpm -C apps/api test
       # The cross-language check, and the one whose failure costs money. JavaScript
       # mints the keys and Swift accepts them, so a disagreement lives between the
       # two, where neither side's own tests can see it. This compiles the real
@@ -170,7 +221,9 @@ jobs:
   release-app:
     name: Release Armada.app
     runs-on: macos-latest
-    needs: [app]
+    # `node` as well as `app`, as bastion's is `[manifest, app]`: the lint, script
+    # and licence Worker gates moved out of `app` and still gate a release.
+    needs: [node, app]
     if: startsWith(github.ref, 'refs/tags/app-v')
     permissions:
       contents: write
@@ -357,34 +410,53 @@ jobs:
   # api.armada.mgcrea.io, on every push to main. `make api-deploy` rather than the
   # pnpm line it wraps, so this and a laptop deploy cannot drift: the recipe refuses
   # on unapplied migrations and curls /health itself.
+  #
+  # `needs:` names ubuntu jobs only, never `app`. It used to need `app`, which is
+  # macos-latest, so the Worker waited behind the scarcest queue, and a Swift
+  # compile error the Worker has no part in kept it from deploying at all.
   deploy-api:
     name: Deploy api
     runs-on: ubuntu-latest
-    needs: [app]
+    needs: [node]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     steps:
+      # The token is checked in the shell, not in `if:`: the secrets context is not
+      # available to a condition, and referencing it there fails the whole workflow
+      # at startup. A fork or a repo without the environment skips loudly.
+      - name: Token present? 🔑
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          # An annotation, not a plain line: every step below is gated on this
+          # output, so without a warning a rotated or renamed secret leaves a
+          # green "Deploy" on every push to main while production stays frozen,
+          # and the health curls that would notice are skipped by the same
+          # condition.
+          else echo "::warning::No CLOUDFLARE_API_TOKEN secret; nothing was deployed."; fi
       - name: Checkout 🛎️
+        if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        if: steps.token.outputs.present == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
+        if: steps.token.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 24
           check-latest: true
           cache: pnpm
       - name: Install 📦
+        if: steps.token.outputs.present == 'true'
         run: pnpm install --frozen-lockfile
       - name: Deploy 🚀
+        if: steps.token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::warning::no CLOUDFLARE_API_TOKEN in the production environment, not deploying"
-            exit 0
-          fi
-          make api-deploy
+        run: make api-deploy
 
   # armada.mgcrea.io, on every push to main. The release itself never needs this:
   # /download, /checksum and /appcast.xml are 302s to releases/latest/download, so a
@@ -396,42 +468,51 @@ jobs:
   # was skipped, with nothing in the run saying why, so the condition names what
   # it waits for. A missing Cloudflare token is not a skip: deploy-api warns and
   # succeeds, and this job then warns on its own.
+  #
+  # Ubuntu jobs only, as in deploy-api: `node` for lint and the Worker suite,
+  # `website` for the site build, never the macOS `app`.
   deploy-website:
     name: Deploy website
     runs-on: ubuntu-latest
-    needs: [app, deploy-api]
+    needs: [node, website, deploy-api]
     if: >-
       ${{ !cancelled()
-      && needs.app.result == 'success'
-      && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped')
-      && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.node.result == 'success' && needs.website.result == 'success'
+      && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped') }}
     environment: production
     steps:
+      - name: Token present? 🔑
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "::warning::No CLOUDFLARE_API_TOKEN secret; nothing was deployed."; fi
       # lfs: true, or the deploy uploads pointer files where the icons and the
       # social card should be, and the site looks fine until someone shares a link.
       - name: Checkout 🛎️
+        if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v5
         with:
           lfs: true
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        if: steps.token.outputs.present == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
+        if: steps.token.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 24
           check-latest: true
           cache: pnpm
       - name: Install 📦
+        if: steps.token.outputs.present == 'true'
         run: pnpm install --frozen-lockfile
-      # The token is checked in the shell, not in `if:`: the secrets context is not
-      # available to a step-level condition, and referencing it there fails the whole
-      # workflow at startup. A fork or a repo without the environment skips loudly.
+      # The recipe builds, publishes, and then curls the live URL — `wrangler
+      # deploy` exiting 0 is not proof the site moved.
       - name: Deploy 🚀
+        if: steps.token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::warning::no CLOUDFLARE_API_TOKEN in the production environment, not deploying"
-            exit 0
-          fi
-          make site-deploy
+        run: make site-deploy

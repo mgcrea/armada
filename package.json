@@ -12,6 +12,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "check": "pnpm -r --if-present check",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "oxlint",
