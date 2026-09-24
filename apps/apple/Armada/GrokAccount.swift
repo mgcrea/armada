@@ -28,6 +28,9 @@ final class GrokAccount: Identifiable {
 
   /// Off the main actor, cancellable before the process starts. See `Account.probeUsage`.
   func probeUsage() async {
+    // Spawns `grok`, which talks to the network as whoever is signed in. The menu bar
+    // panel asks for a probe on every appearance, so a capture would otherwise run it.
+    guard !ScreenshotMode.isEnabled else { return }
     guard let limits = await Self.probe(home), !Task.isCancelled else { return }
     usage = limits
     UsageHistory.shared.record(limits.asSnapshot, for: home.id)
@@ -127,3 +130,16 @@ final class GrokAccounts {
   var awaitingInputCount: Int { all.reduce(0) { $0 + $1.sessions.awaitingInputCount } }
   var liveCount: Int { all.reduce(0) { $0 + $1.sessions.liveSessions.count } }
 }
+
+#if DEBUG
+  extension GrokAccount {
+    /// A capture's weekly allowance, never probed. See `DemoSeed`.
+    func demoInstall(_ usage: GrokFiles.Limits) { self.usage = usage }
+  }
+
+  extension GrokAccounts {
+    /// A capture's Grok homes. `start()` is never called, so no probe timer exists.
+    /// See `DemoSeed`.
+    func demoInstall(_ accounts: [GrokAccount]) { all = accounts }
+  }
+#endif

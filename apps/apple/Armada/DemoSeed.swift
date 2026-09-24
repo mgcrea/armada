@@ -179,7 +179,7 @@ import SwiftUI
     /// and a fixture account folder that exists is somebody's real history.
     private static func refuseRealFolders() {
       let paths =
-        [Fixture.personal.path, Fixture.acme.path, Fixture.codexHome.path]
+        [Fixture.personal.path, Fixture.acme.path, Fixture.codexHome.path, Fixture.grokHome.path]
         + Fixture.projects.map(\.path)
       for path in paths where FileManager.default.fileExists(atPath: path) {
         fatalError("screenshot fixture \(path) exists on this Mac — rename it in DemoSeed.Fixture")
@@ -343,6 +343,10 @@ import SwiftUI
       static let acme = folder(".claude-acme")
       static let codexHome = CodexHome(
         base: home.appending(path: ".codex-acme", directoryHint: .isDirectory))
+      /// `.grok` itself, which `GrokHome` names "Grok Build". Safe here where it would not
+      /// be under the real home: `home` is a directory no Mac has.
+      static let grokHome = GrokHome(
+        base: home.appending(path: ".grok", directoryHint: .isDirectory))
 
       static let billingSessionID = "7c1e4a52-9b0d-4f3e-8a61-2d5c9e0b7f14"
       static let billingTitle = "Migrate billing webhooks to Stripe v2 events"
@@ -453,6 +457,18 @@ import SwiftUI
           planType: "pro",
           observedAt: ago(minutes: 6)))
       CodexAccounts.shared.demoInstall([codex])
+
+      let grok = GrokAccount(home: Fixture.grokHome)
+      grok.sessions.demoInstall(grokSessions)
+      // Weekly, the only period Grok Build reports, and "X Premium", the tier the one
+      // measured billing answer named (UnitChecks, grok 1.0.34). Below the Claude
+      // accounts on purpose: three vendors on one screen is the claim, and a third
+      // account crowding the limit gives the forecast nothing new to say.
+      grok.demoInstall(
+        GrokFiles.Limits(
+          utilization: 27, resetsAt: ahead(minutes: (4 * 24 + 6) * 60 + 19), period: "weekly",
+          tier: "X Premium", observedAt: ago(minutes: 3)))
+      GrokAccounts.shared.demoInstall([grok])
 
       ProjectStore.shared.demoInstall(Fixture.projects)
       UsageIndex.shared.demoInstall(ledger)
@@ -641,6 +657,41 @@ import SwiftUI
       session.context = ContextReading(
         total: total, cacheRead: total * 82 / 100, cacheCreation: 0,
         freshInput: total * 18 / 100, output: 3_310, modelID: "gpt-5.2-codex", at: last)
+      return session
+    }
+
+    // MARK: - Grok Build
+
+    /// Two sessions, the two live states the pane draws. The context window is the
+    /// 500,000 tokens `docs/grok-sessions.md` measured on grok-4.6.
+    @MainActor private static var grokSessions: [GrokSession] {
+      [
+        grokSession(
+          id: "01a0b3c4-7d2e-7f51-a8c6-3e9d4b1f0a27", cwd: Fixture.harbor,
+          started: ago(minutes: 33), title: "Draft the harbor 2.3 release notes", state: .working,
+          last: ago(minutes: 0.6), tokens: 241_300, cost: 1.84, turns: 17, context: 96_400),
+        grokSession(
+          id: "01a0b1e8-2c4f-7a93-b5d7-6f1e8c2a9d40", cwd: Fixture.api,
+          started: ago(minutes: 71), title: "Profile the search endpoint", state: .awaitingInput,
+          last: ago(minutes: 12), tokens: 118_700, cost: 0.92, turns: 9, context: 57_900),
+      ]
+    }
+
+    @MainActor private static func grokSession(
+      id: String, cwd: String, started: Date, title: String, state: GrokSessionState,
+      last: Date, tokens: Int, cost: Double, turns: Int, context used: Int
+    ) -> GrokSession {
+      let session = GrokSession(
+        id: id,
+        // Never read: the watcher that would scan it is never started.
+        directory: URL(filePath: "/dev/null"),
+        summary: GrokFiles.Summary(
+          sessionId: id, cwd: cwd, title: title, model: "grok-4.6", createdAt: started,
+          updatedAt: last, kind: nil, parentSessionId: nil))
+      session.state = state
+      session.lastEventAt = last
+      session.usage = GrokFiles.Usage(totalTokens: tokens, costUSD: cost, turnCount: turns)
+      session.context = GrokFiles.Context(used: used, window: 500_000)
       return session
     }
 

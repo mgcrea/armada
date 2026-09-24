@@ -123,6 +123,9 @@ final class GrokWatcher {
   }
 
   func scheduleScan() {
+    // As in `CodexWatcher.scheduleScan()`: a capture's home does not exist, and a scan
+    // would replace the seeded sessions with the nothing it finds there.
+    guard !ScreenshotMode.isEnabled else { return }
     guard !isScanning else {
       wantsAnotherScan = true
       return
@@ -264,3 +267,13 @@ final class GrokWatcher {
     return .working
   }
 }
+
+#if DEBUG
+  extension GrokWatcher {
+    /// A capture's sessions, never read from disk. See `DemoSeed`.
+    func demoInstall(_ sessions: [GrokSession]) {
+      self.sessions = sessions
+      didScan = true
+    }
+  }
+#endif
