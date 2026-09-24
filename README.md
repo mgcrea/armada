@@ -6,11 +6,10 @@ A macOS menu bar app for someone running many Claude Code and Codex sessions at 
 is doing, how full its context window is, and how much of each plan is left — read from what the
 agents already write to disk, plus one question asked of the user's own `claude`.
 
-> **Released.** 1.0.0 is out, as a Developer ID signed and notarized download from
-> [armada.mgcrea.io](https://armada.mgcrea.io), which also sells the licence; the source still builds
-> with `make build`. Status on 2026-09-14: the app covers two of v1's three features. The third, messaging,
-> is designed and not started. [Status](#status) lists exactly what runs today,
-> [CHANGELOG.md](CHANGELOG.md) what has changed, and
+> **Released.** 1.6.0 is out, as a Developer ID signed and notarized download from
+> [armada.mgcrea.io](https://armada.mgcrea.io), which also sells the licence; the source is MIT and
+> builds with `make build`. It watches Claude Code, Codex and Grok Build. [Status](#status) lists
+> exactly what runs today, [CHANGELOG.md](CHANGELOG.md) what has changed, and
 > [docs/implementation.md](docs/implementation.md) what it cost to get there.
 
 ## The problem
