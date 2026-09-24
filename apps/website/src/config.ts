@@ -179,9 +179,9 @@ export const PRICING = {
  * no measuring and no wrap. Keep them short.
  */
 export const SOCIAL_CARD = {
-  headline: "Every Claude Code and Codex session, on one screen",
+  headline: "Every Claude Code, Codex and Grok Build session",
   subhead: "Session state · context windows · 5-hour and 7-day limits",
-  alt: "The Armada icon, two sails on warm water, above the word Armada, the line “Every Claude Code and Codex session, on one screen”, and “Session state · context windows · 5-hour and 7-day limits”.",
+  alt: "The Armada icon, two sails on warm water, above the word Armada, the line “Every Claude Code, Codex and Grok Build session”, and “Session state · context windows · 5-hour and 7-day limits”.",
   width: 1200,
   height: 630,
 } as const;

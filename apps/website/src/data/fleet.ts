@@ -6,7 +6,8 @@
  *
  * Every title, project and figure here is invented, and each drawing's caption
  * says so. What is not invented is the vocabulary. The state labels are the app's
- * own (`label` in apps/apple/Armada/Session.swift and CodexSession.swift), the
+ * own (`label` in apps/apple/Armada/Session.swift, CodexSession.swift and
+ * GrokSession.swift), the
  * dot colours follow the menu bar rule that only a waiting session rings, and
  * "permission prompt" is the `waitingFor` text Claude Code writes for one (see
  * docs/claude-code-sessions.md).
@@ -27,7 +28,8 @@ export interface ExampleSession {
   project: string;
   account: string;
   age: string;
-  /** Absent for Codex, which records no process id and so has no Focus target. */
+  /** Absent for Codex, which records no process id, and for Grok Build, whose Focus is not wired
+   * up yet: neither has a Focus target. */
   host?: string;
   state: SessionState;
   waitingFor?: string;
@@ -38,7 +40,8 @@ export const ACCOUNTS = [
   { name: "~/.claude", vendor: "Claude Code", sessions: 11 },
   { name: "~/.claude-personal", vendor: "Claude Code", sessions: 3 },
   { name: "~/.claude-acme", vendor: "Claude Code", sessions: 1 },
-  { name: "~/.codex", vendor: "Codex", sessions: 4 },
+  { name: "~/.codex", vendor: "Codex", sessions: 3 },
+  { name: "~/.grok", vendor: "Grok Build", sessions: 1 },
 ] as const;
 
 /** 19. The hero's headline spells it out in words, so change both together. */
@@ -117,6 +120,14 @@ export const SESSIONS: ExampleSession[] = [
     host: "Terminal",
     state: "idle",
     context: "23%",
+  },
+  {
+    title: "Profile the session watcher",
+    project: "armada",
+    account: "~/.grok",
+    age: "22m",
+    state: "awaitingInput",
+    context: "27%",
   },
 ];
 

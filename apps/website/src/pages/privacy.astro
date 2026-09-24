@@ -63,7 +63,7 @@ const LEAVES = [
 const STAYS = [
   {
     what: "Your transcripts",
-    body: "Armada reads the session files Claude Code and Codex already write, where they already are, in <code>~/.claude*</code> and <code>~/.codex</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself.",
+    body: "Armada reads the session files Claude Code, Codex and Grok Build already write, where they already are, in <code>~/.claude*</code>, <code>~/.codex</code> and <code>~/.grok</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself.",
   },
   {
     what: "Your voice",
@@ -71,7 +71,7 @@ const STAYS = [
   },
   {
     what: "Your vendor accounts",
-    body: "Armada holds no vendor credentials. There is no sign-in, nothing reads or stores a token, and Codex's <code>auth.json</code> is never opened. The one thing it writes to Claude Code's configuration is the flag its own \"Yes, I trust this folder\" sets, for a project you saved, when you start a session there. Nothing else: no hook, no settings file, no MCP server entry, and nothing in Codex's.",
+    body: "Armada holds no vendor credentials. There is no sign-in, nothing reads or stores a token, and neither Codex's nor Grok Build's <code>auth.json</code> is ever opened. It writes into the agents' folders only in four named places, each from something you did: the flag Claude Code's own \"Yes, I trust this folder\" sets, for a project you saved, when you start a session there; one hook in each Claude Code account's <code>settings.json</code> while message delivery is on, removed when you turn it off; a copied transcript when you continue a Claude Code session on another account; and Armada's own MCP entry, in a Claude Code account's <code>.claude.json</code> or Codex's <code>config.toml</code>, when you press Configure, with the previous file kept as a backup. Grok Build's folders are only read.",
   },
   {
     what: "Your licence key",
@@ -157,14 +157,16 @@ const code = "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:break-words [&_c
       <p class={lead}>
         To read plan limits, Armada runs your own installed <code>claude</code> and asks it a question
         that costs no tokens. That program talks to Anthropic over your own sign-in, under Anthropic's
-        terms, as it does whenever you use it. The same is true of a session you start or fork from
-        Armada: it runs <code>claude</code> or <code>codex</code> in your terminal, and what that agent
-        does is between you and its vendor.
+        terms, as it does whenever you use it. For Grok Build it asks your own <code>grok</code> the
+        same way, and that program talks to xAI. The same is true of a session you start or fork from
+        Armada: it runs <code>claude</code>, <code>codex</code> or <code>grok</code> in your terminal,
+        and what that agent does is between you and its vendor.
       </p>
       <p class={prose}>
         Voice, if you turn it on, is the one time Armada runs <code>claude</code> itself with a prompt:
         the question you just spoke, as text, on the account you chose. That <code>claude</code> gets no
-        built-in tools and only Armada's read tools, and Armada closes it after five idle minutes.
+        built-in tools and only Armada's read tools, plus starting a session and bringing one forward
+        while Allow writes is on, and Armada closes it after five idle minutes.
       </p>
       <p class={prose}>
         Armada is not sandboxed. That is by design: it has to read other tools' folders, which a

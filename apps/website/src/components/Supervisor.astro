@@ -1,7 +1,7 @@
 ---
 /**
- * The supervisor: a read-only MCP endpoint on loopback, and a Claude Code session
- * started with it attached.
+ * The supervisor: an MCP endpoint on loopback, read-only unless Allow writes is on,
+ * and a Claude Code session started with it attached.
  *
  * The tool titles are the tools' own `title`s in
  * apps/apple/Packages/ArmadaMCP/Sources/ArmadaMCP/Tools.swift, and the bodies are
@@ -20,7 +20,7 @@ const TOOLS = [
   },
   {
     title: "Fleet overview",
-    body: "Every account and session Armada watches, across both vendors, with state, context and when each last moved.",
+    body: "Every account and session Armada watches, across all three vendors, with state, context and when each last moved.",
   },
   {
     title: "One session",
@@ -32,8 +32,41 @@ const TOOLS = [
   },
   {
     title: "Plan limits",
-    body: "Each account's 5-hour and 7-day windows, how much is used, when each resets, and how old the figure is.",
+    body: "Each account's 5-hour and 7-day windows, or Grok Build's weekly allowance, how much is used, when each resets, and how old the figure is.",
   },
+  {
+    title: "Saved projects",
+    body: "Each saved project's default agent and account, its live sessions, and the tokens spent in it over 7 days, 30 days and all time.",
+  },
+  {
+    title: "Wait for a change",
+    body: "Holds the call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling.",
+  },
+] as const;
+
+/** Listed and callable only while Allow writes is on, and never pre-allowed. */
+const WRITE_TOOLS = [
+  {
+    title: "Start a session",
+    body: "Opens your terminal on a new session in a saved project, or resumes one nothing has open. The session still asks you for every permission.",
+  },
+  {
+    title: "Close a session",
+    body: "Ends a Claude Code session the way quitting it would. The transcript is kept, and a session mid-turn is closed only after asking you.",
+  },
+  {
+    title: "Bring a session forward",
+    body: "Raises the window a Claude Code session runs in, on its own tab in VS Code when Armada can find it.",
+  },
+  {
+    title: "Message a session",
+    body: "Puts a message in front of a running Claude Code session, labelled as coming from an agent. Also needs Deliver messages to sessions.",
+  },
+] as const;
+
+const GROUPS = [
+  { heading: "Seven tools, all read-only", tools: TOOLS },
+  { heading: "Four more, only with Allow writes on", tools: WRITE_TOOLS },
 ] as const;
 ---
 
@@ -51,21 +84,23 @@ const TOOLS = [
   <div class="wrap relative grid grid-cols-1 items-start gap-12 lg:grid-cols-2 lg:gap-16">
     <SectionCopy eyebrow="The supervisor" heading="Ask an agent which of your agents needs you.">
       <p class="m-0 text-[16px] leading-[1.6] text-pretty text-fg-dim">
-        Turn it on, and Armada serves a read-only MCP endpoint on your Mac. One button then opens an
-        ordinary Claude Code session with that endpoint attached, its tools pre-allowed and a brief
+        Turn it on, and Armada serves an MCP endpoint on your Mac. One button then opens an ordinary
+        Claude Code session with that endpoint attached, its read tools pre-allowed and a brief
         already written. The session is the interface: ask it what the fleet is doing, what a session
         last said, or how much plan is left before you start another.
       </p>
       <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
         Off by default, because it is the one part of the app that shows your fleet to a model. It
-        binds <code>127.0.0.1</code> only and answers a token kept in your Keychain. None of its tools
-        can start, stop, steer or write anything. The session runs on your own plan, and its connection
-        details never touch your Claude configuration.
+        binds <code>127.0.0.1</code> only and answers a token kept in your Keychain. Its tools only read
+        until you turn on Allow writes, and even then none of the four that act is pre-allowed. The
+        session runs on your own plan, and its connection details never touch your Claude
+        configuration.
       </p>
       <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
         Or skip the terminal: turn on voice, press a shortcut anywhere and ask out loud. A card at the
         top of the screen shows the answer while it is spoken. Your speech becomes text on the Mac, and
-        the question goes to a <code>claude</code> Armada runs on your account, with only the read tools.
+        the question goes to a <code>claude</code> Armada runs on your account, with the read tools, and
+        with Allow writes on, starting a session and bringing one forward.
       </p>
     </SectionCopy>
 
@@ -87,29 +122,33 @@ const TOOLS = [
         </span>
       </div>
 
-      <div class="reveal flex flex-col overflow-hidden rounded-[12px] border border-rule bg-bg-2">
-        <span
-          class="border-b border-rule px-[18px] py-3.5 font-mono text-[11px] tracking-[.08em] text-fg-muted uppercase"
-        >
-          Five tools, all read-only
-        </span>
-        <ul class="m-0 list-none p-0">
-          {
-            TOOLS.map((t) => (
-              <li class="flex gap-3 border-b border-white/4 px-[18px] py-3.5 last:border-b-0">
-                <span
-                  class="mt-[7px] block size-1.5 flex-none rounded-full bg-accent"
-                  aria-hidden="true"
-                />
-                <span class="flex flex-col gap-[3px]">
-                  <span class="text-[13.5px] font-medium text-fg">{t.title}</span>
-                  <span class="text-[12.5px] leading-[1.55] text-pretty text-fg/50">{t.body}</span>
-                </span>
-              </li>
-            ))
-          }
-        </ul>
-      </div>
+      {
+        GROUPS.map((g) => (
+          <div class="reveal flex flex-col overflow-hidden rounded-[12px] border border-rule bg-bg-2">
+            <span
+              class="border-b border-rule px-[18px] py-3.5 font-mono text-[11px] tracking-[.08em] text-fg-muted uppercase"
+            >
+              {g.heading}
+            </span>
+            <ul class="m-0 list-none p-0">
+              {
+                g.tools.map((t) => (
+                  <li class="flex gap-3 border-b border-white/4 px-[18px] py-3.5 last:border-b-0">
+                    <span
+                      class="mt-[7px] block size-1.5 flex-none rounded-full bg-accent"
+                      aria-hidden="true"
+                    />
+                    <span class="flex flex-col gap-[3px]">
+                      <span class="text-[13.5px] font-medium text-fg">{t.title}</span>
+                      <span class="text-[12.5px] leading-[1.55] text-pretty text-fg/50">{t.body}</span>
+                    </span>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
+        ))
+      }
     </div>
   </div>
 </section>

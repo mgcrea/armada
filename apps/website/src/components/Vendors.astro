@@ -1,8 +1,9 @@
 ---
 /**
- * The two vendors, side by side, with Codex named as the spike the README calls
- * it. Its caveats (no Focus, figures led by their age) were the footnote under the
- * old feature cards; saying so costs less than a buyer finding out.
+ * The three vendors, side by side, with Codex named as the spike the README calls
+ * it and Grok Build as the newest. Their caveats (no Focus, figures led by their
+ * age, no permission prompts yet) were the footnote under the old feature cards; saying
+ * so costs less than a buyer finding out.
  */
 import SectionHeader from "./SectionHeader.astro";
 
@@ -33,17 +34,30 @@ const VENDORS = [
       "No Focus, because Codex records no process id on disk",
     ],
   },
+  {
+    name: "Grok Build",
+    badge: "the newest",
+    tone: "bg-warn/16 text-warn",
+    path: "~/.grok · GROK_HOME",
+    reads: [
+      "Live sessions from Grok Build's own list of open sessions, with titles from each session's summary",
+      "Three states: working, waiting for input, and ended",
+      "Tokens, cost and how much of the context window is left, from the session log",
+      "The weekly allowance, asked of your own grok the way its /usage asks, at no cost",
+      "No Focus yet, and a permission prompt is not read from disk yet, so a session never says it wants you",
+    ],
+  },
 ] as const;
 ---
 
 <section id="vendors" class="wrap scroll-mt-20 py-[96px]">
-  <SectionHeader eyebrow="Vendors" heading="Two vendors, read the same way.">
+  <SectionHeader eyebrow="Vendors" heading="Three vendors, read the same way.">
     Claude Code is the case Armada was built around and the one it reads most completely. Codex went
     in as a spike: real code and shipped behaviour, thinner than Claude Code's, and named as a spike
-    here because that is what it is.
+    here because that is what it is. Grok Build is read the way Codex is, from its own folder.
   </SectionHeader>
 
-  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
     {
       VENDORS.map((v) => (
         <div class="reveal flex flex-col gap-[18px] rounded-[16px] border border-rule bg-bg-2 p-6 sm:p-[30px]">

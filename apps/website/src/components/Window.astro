@@ -13,7 +13,7 @@ import SectionCopy from "./SectionCopy.astro";
 
 const selected = "~/.claude";
 const rows = sessionsOf(selected);
-const groups = ["Claude Code", "Codex"].map((vendor) => ({
+const groups = ["Claude Code", "Codex", "Grok Build"].map((vendor) => ({
   vendor,
   accounts: ACCOUNTS.filter((a) => a.vendor === vendor),
 }));
@@ -29,7 +29,7 @@ const ACTIONS = [
   },
   {
     title: "New session",
-    body: "Starts <code>claude</code> or <code>codex</code> in a folder you pick, on the account you pick, in your own terminal.",
+    body: "Starts <code>claude</code>, <code>codex</code> or <code>grok</code> in a folder you pick, on the account you pick, in your own terminal.",
   },
   {
     title: "The menu bar",
