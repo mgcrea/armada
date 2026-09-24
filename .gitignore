@@ -54,3 +54,9 @@ dist/
 
 # Wrangler's local state, including the miniflare D1 the Worker tests run against.
 .wrangler/
+
+# Screenshot pipeline: regenerated on every run. Only golden/ (LFS) and the config are
+# committed — see apps/apple/Makefile, "Screenshots".
+apps/apple/Screenshots/*/source/
+apps/apple/Screenshots/*/appstore/
+apps/apple/Screenshots/*/diff/

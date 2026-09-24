@@ -240,6 +240,7 @@ UNIT_SRC := \
 	Armada/MenuBarHalo.swift \
 	Armada/SessionOrder.swift \
 	Armada/Changelog.swift \
+	Armada/ScreenshotMode.swift \
 	Armada/HostWindow.swift \
 	Armada/ProjectPath.swift \
 	Armada/Project.swift \
@@ -274,3 +275,197 @@ unit: ## Check the parsers, forecasts, sort order and licence refusals, with no 
 	@$(UNIT_BIN)
 
 .PHONY: unit
+
+# ── Screenshots ───────────────────────────────────────────────────────────────
+#
+# The canonical section from the appshot-screenshot-pipeline skill, with the
+# variables edited and two deliberate divergences, both forced by this file:
+#
+#   * SCREENSHOTS_CONFIG, not CONFIG. `CONFIG` is already the build configuration
+#     above (`make build CONFIG=Release`), and the canonical name would silently
+#     hand xcodebuild a JSON path as its -configuration.
+#   * PROJECT, SCHEME and DERIVED_DATA are not redeclared: they are the build's own,
+#     defined at the top, and APP_PATH is `$(APP_BUNDLE)` so `make run` and a capture
+#     can never launch two different apps.
+#
+# The iOS block is omitted — Armada is Mac-only. Armada is not an App Store app
+# either: the framed `appstore/` set is composed because `appshot run` always
+# composes it, and it is what a README or a launch post wants, but the plates that
+# ship are the bare `website/` captures, written straight into the site.
+#
+# Requires `appshot` on PATH: cd ~/Projects/appshot && make install
+#
+# From the repo root these forward through `make -C apps/apple`, which chdirs before
+# reading this file, so every relative path below means the same thing from either
+# place. appshot resolves every path against the process working directory and has
+# no notion of a project root — never run it by hand from the repo root.
+
+# Each `name:stage` opens the app directly onto that screen via -ScreenshotStage;
+# the stages are `DemoSeed.Stage`. Store ORDER is not here — it is screens[] in the
+# config.
+SCREENS = usage:usage menubar:menubar account:account transcript:transcript projects:projects codex:codex
+
+# Set to recapture a subset without touching the other captures:
+#
+#   make screenshots-capture SCREENS="codex:codex" PARTIAL=1
+PARTIAL =
+
+# Launch arguments beyond stage + appearance, which appshot always passes itself.
+#
+# Short, because the app does the rest: `DemoSeed.maskPreferences` writes every
+# preference these panes read into the argument domain from the same expressions the
+# `@AppStorage` initializers use, so a default changed in code cannot drift from a
+# copy here. What stays is what the app cannot pin for itself:
+#
+#   -AppleLocale / -AppleLanguages   `Locale.current` is read before DemoSeed runs,
+#       and it drives every figure on these plates: `118,400` becomes `118 400`, and
+#       the weekly chart's weekday names change language.
+#   -AppleHighlightColor   The text-selection colour, still ambient. The accent is
+#       NOT pinned: Assets.xcassets/AccentColor.colorset names Armada's own coral, so
+#       there is nothing ambient left to pin and the flag would do nothing.
+#   -AppleShowScrollBars   `Always` bakes a bar into the session list, the transcript
+#       and the Projects detail, all three of which scroll.
+#
+# Quoting: the whole value is already inside --extra-args="…", so inner values take
+# single quotes.
+DEMO_ARGS = -ScreenshotMode YES \
+            -AppleLocale en_US -AppleLanguages '(en)' \
+            -AppleHighlightColor '0.698039 0.843137 1.000000 Blue' \
+            -AppleShowScrollBars WhenScrolling
+
+# Dark only, matching the config's "appearances". `appshot capture` does not read that
+# key — only `appshot run` does — and defaults to dark AND light, so without this a
+# capture takes a light set nothing renders (and --recolor-traffic-lights fails on it).
+APPEARANCES = dark
+
+# A floor, not the whole wait, and moot while READY is set: the app says when each
+# screen exists (`DemoSeed.signalReady`), so the floor is skipped.
+SETTLE = 0.3
+
+# Never take the screen. ScreenCaptureKit reads an occluded window's own content, so
+# a run photographs Armada sitting behind whatever you are working in — no pointer
+# warp, no focus change, and none of the "would not come to the front" flakiness a
+# focused run hits whenever somebody is using the Mac. The app cooperates: it reads
+# `-ScreenshotActivation none` and withholds its own activation
+# (`ScreenshotMode.staysInBackground`), forces `controlActiveState` to `.key` so the
+# controls are not dimmed, and holds off App Nap so it is not photographed half-drawn.
+#
+# What no app can fix is the chrome macOS draws for an inactive window: grey traffic
+# lights, which --recolor-traffic-lights repaints, and a sidebar ~11/255 lighter,
+# which at this size nobody sees. The goldens are from THIS mode; a focused capture
+# against them fails on chrome nobody changed. To switch, capture with
+# `CAPTURE_FOCUS=` and re-accept every golden in the same change.
+#
+# --capture-display builtin is a no-op on a Mac with one display and the right thing
+# on a desk with two: the window is drawn on the panel nobody is looking at.
+CAPTURE_FOCUS = --no-activate --recolor-traffic-lights --capture-display builtin
+
+# The app touches -ScreenshotReadyFile when the screen's content exists, which for
+# the transcript is after its file is read, not when the window appears. A signal
+# that never arrives fails the shot instead of photographing an empty window.
+READY = --ready-file
+
+#   Screenshots/macos/screenshots.config.json  committed (text)
+#   Screenshots/macos/golden/                  committed via GIT LFS — the baseline
+#   Screenshots/macos/golden/manifest.json     committed as TEXT — the seal
+#   Screenshots/macos/{source,appstore,diff}/  generated, gitignored
+#
+# Beside Armada.xcodeproj, with the macos/ level even though there is no iOS half.
+# .gitattributes lives beside this Makefile, because its patterns are relative to its
+# own directory. A fresh clone needs `git lfs pull`, or the goldens arrive as 131-byte
+# pointer files still named .png — which appshot refuses rather than passing.
+SCREENSHOTS_DIR    = Screenshots
+MAC_DIR            = $(SCREENSHOTS_DIR)/macos
+SOURCE_DIR         = $(MAC_DIR)/source
+GOLDEN_DIR         = $(MAC_DIR)/golden
+APPSTORE_DIR       = $(MAC_DIR)/appstore
+DIFF_DIR           = $(MAC_DIR)/diff
+SCREENSHOTS_CONFIG = $(MAC_DIR)/screenshots.config.json
+
+# The site's own asset folder, absolute because it is the one path that leaves this
+# directory. `$(abspath)` never stats, so a typo is a plausible wrong path that
+# `compose website` will happily create.
+#
+# PIPELINE-OWNED: `compose website` deletes every .png in it before writing. Nothing
+# hand-made may be parked there, and it must never be listed in screenshots-clean.
+WEBSITE_SCREENSHOTS_DIR = $(abspath ../website)/src/assets/screenshots
+
+# The Debug bundle, on purpose, and the opposite of bastion's Release captures:
+# `DemoSeed` is `#if DEBUG` in its entirety, so a Release build has no screenshot
+# mode at all. The Debug build also has its own bundle id, so a capture's defaults
+# land in io.mgcrea.armada.debug and never in the real app's domain. `DemoSeed.version`
+# pins what the footer says, so the "-dev" suffix never reaches a plate.
+APP_PATH = $(APP_BUNDLE)
+
+.PHONY: screenshots screenshots-capture screenshots-check screenshots-update \
+        screenshots-seal screenshots-selftest screenshots-appstore screenshots-website \
+        screenshots-compose screenshots-doctor screenshots-clean
+
+## Needs Screen Recording permission for the TERMINAL that runs it; nothing is granted
+## to Armada. --wait queues behind another project's capture on this Mac rather than
+## failing: bastion and cupertino capture here too, and the lock has no project key.
+
+screenshots: build ## Capture, gate against the goldens, and compose both sets
+	appshot run \
+		--app "$(APP_PATH)" \
+		--config "$(SCREENSHOTS_CONFIG)" \
+		--source "$(SOURCE_DIR)" \
+		--golden "$(GOLDEN_DIR)" \
+		--appstore-out "$(APPSTORE_DIR)" \
+		--website-out "$(WEBSITE_SCREENSHOTS_DIR)" \
+		--screens $(SCREENS) \
+		--extra-args="$(DEMO_ARGS)" \
+		--settle $(SETTLE) $(READY) $(CAPTURE_FOCUS) \
+		--wait \
+		--require-manifest
+
+screenshots-capture: build ## Capture only (no gate, no compose)
+	@# --config checks $(SCREENS) against the config's screens[].id BEFORE launching
+	@# anything. PARTIAL=1 drops the left-out half of that check; a name in no
+	@# screens[].id still fails. --extra-args needs the `=`: the value starts with
+	@# `-`, and without it ArgumentParser reads it as appshot's own flags.
+	appshot capture \
+		--app "$(APP_PATH)" \
+		--out "$(SOURCE_DIR)" \
+		--config "$(SCREENSHOTS_CONFIG)" \
+		--screens $(SCREENS) $(if $(PARTIAL),--partial) \
+		--appearances $(APPEARANCES) \
+		--extra-args="$(DEMO_ARGS)" \
+		--settle $(SETTLE) $(READY) $(CAPTURE_FOCUS) \
+		--wait
+
+screenshots-check: ## Fail if the captures drifted from the goldens
+	@# --config checks the exact expected SET, and fails when two captures are the
+	@# same image — the tell that a -ScreenshotStage value did nothing. --json gives
+	@# the same verdict as one document for a script; exit codes are unchanged.
+	appshot check --source "$(SOURCE_DIR)" --golden "$(GOLDEN_DIR)" \
+		--config "$(SCREENSHOTS_CONFIG)" --require-manifest
+
+screenshots-update: ## Accept the captures as the new goldens (review the diffs first)
+	appshot accept --source "$(SOURCE_DIR)" --golden "$(GOLDEN_DIR)"
+	@$(MAKE) --no-print-directory screenshots-compose
+
+screenshots-seal: ## Adopt the goldens on disk as the sealed baseline (one-time)
+	appshot seal --golden "$(GOLDEN_DIR)"
+
+screenshots-selftest: ## Prove the golden gate actually fails when it should
+	appshot selftest --golden "$(GOLDEN_DIR)"
+
+screenshots-appstore: ## Compose the framed, captioned visuals
+	appshot compose appstore \
+		--config "$(SCREENSHOTS_CONFIG)" --source "$(SOURCE_DIR)" --out "$(APPSTORE_DIR)"
+
+screenshots-website: ## Emit bare app captures into apps/website/src/assets/screenshots
+	appshot compose website \
+		--config "$(SCREENSHOTS_CONFIG)" --source "$(SOURCE_DIR)" --out "$(WEBSITE_SCREENSHOTS_DIR)"
+
+screenshots-compose: screenshots-appstore screenshots-website ## Recompose both sets (no re-capture)
+
+screenshots-doctor: ## Check what fails silently: font, Screen Recording, config
+	appshot doctor --config "$(SCREENSHOTS_CONFIG)"
+
+screenshots-clean: ## Remove generated captures and composites (keeps the goldens)
+	@# NOT $(WEBSITE_SCREENSHOTS_DIR): those are committed files in the site that only
+	@# a full capture run can regenerate, and a clean target must not delete them.
+	@rm -rf $(SOURCE_DIR) $(APPSTORE_DIR) $(DIFF_DIR)
+	@echo "Removed generated screenshots. Goldens in $(GOLDEN_DIR) kept."

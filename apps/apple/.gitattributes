@@ -1,0 +1,11 @@
+# The screenshot goldens, in LFS. They are large binaries rewritten in full on every
+# UI change; without LFS each refresh adds the whole set to history, permanently, in
+# every clone — and an unversioned baseline is only ever "whatever this machine
+# captured last", which is not a gate.
+#
+# Beside Armada.xcodeproj rather than at the repo root, because these patterns are
+# relative to this file's own directory: hoisted, the rule silently stops matching and
+# the next refresh commits the goldens as plain blobs. `*/` is the platform level and
+# `**` any device or locale level under it. manifest.json is deliberately not matched —
+# it is the seal, and it is text.
+Screenshots/*/golden/**/*.png filter=lfs diff=lfs merge=lfs -text

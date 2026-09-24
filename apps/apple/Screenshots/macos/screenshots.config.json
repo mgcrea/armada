@@ -1,0 +1,107 @@
+{
+  "//": "Captions, theme and order for `appshot compose`. Text, so marketing copy changes without touching code or re-capturing. The targets are the `screenshots-*` section of apps/apple/Makefile.",
+  "//output": "The Mac App Store's 16:10 canvas. Armada does not ship on the App Store (it is a signed Developer ID build with a Sparkle appcast), but this is still the right size: it is the one shape the compositor accepts, and it is what a README, a launch post and an OG card all want. DemoSeed pins the main window to 1200x750, exactly 16:10, so the capture fills the width without letterboxing.",
+  "output": {
+    "width": 2880,
+    "height": 1800
+  },
+  "//appearances": "Dark only. apps/website/src/styles/global.css sets `color-scheme: dark` and nothing on the site is light, so a light set would double the run and commit five goldens nothing renders. Note `appshot capture` does not read this key (only `appshot run` does) and defaults to both, which is why a light capture shows up if someone drives capture by hand without --appearances.",
+  "appearances": [
+    "dark"
+  ],
+  "//fontFamily": "SF Pro Display is not part of a stock macOS install; it ships in Apple's SF font pack. `make screenshots-doctor` refuses to compose if it does not resolve, which is the only way to catch a silent substitution.",
+  "fontFamily": "'SF Pro Display', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  "layout": {
+    "margin": 180,
+    "textTop": 150,
+    "titleFontSize": 104,
+    "titleWeight": 700,
+    "titleLineHeight": 1.12,
+    "subtitleFontSize": 46,
+    "subtitleWeight": 500,
+    "textGap": 30,
+    "screenshotGap": 90,
+    "cornerRadius": 26,
+    "shadow": {
+      "blur": 52,
+      "opacity": 0.34,
+      "dy": 26
+    },
+    "maxTitleLines": 2
+  },
+  "//themes": "Not a second palette. The floor is design/colors.json's `waterFore`, the mark's darkest water, and the ground above it is the site's own --color-bg (#0b0c0f, apps/website/src/styles/tokens.css); the title and subtitle are the site's --color-fg and --color-fg-dim. A plate in colours the site does not use reads as a different product. 270 = bottom-up: appshot's angles are degrees clockwise, y-down, taken literally, so offset 0 is the bottom edge. That is NOT the CSS convention design/colors.json uses for `plate`.",
+  "themes": {
+    "dark": {
+      "background": {
+        "angle": 270,
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#7A2F1C"
+          },
+          {
+            "offset": 0.24,
+            "color": "#241a1a"
+          },
+          {
+            "offset": 0.6,
+            "color": "#101215"
+          },
+          {
+            "offset": 1,
+            "color": "#0B0C0F"
+          }
+        ]
+      },
+      "title": "#F4F2EF",
+      "subtitle": "#9B9A96"
+    }
+  },
+  "//screens": "Order here IS the order of the framed set: it stamps the 01-, 02- prefix. Captures stay unnumbered, so reordering never renames an image. `id` is <id>~dark.png in source/ and the -ScreenshotStage value `DemoSeed.Stage` parses. No caption quotes a fixture count: `five sessions` is a fact about DemoSeed, and it goes stale the first time someone adds a row.",
+  "//website": "The basename `appshot compose website` writes into apps/website/src/assets/screenshots/, a directory the pipeline owns (it deletes every .png there before writing). None of the site's components use them yet; they are there to be placed.",
+  "screens": [
+    {
+      "//": "The claim the product rests on. Two organizations on one person carry separate limits, and neither figure means anything added to the other. The Acme card's orange forecast line is the fixture's 71% session window with 48 minutes left, chosen so the forecast has something to say.",
+      "id": "usage",
+      "website": "usage",
+      "title": "Every limit, every account,\nin one place.",
+      "subtitle": "Session and weekly windows for each Claude organization and Codex home, with a forecast of where this window ends at the rate you are going."
+    },
+    {
+      "//": "The menu bar panel's own view (StatusMenu), in a borderless window DemoSeed.PanelStand builds for the capture: appshot cannot see the real status-bar panel. Opaque where the real panel is glass, because glass would photograph whatever sits behind it on the capturing Mac. `chrome: none` exempts this one screen from --recolor-traffic-lights, which would otherwise fail it for having no buttons; every other screen still fails if its lights go missing.",
+      "id": "menubar",
+      "website": "menubar",
+      "chrome": "none",
+      "title": "Every limit, one click\nfrom the menu bar.",
+      "subtitle": "Each account's session and weekly figures, and what its sessions are doing, without opening a window."
+    },
+    {
+      "//": "Every state a session row can draw, once: working, running a tool, waiting for permission, idle with a warm cache. The detail column is the selected session's context, which is why the stage selects one rather than showing the overview.",
+      "id": "account",
+      "website": "account",
+      "title": "Which session is working,\nand which one wants you.",
+      "subtitle": "Live state for every Claude Code session on the account, with its context window, what compaction cost it, and how long its prompt cache stays warm."
+    },
+    {
+      "//": "Projects are the person's own list, across all three vendors. The selected project is the one the ledger fixture makes busiest, so the week's figures are not a row of zeros.",
+      "id": "projects",
+      "website": "projects",
+      "title": "What each project\nactually costs you.",
+      "subtitle": "Tokens per project across Claude Code and Codex, read from the transcripts on your Mac and kept after the agents delete them."
+    },
+    {
+      "//": "The second vendor in the same shape as the first. The detail is the working session.",
+      "id": "codex",
+      "website": "codex",
+      "title": "Codex, in the same\nwindow as Claude.",
+      "subtitle": "Rate limits, live sessions and their context, read from the rollouts Codex already writes. No second app to keep open."
+    },
+    {
+      "//": "Not the main window. DemoSeed never opens the main window on this stage, because appshot photographs the largest ordinary window and would capture that instead, at the right size, showing a real screen, silently.",
+      "id": "transcript",
+      "website": "transcript",
+      "title": "Read what a session\nhas been doing.",
+      "subtitle": "The turns, the thinking and every tool call, in a window sized to read in. Filter to just the conversation when a session runs long."
+    }
+  ]
+}
