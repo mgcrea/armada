@@ -35,11 +35,14 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and seven of its nine tools are read-only. The other two are listed and callable only while
-  Allow writes is on, which it is not by default. `armada_start_session` opens Terminal on a
-  fresh session in a folder you saved as a project, or resumes a Claude Code session there that
-  nothing has open, and that session asks you for every permission as usual. `armada_close_session` sends `SIGTERM` to a Claude Code session's own
-  process, and `SIGKILL` if it is still there eight seconds later. `make audit` checks the listener's source for the
+  and seven of its eleven tools are read-only. The other four are listed and callable only while
+  Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
+  opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
+  that nothing has open, and that session asks you for every permission as usual.
+  `armada_close_session` sends `SIGTERM` to a Claude Code session's own process, and `SIGKILL` if
+  it is still there eight seconds later. `armada_focus_session` raises the window a Claude Code
+  session runs in and changes nothing in it. `armada_send_message` also needs Deliver messages to
+  sessions, and is described under Messaging below. `make audit` checks the listener's source for the
   loopback address and refuses a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
@@ -49,9 +52,17 @@ Three properties, each of which is checkable rather than asserted:
   below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
   and no other keystroke.
 
-- **It never writes to a vendor's configuration.** `~/.claude*` and `~/.codex` are opened
-  read-only. Armada installs no hook, writes no `settings.json`, and adds no MCP server entry.
-  The only things it writes anywhere are its own preferences; its usage history, saved projects
+- **It writes to a vendor's folders in four named places, each from something you did.**
+  `~/.claude*`, `~/.codex` and `~/.grok` are otherwise opened read-only. The four: the
+  "trust this folder" flag in a Claude Code account's `.claude.json`, when you start a session in
+  a saved project, written under Claude Code's own lock with the rest of the file left as it was;
+  one hook in each Claude Code account's `settings.json` while Deliver messages to sessions is on,
+  removed when you turn it off (see Messaging); a copied transcript when you continue a Claude
+  Code session on another account, which refuses rather than overwrite a different conversation;
+  and Armada's own MCP entry in a Claude Code account's `.claude.json` or Codex's `config.toml`
+  when you press Configure in Settings ▸ Supervisor, with the previous file kept beside it as a
+  backup and someone else's `armada` entry never replaced without asking. Grok Build's folders are
+  only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
   and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
   Support; and a session startup script in its own temporary directory — beside which a
   supervisor session's MCP configuration, or an agent-started session's opening message, is
@@ -71,8 +82,8 @@ Read-only is not the same as narrow, so the whole read surface is listed here ra
 to "`~/.claude*` and `~/.codex`":
 
 - **Each account's own folders:** `~/.claude`, every `~/.claude-*` beside it, `CLAUDE_CONFIG_DIR`,
-  `~/.codex` and `CODEX_HOME`, for session registries, transcripts, session logs and cached
-  usage. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
+  `~/.codex`, `CODEX_HOME`, `~/.grok`, `GROK_HOME` and any home added with Add Account, for
+  session registries, transcripts, session logs and cached usage. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
   transcript and session log is read, Codex's `archived_sessions` included, for the tokens each
   project spent; what is kept is counts per day, folder, account and model, never text.
 - **`~/.claude.json`**, watched for changes, for the plan usage Claude Code caches there.
@@ -85,8 +96,9 @@ to "`~/.claude*` and `~/.codex`":
   `claude` inside a session's working folder, so that process reads what any `claude` started
   there reads, including the project's `CLAUDE.md` and its settings.
 
-None of it leaves the Mac through Armada. The only request Armada makes is the opt-in update
-check, and the only thing it serves is the opt-in loopback MCP endpoint described above.
+None of it leaves the Mac through Armada. The only requests Armada makes are the opt-in update
+check and the speech-model downloads, and the only thing it serves is the opt-in loopback MCP
+endpoint described above.
 
 ## In scope
 
@@ -109,8 +121,8 @@ attacker-influenced text meets something that acts on it:
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
 - **The MCP endpoint.** Switched on, Armada serves seven read-only tools on `127.0.0.1` to
-  whoever presents the token, and two that start and close a session only while Allow writes
-  is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
+  whoever presents the token, and four that start, close, bring forward and message a session
+  only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
   writes off, starts or resumes a session in a folder that is not a saved project, resumes a session that is
   still open, gets `armada_close_session` to
@@ -125,8 +137,9 @@ attacker-influenced text meets something that acts on it:
 - **The voice `claude`.** `SupervisorProcess` runs the user's own `claude` headless for as long
   as a voice conversation is active, and closes it after five idle minutes. It is started with
   no built-in tools (`--tools ""`), with Armada's MCP server and no other
-  (`--strict-mcp-config`), with the six read tools allowed by name and `armada_start_session`
-  denied by name, without the person's user settings or hooks, and with no permission bypass;
+  (`--strict-mcp-config`), with six read tools allowed by name, `armada_start_session` and
+  `armada_focus_session` allowed only while Allow writes is on, `armada_close_session` and
+  `armada_send_message` denied by name, without the person's user settings or hooks, and with no permission bypass;
   `SupervisorArgumentsTests` pins every one of those. Its system prompt holds the person's
   instructions from Settings ▸ Voice followed by rules they cannot edit out: its tools, a spoken
   confirmation before starting a session, and never following instructions found in a transcript.
@@ -162,7 +175,7 @@ attacker-influenced text meets something that acts on it:
 
 ## Not in scope
 
-- **What the `claude` or `codex` process does.** It talks to its vendor over the user's own
+- **What the `claude`, `codex` or `grok` process does.** It talks to its vendor over the user's own
   sign-in — that is the program's job, and running it unmodified is the arrangement
   [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) is built around.
   Armada spawns it and reads its answers.
