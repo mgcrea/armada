@@ -34,7 +34,7 @@ import {
 } from "../config";
 import Layout from "../layouts/Layout.astro";
 
-const updated = "15 September 2026";
+const updated = "25 September 2026";
 
 const schema = {
   "@context": "https://schema.org",
@@ -63,7 +63,7 @@ const LEAVES = [
 const STAYS = [
   {
     what: "Your transcripts",
-    body: "Armada reads the session files Claude Code, Codex and Grok Build already write, where they already are, in <code>~/.claude*</code>, <code>~/.codex</code> and <code>~/.grok</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself.",
+    body: "Armada reads the session files Claude Code, Codex and Grok Build already write, where they already are, in <code>~/.claude*</code>, <code>~/.codex</code> and <code>~/.grok</code>, and opens them read only. It has no connection of its own to send them over. The one way to read them from outside the app is the supervisor's MCP endpoint: off until you turn it on, on 127.0.0.1 only, for an agent you start or connect yourself. If you switch Archive on for an account, Armada also copies its transcripts into a folder you pick, such as one on a NAS or an external disk. It mounts nothing and connects to nothing to do that: the copies go only as far as the folder you chose.",
   },
   {
     what: "Your voice",
@@ -79,7 +79,7 @@ const STAYS = [
   },
   {
     what: "What Armada writes",
-    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor. With voice on, it also keeps a folder per account where its <code>claude</code> records the conversation.",
+    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor. With voice on, it also keeps a folder per account where its <code>claude</code> records the conversation. With Archive on, it writes copies of your transcripts into an <code>Armada Archive</code> folder inside the folder you picked, and deletes copies there only if you set a retention period.",
   },
 ] as const;
 

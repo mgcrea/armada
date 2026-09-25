@@ -69,7 +69,12 @@ Three properties, each of which is checkable rather than asserted:
   written, readable by you alone. That session is told about Armada on its own command line;
   nothing is added to the account's configuration. Voice keeps one working directory per
   account in Application Support, where its `claude` records the conversation, and writes that
-  `claude`'s MCP configuration, 0600, to its own temporary directory.
+  `claude`'s MCP configuration, 0600, to its own temporary directory. With Archive switched on
+  for an account in Settings ▸ Archive, it copies that account's transcripts into an
+  `Armada Archive` folder inside the folder you picked, with an `armada-archive.json` naming the
+  accounts; with a retention period set, it deletes copies older than that from those account
+  folders and nothing else. It mounts nothing and connects to nothing to do it: the copies go as
+  far as the disk or share you picked, and no further.
 - **It holds no vendor credentials.** There is no "sign in with Claude", nothing reads or
   stores an OAuth token, and `auth.json` is never opened — a Codex plan name arrives inside
   the rate limits as `plan_type`, so no credential file is touched at all. The reasoning, and
@@ -98,7 +103,9 @@ to "`~/.claude*` and `~/.codex`":
 
 None of it leaves the Mac through Armada. The only requests Armada makes are the opt-in update
 check and the speech-model downloads, and the only thing it serves is the opt-in loopback MCP
-endpoint described above.
+endpoint described above. Archive, when you turn it on, writes transcripts to a folder you chose;
+if that folder is a network share, it was mounted by you, and it is macOS that carries the files
+there, not a connection of Armada's.
 
 ## In scope
 
