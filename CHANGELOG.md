@@ -8,6 +8,19 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.7.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Keep your transcripts past Claude Code's cleanup.** Settings ▸ Archive copies an account's
+  transcripts into a folder you pick, such as one on a NAS or an external disk, and keeps them
+  there after Claude Code deletes its own after 30 days. It is off until you switch it on for an
+  account, there or on the account's overview. Claude Code accounts copy everything under
+  `projects/`, Codex homes their session rollouts. A transcript is added to as it grows, a
+  rewritten one keeps its earlier copy, and nothing is deleted unless you set how long copies
+  stay. Armada mounts nothing and sends nothing: the copies go only as far as the folder you
+  chose, and it waits for a share that is not mounted rather than writing to the Mac.
+
 ## [1.7.0] - 2026-09-24
 
 ### Added
