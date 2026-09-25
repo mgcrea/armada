@@ -6,9 +6,7 @@
     "height": 1800
   },
   "//appearances": "Dark only. apps/website/src/styles/global.css sets `color-scheme: dark` and nothing on the site is light, so a light set would double the run and commit five goldens nothing renders. Note `appshot capture` does not read this key (only `appshot run` does) and defaults to both, which is why a light capture shows up if someone drives capture by hand without --appearances.",
-  "appearances": [
-    "dark"
-  ],
+  "appearances": ["dark"],
   "//fontFamily": "SF Pro Display is not part of a stock macOS install; it ships in Apple's SF font pack. `make screenshots-doctor` refuses to compose if it does not resolve, which is the only way to catch a silent substitution.",
   "fontFamily": "'SF Pro Display', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif",
   "layout": {

@@ -11,7 +11,8 @@
     "design",
     "**/*.icon",
     "**/*.xcassets",
-    "**/worker-configuration.d.ts"
+    "**/worker-configuration.d.ts",
+    "apps/apple/Screenshots/macos/golden/manifest.json"
   ],
   "overrides": [
     {
