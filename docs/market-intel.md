@@ -10,6 +10,12 @@ binding here too: a row's "Rejected:" clause is a standing rejection and is not 
 - **Decided:** 2026-09-21  ·  **Shipped:** unreleased, built the same day
 - Recorded in design.md's 2026-09-21 "recently ended" row.
 
+### Accepted — Archive an account's transcripts to a folder the person picks
+- **Decided:** 2026-09-25  ·  **Shipped:** unreleased, built the same day
+- Recorded in design.md's 2026-09-25 archive row. Asked for by the person, as a place to keep
+  transcripts past Claude Code's 30-day cleanup, possibly for training later; kept local-only so
+  the "Nothing leaves the Mac" claim stands.
+
 ### Rejected — Send a message to a session from Armada's windows
 - **Decided:** 2026-09-21
 - **Gate failed:** differentiation

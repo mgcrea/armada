@@ -46,6 +46,11 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   reply is spoken a sentence at a time, in a system voice or in Kokoro once downloaded. Press or
   hold, chosen in Settings. That `claude` has no built-in tools and only the six
   read tools, continues the conversation for follow-ups, and closes after five idle minutes.
+- **Archive**, opt-in per account (Settings ▸ Archive, or the switch on an account's overview):
+  copies each Claude Code account's `projects/` and each Codex home's rollouts into an
+  `Armada Archive` folder inside a folder the person picked, such as a NAS share, appending
+  whole lines to a transcript as it grows and never deleting anything unless a retention period
+  is set. `TranscriptArchive` holds the rules, `TranscriptArchiver` when it runs.
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -635,6 +640,34 @@ Built 2026-09-21: Close Session (`SessionClosing`) and a project's Recently ende
   whether a first pass can read the staged copy before the original, which would list the
   conversation under the target account with the original's later turns as a second row.
   `RecentSessions.pick` collapses rows by id for that reason.
+
+### Where the archive is thin
+
+Built 2026-09-25 (`TranscriptArchive`, `TranscriptArchiver`, `ArchivePane`). Checked by the
+Debug build and `make unit`, and by a driver over this Mac's real files: 332 Claude transcripts,
+sidecars and memory files from the last 7 days (624 MB) copied into the scratchpad in 0.7 s, a
+second pass finding nothing to do, and every copy then byte-identical to its source, ending on a
+newline and carrying its date. (BSD `cmp -n` reports EOF on the shorter file even inside the
+limit, so it flags a live transcript that grew as different; check a prefix another way.)
+
+- **Never run against a NAS.** SMB and NFS were not tried: whether `rename(2)` over a share
+  replaces in one step, whether a share keeps the modification date to the second the quick
+  check needs (a share that rounds it makes every pass re-read the head and tail of every
+  transcript, which is slower but still correct), and how long the first pass takes over Wi-Fi.
+- **The volume check assumes the share is mounted at the same path.** A folder picked on
+  `/Volumes/nas` counts as available only while it exists and its volume is the one it was
+  picked on, so an empty mount point on the startup disk is refused. A share that comes back as
+  `/Volumes/nas-1` is reported unavailable until the folder is picked again.
+- **Nothing reads the archive back.** Resuming a session whose transcript Claude Code has
+  deleted, or counting its tokens, would need Recently ended and the usage index to look in the
+  archive; neither does.
+- **Retention measures each file on its own.** A session that ran across the cut-off can lose a
+  tool result or subagent transcript before its own transcript goes.
+- **Uncompressed.** A plain `.jsonl` can be read and grepped on the NAS and appended to in
+  place; gzip would shrink it about tenfold and is not built.
+- **The in-memory "already in sync" cache outlives a folder emptied by hand.** Delete the
+  archive's contents while Armada runs and it copies them again only after a relaunch or a
+  change of folder or retention.
 
 ### Where voice is thin
 
