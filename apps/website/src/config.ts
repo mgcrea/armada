@@ -116,7 +116,7 @@ export const SELLING = true;
  * `app-v` tag this disagrees with. Shown only when SHIPPED: a version printed
  * before there is a release names something nobody can download.
  */
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.8.0";
 
 /**
  * The release lives on GitHub, never on this site. The vanity paths are in

@@ -5,10 +5,10 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.7.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.8.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.8.0] - 2026-09-25
 
 ### Added
 
@@ -20,6 +20,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   rewritten one keeps its earlier copy, and nothing is deleted unless you set how long copies
   stay. Armada mounts nothing and sends nothing: the copies go only as far as the folder you
   chose, and it waits for a share that is not mounted rather than writing to the Mac.
+
+### Fixed
+
+- **A transcript window opens under its session's name.** The first transcript opened after
+  launch could come up titled Transcript, and only some opens corrected it afterwards.
 
 ## [1.7.0] - 2026-09-24
 

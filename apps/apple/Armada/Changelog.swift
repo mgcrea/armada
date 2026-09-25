@@ -212,7 +212,36 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_7_0, v1_6_0, v1_5_0, v1_4_0, v1_3_0]
+  static let releases: [Release] = [v1_8_0, v1_7_0, v1_6_0, v1_5_0, v1_4_0]
+
+  // swift-format-ignore
+  private static let v1_8_0: Release = Release(
+    version: "1.8.0",
+    date: "2026-09-25",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Keep your transcripts past Claude Code's cleanup.",
+            body: [
+              "Settings ▸ Archive copies an account's transcripts into a folder you pick, such as one on a NAS or an external disk, and keeps them there after Claude Code deletes its own after 30 days. It is off until you switch it on for an account, there or on the account's overview. Claude Code accounts copy everything under `projects/`, Codex homes their session rollouts. A transcript is added to as it grows, a rewritten one keeps its earlier copy, and nothing is deleted unless you set how long copies stay. Armada mounts nothing and sends nothing: the copies go only as far as the folder you chose, and it waits for a share that is not mounted rather than writing to the Mac.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "A transcript window opens under its session's name.",
+            body: [
+              "The first transcript opened after launch could come up titled Transcript, and only some opens corrected it afterwards.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_7_0: Release = Release(
@@ -363,53 +392,6 @@ nonisolated enum Changelog {
             headline: "Armada no longer quits while you resize a window.",
             body: [
               "Remembering a window's size wrote it out from inside the window's own layout pass, and that write could land back in the layout pass that was still running — which macOS refuses to re-enter, taking the app down with it. Resizing the main window or Settings could end the app outright. Sizes are still remembered, and one saved by an earlier version is still restored.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_3_0: Release = Release(
-    version: "1.3.0",
-    date: "2026-09-18",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Back and Forward as one mouse trigger.",
-            body: [
-              "A binding can take both thumb buttons rather than one: pressed together, or one held while the other is clicked. Hold Back and click Forward again and again to walk the fleet without letting go. The three are listed under \"Both thumb buttons\" in the trigger picker. A combo has to wait to tell itself apart from a plain press, so with no modifier set the row says what that costs: Back and Forward reach other apps 70 ms late for a together binding, and only on release for a held one. Give the combo a modifier and nothing is delayed — a bare Back is never held back, and a button no combo could claim is never touched at all.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Send a key with the modifier you choose.",
-            body: [
-              "A keystroke used to arrive with whatever you were holding on the button. The action menu now has a \"Sent with\" section: leave it \"As held\", or name one modifier, or none. A bare thumb button can then still send ⌘F16. The action still reads as the chord that will actually arrive, which is the one to bind in the other app.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "A held trigger holds its modifier down.",
-            body: [
-              "While the button that sent a key is still down, Armada holds the modifier down as a real key, the way a hand holds ⌘ through ⌘Tab, and lets go when you do. VS Code's window picker wants exactly that: ⌥F15 opens it, each further press walks it, and releasing ⌥ picks. It used to stay open until you pressed Return.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "A sent F-key now reaches apps that took it as a global shortcut.",
-            body: [
-              "F13–F20 went out without the fn flag a real keyboard sets, and a Carbon hot key — how most menu bar apps register a global shortcut — does not match one without it. A sent F17 went straight past the app waiting for it and landed on the front one as a key nobody handles, which is a beep.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "An agent's opening message is sent while another app is in front.",
-            body: [
-              "Starting a Claude Code session in VS Code typed the message into the tab, then waited for VS Code to be the frontmost application before pressing Return. A session that opened while anything else held the front never got it: the message sat in the tab for fifteen seconds and was given up on. Armada no longer waits for the front, and focuses the tab's input itself rather than trusting that the new tab kept focus.",
             ]),
         ]),
     ])
