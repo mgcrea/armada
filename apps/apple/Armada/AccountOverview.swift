@@ -32,6 +32,7 @@ struct AccountOverview: View {
         StateDot(state: SessionState(rawValue: key) ?? .idle)
       }
       AccountSection(account: account)
+      ArchiveSection(account: account.id)
     }
     .formStyle(.grouped)
   }
@@ -54,6 +55,7 @@ struct CodexOverview: View {
         CodexStateDot(state: CodexSessionState(rawValue: key) ?? .ended)
       }
       CodexHomeSection(account: account)
+      ArchiveSection(account: account.id)
     }
     .formStyle(.grouped)
   }

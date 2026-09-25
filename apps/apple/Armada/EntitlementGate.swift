@@ -39,9 +39,12 @@ final class EntitlementMonitor {
       GrokAccounts.shared.start()
       // After the accounts, whose folders it reads.
       UsageIndex.shared.start()
+      // After the index, whose first read it lets go first. Idle until an account is switched on.
+      TranscriptArchiver.shared.start()
       // After the accounts too: it edits each one's settings.json to match the switch.
       MessageDelivery.shared.sync()
     } else {
+      TranscriptArchiver.shared.stop()
       UsageIndex.shared.stop()
       Accounts.shared.stop()
       CodexAccounts.shared.stop()

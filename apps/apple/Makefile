@@ -257,6 +257,7 @@ UNIT_SRC := \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
 	Armada/TranscriptHandover.swift \
+	Armada/TranscriptArchive.swift \
 	Armada/MessageHook.swift \
 	Armada/MouseBinding.swift \
 	Armada/MouseChord.swift \

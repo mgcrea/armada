@@ -56,9 +56,11 @@ final class UsageIndex {
     progress = nil
   }
 
-  /// A watcher saw a transcript or rollout written. Only sets a flag.
+  /// A watcher saw a transcript or rollout written. Only sets a flag, here and in the archive,
+  /// which follows the same writes.
   func noteActivity() {
     activity = true
+    TranscriptArchiver.shared.noteActivity()
   }
 
   /// Every saved project's figures, recomputed only when the ledger, the projects or the

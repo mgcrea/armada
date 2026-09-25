@@ -19,7 +19,7 @@ import SwiftUI
 /// `MouseBindingRow`'s Detect.
 ///
 /// Four sections, one more than Bastion and Cupertino have. The first is what
-/// Armada watches and does: General, Supervisor, Usage.
+/// Armada watches and does: General, Supervisor, Usage, Archive.
 ///
 /// Mouse and Voice are the second, and they are Armada's one extra split: both are
 /// ways of driving it from outside its windows, a button press or a shortcut and a
@@ -38,6 +38,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case supervisor
   case usage
+  case archive
   case mouse
   case voice
   case whatsNew
@@ -51,6 +52,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "General"
     case .supervisor: "Supervisor"
     case .usage: "Usage"
+    case .archive: "Archive"
     case .mouse: "Mouse"
     case .voice: "Voice"
     case .whatsNew: "What's New"
@@ -66,6 +68,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "gearshape"
     case .supervisor: "binoculars"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
+    case .archive: "archivebox"
     case .mouse: "computermouse"
     case .voice: "waveform"
     case .whatsNew: "sparkles"
@@ -78,7 +81,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   var group: SettingsPaneGroup {
     switch self {
-    case .general, .supervisor, .usage: .configuration
+    case .general, .supervisor, .usage, .archive: .configuration
     case .mouse, .voice: .input
     case .whatsNew, .updates, .about, .help: .information
     case .licence: .entitlement
@@ -119,6 +122,7 @@ struct SettingsWindowView: View {
       case .general: GeneralPane()
       case .supervisor: SupervisorPane()
       case .usage: UsageSettingsPane()
+      case .archive: ArchivePane()
       case .mouse: MousePane()
       case .voice: VoicePane()
       case .whatsNew: WhatsNewPane()

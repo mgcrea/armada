@@ -52,6 +52,7 @@ struct UnitCheck {
     editorLaunch()
     claudeTrust()
     transcriptHandover()
+    transcriptArchive()
     messageHook()
     mouseChord()
     modifierHold()
@@ -2545,6 +2546,182 @@ struct UnitCheck {
     try? missing.run()
     missing.waitUntilExit()
     expectEqual("a missing script exits 0, which Claude Code ignores", missing.terminationStatus, 0)
+  }
+
+  // MARK: - TranscriptArchive
+
+  static func transcriptArchive() {
+    section("TranscriptArchive")
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appending(
+      path: "armada-archive-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? fileManager.removeItem(at: root) }
+    func text(_ url: URL) -> String? {
+      (try? Data(contentsOf: url)).map { String(decoding: $0, as: UTF8.self) }
+    }
+    func write(_ string: String, _ url: URL, mtime: Double? = nil) {
+      try? fileManager.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? Data(string.utf8).write(to: url)
+      if let mtime {
+        try? fileManager.setAttributes(
+          [.modificationDate: Date(timeIntervalSince1970: mtime)], ofItemAtPath: url.path)
+      }
+    }
+
+    // Where the archive goes inside the picked folder.
+    let picked = root.appending(path: "nas", directoryHint: .isDirectory)
+    try? fileManager.createDirectory(at: picked, withIntermediateDirectories: true)
+    expectEqual(
+      "a plain folder gets an Armada Archive folder inside it",
+      TranscriptArchive.root(forPicked: picked).lastPathComponent, "Armada Archive")
+    let marked = root.appending(path: "marked", directoryHint: .isDirectory)
+    write("{}", marked.appending(path: TranscriptArchive.manifestName))
+    expectEqual(
+      "a folder holding the manifest is the archive itself",
+      TranscriptArchive.root(forPicked: marked).path, marked.path)
+
+    // Folder names, assigned once.
+    let claudeA = TranscriptArchive.Source(
+      account: "/u/.claude", vendor: .claude, base: URL(filePath: "/u/.claude"), label: "Personal")
+    let claudeB = TranscriptArchive.Source(
+      account: "/v/.claude", vendor: .claude, base: URL(filePath: "/v/.claude"), label: "Work")
+    let codex = TranscriptArchive.Source(
+      account: "/u/.codex", vendor: .codex, base: URL(filePath: "/u/.codex"), label: "Codex")
+    var manifest = TranscriptArchive.assign([claudeA, codex], in: .init())
+    expectEqual("the dot is dropped", manifest.accounts["/u/.claude"]?.folder, "claude")
+    expectEqual("a Codex home keeps its name", manifest.accounts["/u/.codex"]?.folder, "codex")
+    manifest = TranscriptArchive.assign([claudeB], in: manifest)
+    expectEqual(
+      "a second folder name is numbered", manifest.accounts["/v/.claude"]?.folder, "claude-2")
+    let renamed = TranscriptArchive.Source(
+      account: "/u/.claude", vendor: .claude, base: URL(filePath: "/u/.claude"), label: "Renamed")
+    manifest = TranscriptArchive.assign([renamed], in: manifest)
+    expectEqual(
+      "a renamed account keeps its folder", manifest.accounts["/u/.claude"]?.folder, "claude")
+    expectEqual(
+      "and the manifest takes the new label", manifest.accounts["/u/.claude"]?.label, "Renamed")
+
+    // Codex dates.
+    expectEqual(
+      "a rollout's date comes from its name",
+      TranscriptArchive.codexDay("rollout-2026-09-11T07-01-34-0199.jsonl"), "2026/09/11")
+    expectEqual(
+      "a name without one is filed as archived",
+      TranscriptArchive.codexDay("rollout-odd.jsonl"), "archived")
+
+    // Enumeration.
+    let claudeBase = root.appending(path: "home/.claude", directoryHint: .isDirectory)
+    let projects = claudeBase.appending(path: "projects/-work-armada", directoryHint: .isDirectory)
+    write("{\"a\":1}\n{\"b\":", projects.appending(path: "s1.jsonl"), mtime: 1_000_000)
+    write("sub\n", projects.appending(path: "s1/subagents/agent-1.jsonl"))
+    write("tool", projects.appending(path: "s1/tool-results/r1.txt"), mtime: 1_000_000)
+    write("x", projects.appending(path: ".DS_Store"))
+    let source = TranscriptArchive.Source(
+      account: claudeBase.path, vendor: .claude, base: claudeBase, label: "Test")
+    let items = TranscriptArchive.enumerate(source)
+    expectEqual(
+      "Claude: everything under projects/, dot-files left out",
+      items.map(\.relativePath).sorted(),
+      [
+        "projects/-work-armada/s1.jsonl", "projects/-work-armada/s1/subagents/agent-1.jsonl",
+        "projects/-work-armada/s1/tool-results/r1.txt",
+      ])
+
+    let codexBase = root.appending(path: "home/.codex", directoryHint: .isDirectory)
+    let name = "rollout-2026-09-11T07-01-34-0199.jsonl"
+    write("a\n", codexBase.appending(path: "sessions/2026/09/11/\(name)"))
+    write("a\nb\n", codexBase.appending(path: "archived_sessions/\(name)"))
+    write(
+      "z\n", codexBase.appending(path: "archived_sessions/rollout-2026-08-01T01-00-00-02.jsonl"))
+    let codexItems = TranscriptArchive.enumerate(
+      .init(account: codexBase.path, vendor: .codex, base: codexBase, label: "Codex"))
+    expectEqual(
+      "Codex: an archived rollout goes back under its date",
+      codexItems.map(\.relativePath).sorted(),
+      ["sessions/2026/08/01/rollout-2026-08-01T01-00-00-02.jsonl", "sessions/2026/09/11/\(name)"])
+    expectEqual(
+      "and the longer of two copies mid-move is the one kept",
+      codexItems.first { $0.relativePath.hasSuffix(name) }?.size, 4)
+
+    // Copying.
+    let archive = root.appending(path: "archive/claude", directoryHint: .isDirectory)
+    func item(_ relative: String) -> TranscriptArchive.Item {
+      TranscriptArchive.enumerate(source).first { $0.relativePath == relative }!
+    }
+    let log = "projects/-work-armada/s1.jsonl"
+    let copy = archive.appending(path: log)
+    expectEqual(
+      "a new transcript is copied up to its last whole line",
+      try? TranscriptArchive.sync(item(log), into: archive, cutoff: nil), .copied(8))
+    expectEqual("the copy stops at the newline", text(copy), "{\"a\":1}\n")
+
+    write("{\"a\":1}\n{\"b\":2}\n", projects.appending(path: "s1.jsonl"), mtime: 1_000_100)
+    expectEqual(
+      "a grown transcript is appended to",
+      try? TranscriptArchive.sync(item(log), into: archive, cutoff: nil), .appended(8))
+    expectEqual("with only the new line", text(copy), "{\"a\":1}\n{\"b\":2}\n")
+    expectEqual(
+      "the copy takes the source's date",
+      (try? fileManager.attributesOfItem(atPath: copy.path)[.modificationDate] as? Date)?
+        .timeIntervalSince1970, 1_000_100)
+    expectEqual(
+      "an unchanged transcript is left alone",
+      try? TranscriptArchive.sync(item(log), into: archive, cutoff: nil), .unchanged)
+
+    // A copy cut short mid-line carries on from where it stopped.
+    write("{\"a\":1}\n{\"b\"", copy)
+    _ = try? TranscriptArchive.sync(item(log), into: archive, cutoff: nil)
+    expectEqual("a copy cut short is completed", text(copy), "{\"a\":1}\n{\"b\":2}\n")
+
+    // A rewrite keeps the old copy beside the new one.
+    write("{\"z\":0}\n", projects.appending(path: "s1.jsonl"), mtime: 1_000_200)
+    expectEqual(
+      "a rewritten transcript starts a new copy",
+      try? TranscriptArchive.sync(item(log), into: archive, cutoff: nil), .versioned(8))
+    expectEqual("the new copy is the rewrite", text(copy), "{\"z\":0}\n")
+    expectEqual(
+      "and the old one is kept as ~1",
+      text(archive.appending(path: "projects/-work-armada/s1~1.jsonl")), "{\"a\":1}\n{\"b\":2}\n")
+
+    let result = "projects/-work-armada/s1/tool-results/r1.txt"
+    _ = try? TranscriptArchive.sync(item(result), into: archive, cutoff: nil)
+    write("tool, longer", projects.appending(path: "s1/tool-results/r1.txt"), mtime: 1_000_300)
+    _ = try? TranscriptArchive.sync(item(result), into: archive, cutoff: nil)
+    expectEqual("any other file is replaced", text(archive.appending(path: result)), "tool, longer")
+
+    expectEqual(
+      "a source older than the retention period is not copied",
+      try? TranscriptArchive.sync(item(log), into: archive, cutoff: 2_000_000), .tooOld)
+
+    // Retention.
+    let archiveRoot = root.appending(path: "archive", directoryHint: .isDirectory)
+    let pruneManifest = TranscriptArchive.Manifest(accounts: [
+      claudeBase.path: .init(
+        folder: "claude", vendor: .claude, label: "Test", path: claudeBase.path)
+    ])
+    try? TranscriptArchive.writeManifest(pruneManifest, at: archiveRoot)
+    let foreign = archiveRoot.appending(path: "notes.txt")
+    write("mine", foreign, mtime: 1_000)
+    let recent = archiveRoot.appending(path: "claude/projects/-new/s9.jsonl")
+    write("{}\n", recent, mtime: 3_000_000)
+    let removed = TranscriptArchive.prune(
+      root: archiveRoot, manifest: pruneManifest, cutoff: 2_000_000)
+    // The rewrite, its ~1 and the tool result; the subagent was never copied.
+    expectEqual("retention removes every older copy", removed, 3)
+    check("keeps a newer one", fileManager.fileExists(atPath: recent.path))
+    check(
+      "never touches a file outside the account folders",
+      fileManager.fileExists(atPath: foreign.path))
+    check(
+      "or the manifest",
+      fileManager.fileExists(
+        atPath: archiveRoot.appending(path: TranscriptArchive.manifestName).path))
+    check(
+      "and removes the folders it emptied",
+      !fileManager.fileExists(
+        atPath: archiveRoot.appending(path: "claude/projects/-work-armada").path))
+    expectEqual("forever means no cutoff", TranscriptArchive.cutoff(days: 0, now: Date()), nil)
   }
 
   // MARK: - ClaudeTrust
