@@ -722,3 +722,26 @@ audit`. Nothing below has been run end to end.
   unmeasured. Latency on the default was 2 to 4 s to the first text, 7 s once, on Opus 5.
 - **Debug and installed builds share the default shortcut.** Whichever registers second shows
   that another app already uses it.
+
+## Codex automations written from outside the app
+
+Measured 2026-09-28 on ChatGPT.app 26.917.51856 (Codex `codex-cli 0.155.0-alpha.16`), with the
+app running and never restarted or opened:
+
+- **A paused file is not taken in.** An `automation.toml` written by hand into
+  `~/.codex/automations/armada-probe/` with `status = "PAUSED"` got no `codex-dev.db` row in
+  three minutes. None is needed: the scheduler (`zB`) lists automations from the files and keeps
+  only those whose `status` is `ACTIVE`, so a paused file never fires whatever its row says.
+- **An active file is taken in within seconds.** Changing `status` to `ACTIVE` gave it a row
+  3 s later with a `next_run_at` of 07:00:20 the next day, so `BYHOUR` is read in the Mac's
+  local time zone (CEST here). The 20 s is Codex's own offset.
+- **Pausing the file does not update the row.** It stayed `ACTIVE` with its `next_run_at`; the
+  file's `PAUSED` is what stops it. Armada therefore reports `nextRunAt` as null for a paused
+  file, whatever the row holds.
+- **Resuming may run once at once.** `AB` keeps a row's `next_run_at` when the row's status
+  already matches the file's. A task Armada paused, whose row still says `ACTIVE` with a time
+  that has since passed, is due the moment it is made active again, and runs once. A task the
+  Codex app paused has a null `next_run_at` and gets a fresh one. Armada writes neither Codex
+  database, so it cannot clear the stale time.
+- **Removing the folder removes the task.** The row stays, still `ACTIVE`, and cannot fire:
+  with no file, `zB` never sees it. Armada treats its id as taken.
