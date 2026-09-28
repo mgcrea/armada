@@ -176,7 +176,7 @@ list them but not change them."
 - **Files:** `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/scheduled-tasks.json`,
   key `scheduledTasks`.
 - **Fields:** from each task, `id` (the store keys tasks on it; the app's tools call it
-  `taskId`), `cronExpression` or `fireAt`, and `lastRunAt`. Any other key is ignored. These
+  `taskId`), `cronExpression` or `fireAt`, `enabled` (`false` → paused, missing or `true` → active), and `lastRunAt`. Any other key is ignored. These
   names come from the app's code; no real task has been seen on this Mac yet.
 - **No prompt.** A task's prompt lives in a separate task file, and where the app keeps those
   files was not pinned down, so v1 does not read them. The row carries `prompt: null` and

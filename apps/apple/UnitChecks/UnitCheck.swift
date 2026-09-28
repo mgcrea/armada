@@ -54,6 +54,7 @@ struct UnitCheck {
     addedHomes()
     codexAutomationFile()
     codexAutomations()
+    claudeDesktopSchedules()
     editorLaunch()
     claudeTrust()
     transcriptHandover()
@@ -2854,6 +2855,48 @@ struct UnitCheck {
         if case .refused(let why) = owned.remove(id: "x") { return why.contains("OpenAI account") }
         return false
       }())
+  }
+
+  // MARK: - Claude desktop scheduled tasks
+
+  static func claudeDesktopSchedules() {
+    section("Claude desktop scheduled tasks")
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "armada-claude-\(UUID().uuidString)")
+    func put(_ account: String, _ org: String, _ json: String) {
+      let dir = root.appending(path: "\(account)/\(org)")
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      try? json.write(
+        to: dir.appending(path: "scheduled-tasks.json"), atomically: true, encoding: .utf8)
+    }
+    put(
+      "acct", "org1",
+      """
+      {"scheduledTasks":[
+        {"id":"morning","cronExpression":"0 7 * * *","lastRunAt":1790000000000,"filePath":"/x/SKILL.md","approvedPermissions":[]},
+        {"id":"once","fireAt":1790086400000,"enabled":false}
+      ],"recordedSkips":{}}
+      """)
+    put("acct", "org2", #"{"scheduledTasks":[],"recordedSkips":{}}"#)
+    put("acct", "org3", "not json")
+
+    let tasks = ClaudeDesktopSchedules.read(root: root)
+    check("two tasks from one file, none from the empty or broken ones", tasks.count == 2)
+    check(
+      "a cron task",
+      tasks.first
+        == ClaudeDesktopSchedules.ScheduledTask(
+          id: "morning", account: "acct/org1", cronExpression: "0 7 * * *", fireAt: nil,
+          lastRunAt: Date(timeIntervalSince1970: 1_790_000_000), enabled: true))
+    check(
+      "a one-time task, disabled",
+      tasks.last
+        == ClaudeDesktopSchedules.ScheduledTask(
+          id: "once", account: "acct/org1", cronExpression: nil,
+          fireAt: Date(timeIntervalSince1970: 1_790_086_400), lastRunAt: nil, enabled: false))
+    check(
+      "a missing root reads as nothing",
+      ClaudeDesktopSchedules.read(root: root.appending(path: "none")).isEmpty)
   }
 
   // MARK: - EditorLaunch
