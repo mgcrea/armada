@@ -401,6 +401,60 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Move several sessions to another account at once.",
+            body: [
+              "Select more than one session in an account's list with ⌘-click or ⇧-click, or click a project's header to select all of its sessions. The pane then shows what they add up to, with Move, Continue and Close for all of them. Move copies each conversation to the other account, opens it there, and closes it here only once the copy is in place. Armada asks once if any of them is working, and afterwards says in one message which sessions did not go and why.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Continue an ended session on another account.",
+            body: [
+              "Right-click a session under a project's Recently ended to continue it on another Claude account, as you already could while it ran. This includes a VS Code tab restored with no session behind it. Armada copies the conversation across and opens a fork of it there, so the original stays where it was.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "A session continued on another account keeps its name.",
+            body: [
+              "The copy used to arrive as an untitled row.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Usage moved to the sidebar and the account's overview.",
+            body: [
+              "Each account in the sidebar shows its plan windows as the menu bar panel shows them, pace marker and reset included, with the session count under its icon. They stay in view whichever session is selected, and fade when the figures are old. With no session selected, the account's pane shows every window with its pace and projection above the week's chart, where the list of recent folders was. Above the session list, where the usage strip was, tiles count its sessions by state, with how many projects they span and how much context they hold.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "The main window has a toolbar.",
+            body: [
+              "A button beside the window controls hides and shows the sidebar, also on ⌃⌘S, so the session list and its details can have the whole width. On an account's pane, New Session is at its trailing edge and stays there whichever session is selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a supervisor session. Grok Build accounts get it too. A session's right-click still starts another one in its folder. Beside it, Focus, Read Transcript, Fork and Continue on act on the session you have selected, on ⌘O, ⌘T and ⌘D; Codex and Grok Build get Fork. They stay in the session's details too, with what each is about to do, and Close stays there alone. Add Account moved from under the sidebar to beside the sidebar button, so it stays reachable with the sidebar hidden.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "The sessions list shows how long each prompt cache stays warm.",
+            body: [
+              "A clock beside a stopped Claude Code session's token count counts down to when its cache expires. A mark after the count gives the cache's state: a flame while it is warm or the session is working, red once the session holds 500K tokens or more, an orange timer in the last quarter of its life, and a blue snowflake once it has expired. The countdown and the count take the same colour, since the count is what the next turn reads from the cache or writes back. On a selected row the whole column turns white so it stays readable. The session's context panel uses the same marks and colours.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

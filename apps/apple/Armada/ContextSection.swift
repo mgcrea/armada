@@ -276,9 +276,13 @@ private struct PromptCacheLine: View {
 
   var body: some View {
     let warm = cache.isWarm(at: now)
+    // The sessions list's mark, in its colours: a flame while warm (red once heavy), a
+    // timer near the end, a snowflake once gone.
+    let mark = PromptCacheBadge.Mark(cache: cache, now: now)
+    let color = mark.color(heavy: cache.tokens >= PromptCacheBadge.heavyTokens)
     VStack(alignment: .leading, spacing: 1) {
       HStack(spacing: 4) {
-        Image(systemName: warm ? "timer" : "snowflake")
+        Image(systemName: mark.systemImage)
           .imageScale(.small)
         if warm {
           Text(
@@ -288,8 +292,7 @@ private struct PromptCacheLine: View {
         }
       }
       .font(.caption2)
-      .foregroundStyle(
-        cache.isExpiringSoon(at: now) ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+      .foregroundStyle(color.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
 
       if !warm {
         Text("Next turn re-caches \(TokenCount.short(cache.tokens))")

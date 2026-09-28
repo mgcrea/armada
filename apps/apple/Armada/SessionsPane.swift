@@ -33,30 +33,7 @@ struct SessionRow: View {
         .lineLimit(1)
       }
       Spacer(minLength: 8)
-      // Stacked rather than set side by side: two monospaced numbers on one line read
-      // as one number in two parts. This also costs the row no height — the trailing
-      // column is now as tall as the title and subtitle beside it.
-      VStack(alignment: .trailing, spacing: 2) {
-        if let started = session.registry.startedAtDate {
-          Text(Self.elapsed(from: started, to: now))
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .help("Started this long ago")
-        }
-        if let tokens = session.context?.total {
-          HStack(spacing: 3) {
-            if let cache = session.promptCache {
-              PromptCacheBadge(cache: cache, now: now)
-            }
-            Text(TokenCount.short(tokens))
-              .font(.caption2.monospacedDigit())
-              .foregroundStyle(.tertiary)
-              .help(
-                "\(TokenCount.short(tokens)) tokens of context in use. Not what this session has cost — the figure falls when it compacts."
-              )
-          }
-        }
-      }
+      SessionRowFigures(session: session, now: now)
     }
     .padding(.vertical, 2)
   }
@@ -71,36 +48,196 @@ struct SessionRow: View {
   }
 }
 
-/// A mark beside the token count when the prompt cache is about to lapse, or has.
+/// A row's trailing column: its age, and the context in use with where its prompt
+/// cache stands.
 ///
-/// **Nothing while the cache is comfortably warm**, which is the common case: a list of
-/// sixteen sessions each carrying a countdown would be a list of countdowns. The exact
-/// times are in the session's context panel.
-struct PromptCacheBadge: View {
-  let cache: PromptCache
+/// **Its own view so it reads the row's selection itself.** Read from `SessionRow`, the
+/// selected highlight never reached the colours: only the badge, which read it for
+/// itself, turned white.
+///
+/// **Everything in it turns white on a selected row, muted figures included.** Orange,
+/// blue and red all but vanish on the accent-coloured highlight, and the muted styles
+/// are too faint there to read at a glance.
+private struct SessionRowFigures: View {
+  let session: Session
   let now: Date
+  @Environment(\.backgroundProminence) private var prominence
 
   var body: some View {
-    if cache.isExpiringSoon(at: now) {
-      Image(systemName: "timer")
-        .imageScale(.small)
-        .foregroundStyle(.orange)
+    let selected = prominence == .increased
+    // Stacked rather than set side by side: two monospaced numbers on one line read
+    // as one number in two parts. This also costs the row no height — the trailing
+    // column is now as tall as the title and subtitle beside it.
+    VStack(alignment: .trailing, spacing: 2) {
+      if let started = session.registry.startedAtDate {
+        Text(SessionRow.elapsed(from: started, to: now))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+          .help("Started this long ago")
+      }
+      if let tokens = session.context?.total {
+        tokenLine(tokens, selected: selected)
+      }
+    }
+  }
+
+  private func tokenLine(_ tokens: Int, selected: Bool) -> some View {
+    let badge = PromptCacheBadge(session: session, now: now, selected: selected)
+    // Tinted with the badge: the count is what the next turn reads, or re-writes.
+    let tint = badge.style
+    return HStack(spacing: 3) {
+      if let expiresAt = badge.expiresAt {
+        HStack(spacing: 2) {
+          Image(systemName: "clock")
+            .imageScale(.small)
+            .accessibilityHidden(true)
+          Text(SessionRow.elapsed(from: now, to: expiresAt))
+        }
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(tint)
+        .padding(.trailing, 4)
+        .help("Prompt cache stays warm this much longer")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+          "Prompt cache warm for \(SessionRow.elapsed(from: now, to: expiresAt))")
+      }
+      Text(TokenCount.short(tokens))
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(tint)
         .help(
-          "Prompt cache expires ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
-            + "Reply before then and the next turn reads the \(TokenCount.short(cache.tokens)) "
-            + "prompt from the cache, instead of writing it back at full cost."
+          "\(TokenCount.short(tokens)) tokens of context in use. Not what this session has cost — the figure falls when it compacts."
         )
-        .accessibilityLabel("Prompt cache expiring soon")
-    } else if !cache.isWarm(at: now) {
-      Image(systemName: "snowflake")
-        .imageScale(.small)
-        .foregroundStyle(.secondary)
-        .help(
-          "Prompt cache expired ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
-            + "The next turn writes the \(TokenCount.short(cache.tokens)) prompt back into the "
-            + "cache, which costs more than reading it and counts against your limits."
-        )
-        .accessibilityLabel("Prompt cache expired")
+      badge
+    }
+  }
+}
+
+/// A mark after the token count saying where the prompt cache stands.
+///
+/// **Always the same width, drawn or not**, so the counts line up down the list. A
+/// session whose cache lifetime is unknown (Codex, Grok Build, a Claude session before
+/// its first cache write) leaves the slot empty rather than guessing.
+///
+/// The count and countdown beside it take its colour. A warm cache is drawn like the
+/// session's age above it, unless the prompt is heavy enough that losing it would hurt.
+/// The exact times are in the context panel.
+struct PromptCacheBadge: View {
+  enum Mark {
+    /// Mid-turn: every request resets the clock.
+    case active
+    /// Idle, with more than a quarter of its lifetime to go.
+    case warm(PromptCache)
+    case expiring(PromptCache)
+    case expired(PromptCache)
+
+    /// An idle session's cache, as of `now`.
+    init(cache: PromptCache, now: Date) {
+      self =
+        cache.isExpiringSoon(at: now)
+        ? .expiring(cache) : cache.isWarm(at: now) ? .warm(cache) : .expired(cache)
+    }
+
+    var systemImage: String {
+      switch self {
+      case .active, .warm: "flame"
+      case .expiring: "timer"
+      case .expired: "snowflake"
+      }
+    }
+
+    /// The mark's colour, or nil for the secondary style. Shared with the context panel,
+    /// so a session reads the same in the list and in its details.
+    func color(heavy: Bool) -> Color? {
+      switch self {
+      case .active, .warm: heavy ? .red : nil
+      case .expiring: .orange
+      case .expired: .blue
+      }
+    }
+  }
+
+  /// A prompt this large costs enough to re-write that a warm cache is worth flagging.
+  static let heavyTokens = 500_000
+
+  let mark: Mark?
+  /// At or past `heavyTokens`.
+  let heavy: Bool
+  /// On the accent-coloured highlight of a selected row, where it draws in white.
+  let selected: Bool
+
+  init(session: Session, now: Date, selected: Bool) {
+    self.selected = selected
+    heavy = (session.context?.total ?? 0) >= Self.heavyTokens
+    if session.cacheTTL == nil {
+      mark = nil
+    } else if session.state.isBusy {
+      mark = .active
+    } else if let cache = session.promptCache {
+      mark = Mark(cache: cache, now: now)
+    } else {
+      mark = nil
+    }
+  }
+
+  /// When an idle, still-warm cache lapses. Nil mid-turn, where the clock keeps
+  /// resetting, and once it has lapsed, where the snowflake already says so.
+  var expiresAt: Date? {
+    switch mark {
+    case .warm(let cache), .expiring(let cache): cache.expiresAt
+    case .active, .expired, nil: nil
+    }
+  }
+
+  /// The badge's colour, and the count's beside it. Nil for the secondary style.
+  var color: Color? { mark?.color(heavy: heavy) }
+
+  /// What the badge, and the figures beside it, are drawn in. White on a selected row;
+  /// muted where there is no cache state to tell.
+  var style: AnyShapeStyle {
+    if selected { return AnyShapeStyle(.white) }
+    if mark == nil { return AnyShapeStyle(.tertiary) }
+    return color.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary)
+  }
+
+  var body: some View {
+    Group {
+      if let mark {
+        Image(systemName: mark.systemImage)
+          .help(Self.help(mark))
+          .accessibilityLabel(Self.accessibilityLabel(mark))
+      } else {
+        Color.clear
+      }
+    }
+    .foregroundStyle(style)
+    .imageScale(.small)
+    .frame(width: 12)
+  }
+
+  private static func help(_ mark: Mark) -> String {
+    switch mark {
+    case .active:
+      "Prompt cache in use. Each request this turn makes keeps it warm."
+    case .warm(let cache):
+      "Prompt cache warm until ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
+        + "The next turn reads the \(TokenCount.short(cache.tokens)) prompt from the cache."
+    case .expiring(let cache):
+      "Prompt cache expires ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
+        + "Reply before then and the next turn reads the \(TokenCount.short(cache.tokens)) "
+        + "prompt from the cache, instead of writing it back at full cost."
+    case .expired(let cache):
+      "Prompt cache expired ~\(cache.expiresAt.formatted(.clockRelative(presentation: .named))). "
+        + "The next turn writes the \(TokenCount.short(cache.tokens)) prompt back into the "
+        + "cache, which costs more than reading it and counts against your limits."
+    }
+  }
+
+  private static func accessibilityLabel(_ mark: Mark) -> String {
+    switch mark {
+    case .active: "Prompt cache in use"
+    case .warm: "Prompt cache warm"
+    case .expiring: "Prompt cache expiring soon"
+    case .expired: "Prompt cache expired"
     }
   }
 }
