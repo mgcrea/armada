@@ -55,12 +55,13 @@ struct SessionSortMenu: View {
         .font(.caption)
     }
     .menuStyle(.button)
-    // The two halves of the affordance. `.accessoryBar`, the system's style for a
-    // list's own options control in Finder and Mail, is what makes it read as
-    // pressable at rest without the weight of a push button; the chevron is what says
-    // that pressing it opens a menu rather than acting on the spot.
+    // The chevron is what says that pressing it opens a menu rather than acting on the
+    // spot. **`.borderless`, not `.accessoryBar`.** The accessory bar's pull-down keeps
+    // an arrow-sized gap after the title and draws the arrow only on hover, so at rest
+    // the label ends in blank space; hiding the indicator to close that gap dims the
+    // title instead. Borderless sets the chevron hard against the text, always shown.
     .menuIndicator(.visible)
-    .buttonStyle(.accessoryBar)
+    .buttonStyle(.borderless)
     // Fixed, so the header's `Spacer` keeps it hard against the trailing edge and it
     // never stretches. It costs the pane the glyph, the sort's name and the chevron
     // in width, and no height at all — see `AccountPaneView.body` for why the fitting
