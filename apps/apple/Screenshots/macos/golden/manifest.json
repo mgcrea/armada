@@ -1,6 +1,40 @@
 {
   "accepts" : [
     {
+      "appshotVersion" : "0.19.0",
+      "argv" : [
+        "/Users/olivier/.local/bin/appshot",
+        "accept",
+        "--source",
+        "Screenshots/macos/source",
+        "--golden",
+        "Screenshots/macos/golden"
+      ],
+      "at" : "2026-09-28T10:13:43Z",
+      "count" : 7,
+      "cwd" : "/Users/olivier/Projects/apps/armada/apps/apple",
+      "host" : "oliviermacbookpro.local",
+      "pid" : 42888,
+      "user" : "olivier"
+    },
+    {
+      "appshotVersion" : "0.19.0",
+      "argv" : [
+        "/Users/olivier/.local/bin/appshot",
+        "accept",
+        "--source",
+        "Screenshots/macos/source",
+        "--golden",
+        "Screenshots/macos/golden"
+      ],
+      "at" : "2026-09-28T09:51:49Z",
+      "count" : 6,
+      "cwd" : "/Users/olivier/Projects/apps/armada/apps/apple",
+      "host" : "oliviermacbookpro.local",
+      "pid" : 43790,
+      "user" : "olivier"
+    },
+    {
       "appshotVersion" : "0.12.0",
       "argv" : [
         "/Users/olivier/.local/bin/appshot",
@@ -54,39 +88,45 @@
   ],
   "entries" : {
     "account~dark.png" : {
-      "bytes" : 455400,
-      "height" : 1564,
-      "sha256" : "72da40d78747b7ff5897c086133a00125b74c85227f40967521637e7bf656dd6",
+      "bytes" : 490260,
+      "height" : 1604,
+      "sha256" : "fc25cc5944aa1b5224d17e37c4996a9d8417afcf59de71a70a96de2dae2e7d0c",
       "width" : 2400
     },
     "codex~dark.png" : {
-      "bytes" : 364389,
-      "height" : 1564,
-      "sha256" : "fc5dcfd490ee3470fe793d3d2113a19ba102cb1478a9b8437780b1824212f0db",
+      "bytes" : 379537,
+      "height" : 1604,
+      "sha256" : "ac3d18aacc4b66d54c35fc2fbbe4514a7f5ecc7ca710a2edf50a5055f39814d8",
+      "width" : 2400
+    },
+    "history~dark.png" : {
+      "bytes" : 556627,
+      "height" : 1604,
+      "sha256" : "761d56f92d6f3b1fcd261a4291967fcbc432bffc074aaa3a5c86d92659c21b7a",
       "width" : 2400
     },
     "menubar~dark.png" : {
-      "bytes" : 143824,
+      "bytes" : 144526,
       "height" : 1184,
-      "sha256" : "633877d4546bd6a5e49a6e3afa31de1f29b8402529acd59136b6c4e90b0fdf27",
+      "sha256" : "4adae60ac9033c934b7544bc3110d479ea609031dd48b05613b75acbd0c353af",
       "width" : 640
     },
     "projects~dark.png" : {
-      "bytes" : 365558,
-      "height" : 1564,
-      "sha256" : "e2c092b200993ef6ad076a04fad4a4235ab01b3064206930742ca9a97473b1b9",
+      "bytes" : 401991,
+      "height" : 1604,
+      "sha256" : "ae84fcf5c5b72969477c08e9e4174e11e1a147db6804c3436323191272b3d314",
       "width" : 2400
     },
     "transcript~dark.png" : {
-      "bytes" : 275253,
+      "bytes" : 275794,
       "height" : 1344,
-      "sha256" : "03ca32b19ffeb41fe23635aaf4babe1dad207b79c9ac6fd04c2819415c9b6f87",
+      "sha256" : "d6345f9c20a5b697aab92b3b8b5effc4c83506b04fe2219ff07298011db6a67b",
       "width" : 1760
     },
     "usage~dark.png" : {
-      "bytes" : 325033,
-      "height" : 1564,
-      "sha256" : "da55d31a4927901eeb864fca6852cfd0d396fe5c5048f5681fbb80438d14be9f",
+      "bytes" : 357822,
+      "height" : 1604,
+      "sha256" : "c2bafe93033e7a98f2c9948d2d40737a8bc40c4b3ae8fe5fb449c3c548b21c3a",
       "width" : 2400
     }
   },
