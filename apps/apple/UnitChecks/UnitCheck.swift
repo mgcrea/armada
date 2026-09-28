@@ -2110,6 +2110,12 @@ struct UnitCheck {
 
   // MARK: - Codex automation files
 
+  /// Calls `apiStatus` from a `nonisolated` function body. If the extension that declares it
+  /// ever loses its own `nonisolated` (see `Armada/CodexAutomationFile.swift`), `apiStatus`
+  /// falls back to this file's `-default-isolation MainActor` and this line stops compiling —
+  /// the check is the compile itself, not anything it returns.
+  nonisolated static func apiStatusFromNonisolated(_ a: CodexAutomation) -> String { a.apiStatus }
+
   /// The shape the Codex app's own writer (`dB` in ChatGPT.app's app.asar) produces, with the
   /// person's prompt swapped for one that exercises every escape.
   static let codexGolden = """
@@ -2301,6 +2307,159 @@ struct UnitCheck {
       "a taken id counts up",
       CodexAutomationFile.uniqueID(for: "Probe", taken: ["probe", "probe-2"]) == "probe-3")
     check("a free id is kept", CodexAutomationFile.uniqueID(for: "Probe", taken: []) == "probe")
+
+    // Review round 1, issue 3: apiStatus must stay reachable without an actor hop.
+    var activeCopy = parsed
+    activeCopy.status = "ACTIVE"
+    check(
+      "apiStatus reads from a nonisolated context",
+      apiStatusFromNonisolated(parsed) == "paused"
+        && apiStatusFromNonisolated(activeCopy) == "active"
+    )
+
+    // Review round 1, issue 1: escaping and unescaping work on Unicode scalars, not on
+    // `Character`. A `"`, `\` or `\n` immediately followed by a combining mark is one single
+    // `Character` in Swift, not two, so a naive Character-based escape or compare never sees it
+    // as the quote, backslash or newline it is — in either direction.
+    func roundTrips(_ prompt: String) -> Bool {
+      var a = parsed
+      a.prompt = prompt
+      guard case .automation(let back) = CodexAutomationFile.parse(CodexAutomationFile.serialize(a))
+      else { return false }
+      return back.prompt == prompt
+    }
+    check("a quote followed by a combining mark round-trips", roundTrips("a\"\u{0301}b"))
+    check("a backslash followed by a combining mark round-trips", roundTrips("a\\\u{0301}b"))
+    check("a newline followed by a combining mark round-trips", roundTrips("a\n\u{0301}b"))
+
+    func minimalCron(prompt: String) -> String {
+      "version = 1\nid = \"x\"\nkind = \"cron\"\nname = \"X\"\nprompt = \"\(prompt)\"\n"
+        + "status = \"ACTIVE\"\nrrule = \"RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0\"\n"
+        + "execution_environment = \"local\"\ncwds = []\ncreated_at = 1\nupdated_at = 2\n"
+    }
+    let tabThenZWJ = minimalCron(prompt: "a\\t\u{200D}b")
+    if case .automation(let a) = CodexAutomationFile.parse(tabThenZWJ) {
+      check("an escaped tab followed by a ZWJ decodes, not hand-edited", a.prompt == "a\t\u{200D}b")
+      check("and it writes back byte for byte", CodexAutomationFile.serialize(a) == tabThenZWJ)
+    } else {
+      check("an escaped tab followed by a ZWJ parses", false)
+    }
+    check(
+      "an unescaped quote followed by a combining mark is hand-edited",
+      handEdited(minimalCron(prompt: "ab\"\u{0301}cd")))
+
+    var longPrompt = ""
+    for i in 0..<200 {
+      longPrompt +=
+        "Line \(i) with emoji 🎉, combining e\u{0301}, CRLF\r\n, back\\slash, quote\", tab\t end.\n"
+    }
+    check(
+      "a long, mixed-content prompt (\(longPrompt.utf8.count) bytes) round-trips byte for byte",
+      roundTrips(longPrompt))
+
+    // Review round 1, issue 2: nothing `dB` would not itself produce may parse as `.automation`.
+    check(
+      "a wrong-typed model is hand-edited",
+      handEdited(codexGolden.replacingOccurrences(of: "model = \"gpt-5.5\"", with: "model = 5")))
+    check(
+      "a wrong-typed target is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(
+          of:
+            "target = { type = \"project\", project_id = \"d2ef9214-8cf5-41bc-b2c9-31ce7a11ac6b\" }",
+          with: "target = \"abc\"")))
+    check(
+      "a wrong-typed execution_environment is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(
+          of: "execution_environment = \"local\"", with: "execution_environment = 1")))
+    check(
+      "target_thread_id on a cron is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(
+          of: "\ncreated_at", with: "\ntarget_thread_id = \"t\"\ncreated_at")))
+    check(
+      "cwds on a heartbeat is hand-edited",
+      handEdited(
+        heartbeat.replacingOccurrences(of: "target_thread_id", with: "cwds = []\ntarget_thread_id"))
+    )
+    check(
+      "target on a heartbeat is hand-edited",
+      handEdited(
+        heartbeat.replacingOccurrences(
+          of: "target_thread_id", with: "target = { type = \"projectless\" }\ntarget_thread_id")))
+    check(
+      "execution_environment on a heartbeat is hand-edited",
+      handEdited(
+        heartbeat.replacingOccurrences(
+          of: "target_thread_id", with: "execution_environment = \"local\"\ntarget_thread_id")))
+    check(
+      "plugin_template_id on a heartbeat is hand-edited",
+      handEdited(
+        heartbeat.replacingOccurrences(
+          of: "target_thread_id", with: "plugin_template_id = \"t\"\ntarget_thread_id")))
+    check(
+      "the wrong keys for a projectless target are hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(of: "type = \"project\"", with: "type = \"projectless\"")))
+    check(
+      "an unknown key in the target table is hand-edited",
+      handEdited(codexGolden.replacingOccurrences(of: " }", with: ", foo = \"y\" }")))
+    check(
+      "a leading + on an integer is hand-edited",
+      handEdited(codexGolden.replacingOccurrences(of: "version = 1", with: "version = +1")))
+    check(
+      "a leading zero on an integer is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(
+          of: "created_at = 1786005649808", with: "created_at = 01786005649808")))
+    check(
+      "a leading - on an integer is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(
+          of: "created_at = 1786005649808", with: "created_at = -1786005649808")))
+    check(
+      "a blank line in the middle is hand-edited",
+      handEdited(codexGolden.replacingOccurrences(of: "\nstatus", with: "\n\nstatus")))
+    check(
+      "a raw tab inside a string is hand-edited", handEdited(minimalCron(prompt: "a\tb")))
+    check(
+      "a raw control character inside a string is hand-edited",
+      handEdited(minimalCron(prompt: "a\u{0001}b")))
+    check(
+      "a lowercase status is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(of: "status = \"PAUSED\"", with: "status = \"active\"")))
+    check(
+      "an unrecognized status is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(of: "status = \"PAUSED\"", with: "status = \"SUSPENDED\""))
+    )
+
+    // Review round 1, issue 4.
+    check(
+      "a duplicate RRULE part is refused",
+      CodexAutomationFile.scheduleRefusal("RRULE:FREQ=MONTHLY;FREQ=DAILY") != nil)
+    check(
+      "an empty BYHOUR item is refused",
+      CodexAutomationFile.scheduleRefusal("RRULE:FREQ=DAILY;BYHOUR=7,,8;BYMINUTE=0") != nil)
+    check(
+      "an empty BYDAY item is refused",
+      CodexAutomationFile.scheduleRefusal("RRULE:FREQ=WEEKLY;BYDAY=MO,,WE;BYHOUR=18;BYMINUTE=0")
+        != nil)
+    check(
+      "an embedded CRLF is refused",
+      CodexAutomationFile.scheduleRefusal("DTSTART:20260101T000000Z\r\nRRULE:FREQ=DAILY") != nil)
+    check(
+      "a non-zero minute is kept on a daily rule",
+      CodexAutomationFile.summary("RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=30") == "daily at 07:30")
+    check(
+      "a non-zero minute is kept on a weekly rule",
+      CodexAutomationFile.summary("RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=15")
+        == "weekly on Mon at 09:15")
+    check(
+      "no BYHOUR still says the minute",
+      CodexAutomationFile.summary("RRULE:FREQ=DAILY;BYMINUTE=30") == "daily at minute 30")
   }
 
   // MARK: - EditorLaunch

@@ -36,7 +36,12 @@ nonisolated struct CodexAutomation: Sendable, Equatable {
   var updatedAt: Int64
 }
 
-extension CodexAutomation {
+/// `nonisolated` on the extension, not just inherited from the type: under
+/// `-default-isolation MainActor` a plain `extension` does not pick up the isolation of the
+/// type it extends, so without this every access to `apiStatus` from off the main actor
+/// (`ScheduleStoreBridge`, run off the main actor like everything under `CodexWatcher`) would
+/// need to hop actors to read a string. See `Armada/ProjectsBridge.swift`, `Armada/MessageHook.swift`.
+nonisolated extension CodexAutomation {
   /// `status`, in the spelling Armada's own tools and rows use elsewhere.
   var apiStatus: String { status == "ACTIVE" ? "active" : "paused" }
 }
@@ -47,6 +52,13 @@ extension CodexAutomation {
 /// strings with five escapes; integers; string arrays; one inline table) and calls anything
 /// else hand-edited. A hand-edited file is still listed, but never rewritten, because writing
 /// it back through this serializer would drop whatever the person added.
+///
+/// **Every escape and every split below works on Unicode scalars, not `Character`.** A
+/// `Character` is an extended grapheme cluster: a `"` or `\` immediately followed by a
+/// combining mark (U+0301 and friends) is *one* `Character` in Swift, not two, so comparing it
+/// against the literal `Character` `"\""` or `"\\"` silently fails — the quote is never seen as
+/// a quote. Scalar-by-scalar comparison has no such blind spot: a combining mark is its own
+/// scalar regardless of what it renders next to.
 nonisolated enum CodexAutomationFile {
   enum Parsed: Sendable, Equatable {
     case automation(CodexAutomation)
@@ -78,19 +90,23 @@ nonisolated enum CodexAutomationFile {
   // MARK: Parsing
 
   static func parse(_ text: String) -> Parsed {
+    let lines = splitLines(Array(text.unicodeScalars))
     var fields: [String: Value] = [:]
-    for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
-      let line = String(rawLine)
-      if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }
-      guard let equals = line.range(of: " = ") else {
-        return .handEdited("A line is not `key = value`: \(line.prefix(60))")
+    for (index, line) in lines.enumerated() {
+      let isTrailing = index == lines.count - 1
+      if isBlank(line) {
+        if isTrailing { continue }
+        return .handEdited("A blank line appears where a key belongs.")
       }
-      let key = String(line[..<equals.lowerBound])
+      guard let equals = findEquals(line) else {
+        return .handEdited("A line is not `key = value`: \(scalarsToString(line.prefix(60)))")
+      }
+      let key = scalarsToString(line[line.startIndex..<equals])
       guard knownKeys.contains(key) else {
         return .handEdited("It has a key Codex does not write: \(key)")
       }
       guard fields[key] == nil else { return .handEdited("\(key) appears twice.") }
-      guard let value = value(String(line[equals.upperBound...])) else {
+      guard let value = value(line[(equals + 3)...]) else {
         return .handEdited("\(key) is not written the way Codex writes it.")
       }
       fields[key] = value
@@ -112,6 +128,9 @@ nonisolated enum CodexAutomationFile {
       let status = string("status"), let rrule = string("rrule"),
       let createdAt = int("created_at"), let updatedAt = int("updated_at")
     else { return .notAutomation }
+    guard status == "ACTIVE" || status == "PAUSED" else {
+      return .handEdited("Its status is neither ACTIVE nor PAUSED.")
+    }
     let kind = string("kind") ?? "cron"
 
     var automation = CodexAutomation(
@@ -128,7 +147,7 @@ nonisolated enum CodexAutomationFile {
       guard let thread = automation.targetThreadId,
         !thread.trimmingCharacters(in: .whitespaces).isEmpty
       else { return .notAutomation }
-      return .automation(automation)
+      return finalized(automation, against: text)
     }
     guard case .strings(let cwds) = fields["cwds"] else { return .notAutomation }
     automation.cwds = cwds
@@ -143,34 +162,94 @@ nonisolated enum CodexAutomationFile {
       default: return .handEdited("Its target is neither a project nor projectless.")
       }
     }
-    return .automation(automation)
+    return finalized(automation, against: text)
   }
 
-  /// One value, in the spellings `bz`, `xz` and the target line produce.
-  private static func value(_ raw: String) -> Value? {
-    if raw.hasPrefix("\"\"\"") { return nil }
-    if raw.hasPrefix("\"") {
-      guard let (s, rest) = basicString(Substring(raw)), rest.isEmpty else { return nil }
-      return .string(s)
+  /// The last guard: an automation this read back must write back to the same bytes, or it was
+  /// not written by `dB` (a wrong-typed value silently dropped, a key foreign to its kind, a
+  /// target table with the wrong keys for its own type…). This is what makes "never a lossy
+  /// `.automation`" true by construction, rather than one case at a time.
+  private static func finalized(_ automation: CodexAutomation, against text: String) -> Parsed {
+    serialize(automation) == text
+      ? .automation(automation)
+      : .handEdited("Writing it back would not reproduce the file byte for byte.")
+  }
+
+  /// `text.unicodeScalars`, split on `\n`, keeping empty lines (including the trailing one a
+  /// well-formed file ends on) — the scalar equivalent of
+  /// `split(separator: "\n", omittingEmptySubsequences: false)`.
+  private static func splitLines(_ scalars: [Unicode.Scalar]) -> [ArraySlice<Unicode.Scalar>] {
+    var lines: [ArraySlice<Unicode.Scalar>] = []
+    var start = scalars.startIndex
+    for index in scalars.indices where scalars[index] == "\n" {
+      lines.append(scalars[start..<index])
+      start = index + 1
     }
-    if raw.hasPrefix("[") { return strings(raw) }
-    if raw.hasPrefix("{") { return table(raw) }
-    if let int = Int64(raw) { return .int(int) }
+    lines.append(scalars[start...])
+    return lines
+  }
+
+  /// Only spaces and tabs — never a `\n`, since lines are already split on it.
+  private static func isBlank(_ line: ArraySlice<Unicode.Scalar>) -> Bool {
+    line.allSatisfy { $0 == " " || $0 == "\t" }
+  }
+
+  /// The index of the space that starts this line's ` = `, searching left to right so a
+  /// quoted value containing that exact substring can never be mistaken for the separator: the
+  /// key precedes every quote on the line, so the first match is always the real one.
+  private static func findEquals(_ line: ArraySlice<Unicode.Scalar>) -> Int? {
+    guard line.count >= 3 else { return nil }
+    for index in line.startIndex...(line.endIndex - 3) {
+      if line[index] == " ", line[index + 1] == "=", line[index + 2] == " " { return index }
+    }
     return nil
   }
 
-  /// A basic string at the start of `text`, and whatever follows its closing quote.
-  private static func basicString(_ text: Substring) -> (String, Substring)? {
-    guard text.first == "\"" else { return nil }
-    var out = ""
-    var index = text.index(after: text.startIndex)
-    while index < text.endIndex {
-      let c = text[index]
-      if c == "\"" { return (out, text[text.index(after: index)...]) }
+  private static func scalarsToString(_ slice: ArraySlice<Unicode.Scalar>) -> String {
+    String(String.UnicodeScalarView(slice))
+  }
+
+  /// One value, in the spellings `bz`, `xz` and the target line produce.
+  private static func value(_ raw: ArraySlice<Unicode.Scalar>) -> Value? {
+    guard let first = raw.first else { return nil }
+    if first == "\"" {
+      if raw.count >= 3, raw[raw.startIndex + 1] == "\"", raw[raw.startIndex + 2] == "\"" {
+        return nil
+      }
+      guard let (s, rest) = basicString(raw), rest.isEmpty else { return nil }
+      return .string(s)
+    }
+    if first == "[" { return strings(raw) }
+    if first == "{" { return table(raw) }
+    return canonicalInt(raw).map { .int($0) }
+  }
+
+  /// `0`, or `[1-9][0-9]*`: no leading zero, no leading `+`, no leading `-`. Codex's own writer
+  /// never emits any of the three, so a file that has one was not written by `dB`.
+  private static func canonicalInt(_ raw: ArraySlice<Unicode.Scalar>) -> Int64? {
+    guard let first = raw.first, ("0"..."9").contains(first) else { return nil }
+    guard raw.allSatisfy({ ("0"..."9").contains($0) }) else { return nil }
+    guard first != "0" || raw.count == 1 else { return nil }
+    return Int64(scalarsToString(raw))
+  }
+
+  /// A basic string at the start of `scalars`, and whatever follows its closing quote. A raw
+  /// (unescaped) control character inside it — a literal tab, newline, CR, or anything else
+  /// under U+0020 — fails the read: `bz` always escapes those five characters, so a literal one
+  /// proves the file was not written by `dB`.
+  private static func basicString(
+    _ scalars: ArraySlice<Unicode.Scalar>
+  ) -> (String, ArraySlice<Unicode.Scalar>)? {
+    guard scalars.first == "\"" else { return nil }
+    var out = String.UnicodeScalarView()
+    var index = scalars.startIndex + 1
+    while index < scalars.endIndex {
+      let c = scalars[index]
+      if c == "\"" { return (String(out), scalars[(index + 1)...]) }
       if c == "\\" {
-        let next = text.index(after: index)
-        guard next < text.endIndex else { return nil }
-        switch text[next] {
+        let next = index + 1
+        guard next < scalars.endIndex else { return nil }
+        switch scalars[next] {
         case "\\": out.append("\\")
         case "n": out.append("\n")
         case "r": out.append("\r")
@@ -178,44 +257,52 @@ nonisolated enum CodexAutomationFile {
         case "\"": out.append("\"")
         default: return nil
         }
-        index = text.index(after: next)
+        index = next + 1
         continue
       }
+      guard c.value >= 0x20, c.value != 0x7F else { return nil }
       out.append(c)
-      index = text.index(after: index)
+      index += 1
     }
     return nil
   }
 
   /// `[]` or `["a", "b"]`, as `xz` writes it.
-  private static func strings(_ raw: String) -> Value? {
-    if raw == "[]" { return .strings([]) }
-    var rest = Substring(raw.dropFirst())
+  private static func strings(_ raw: ArraySlice<Unicode.Scalar>) -> Value? {
+    guard raw.first == "[" else { return nil }
+    var rest = raw[(raw.startIndex + 1)...]
+    if rest.count == 1, rest.first == "]" { return .strings([]) }
     var items: [String] = []
     while true {
       guard let (item, after) = basicString(rest) else { return nil }
       items.append(item)
-      if after == "]" { return .strings(items) }
-      guard after.hasPrefix(", ") else { return nil }
-      rest = after.dropFirst(2)
+      if after.count == 1, after.first == "]" { return .strings(items) }
+      guard after.count >= 2, after.first == ",", after[after.startIndex + 1] == " " else {
+        return nil
+      }
+      rest = after[(after.startIndex + 2)...]
     }
   }
 
   /// `{ type = "project", project_id = "…" }` or `{ type = "projectless" }`.
-  private static func table(_ raw: String) -> Value? {
-    guard raw.hasPrefix("{ "), raw.hasSuffix(" }") else { return nil }
-    var rest = Substring(raw.dropFirst(2).dropLast(2))
+  private static func table(_ raw: ArraySlice<Unicode.Scalar>) -> Value? {
+    guard raw.count >= 4, raw.first == "{", raw[raw.startIndex + 1] == " ",
+      raw[raw.endIndex - 2] == " ", raw[raw.endIndex - 1] == "}"
+    else { return nil }
+    var rest = raw[(raw.startIndex + 2)..<(raw.endIndex - 2)]
     var table: [String: String] = [:]
     while !rest.isEmpty {
-      guard let equals = rest.range(of: " = ") else { return nil }
-      let key = String(rest[..<equals.lowerBound])
-      guard let (value, after) = basicString(rest[equals.upperBound...]), table[key] == nil else {
+      guard let equals = findEquals(rest) else { return nil }
+      let key = scalarsToString(rest[rest.startIndex..<equals])
+      guard let (value, after) = basicString(rest[(equals + 3)...]), table[key] == nil else {
         return nil
       }
       table[key] = value
       if after.isEmpty { break }
-      guard after.hasPrefix(", ") else { return nil }
-      rest = after.dropFirst(2)
+      guard after.count >= 2, after.first == ",", after[after.startIndex + 1] == " " else {
+        return nil
+      }
+      rest = after[(after.startIndex + 2)...]
     }
     guard Set(table.keys).isSubset(of: ["type", "project_id"]) else { return nil }
     return .table(table)
@@ -258,14 +345,22 @@ nonisolated enum CodexAutomationFile {
     return lines.joined(separator: "\n") + "\n"
   }
 
-  /// `bz`: backslash first, then the four others. Nothing else is escaped.
+  /// `bz`: backslash first, then the four others. Nothing else is escaped. Scalar by scalar, so
+  /// a combining mark right after one of the five never hides it — see the type's doc comment.
   static func quoted(_ s: String) -> String {
-    let escaped = s.replacingOccurrences(of: "\\", with: "\\\\")
-      .replacingOccurrences(of: "\n", with: "\\n")
-      .replacingOccurrences(of: "\r", with: "\\r")
-      .replacingOccurrences(of: "\t", with: "\\t")
-      .replacingOccurrences(of: "\"", with: "\\\"")
-    return "\"\(escaped)\""
+    var out = "\""
+    for scalar in s.unicodeScalars {
+      switch scalar {
+      case "\\": out += "\\\\"
+      case "\n": out += "\\n"
+      case "\r": out += "\\r"
+      case "\t": out += "\\t"
+      case "\"": out += "\\\""
+      default: out.unicodeScalars.append(scalar)
+      }
+    }
+    out += "\""
+    return out
   }
 
   // MARK: Schedules
@@ -275,22 +370,33 @@ nonisolated enum CodexAutomationFile {
   ]
   private static let weekdays = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 
-  /// `BYDAY`'s value, split on its commas. Shared by `scheduleRefusal` and `summary` so the two
-  /// never drift on what counts as a day.
-  private static func days(_ byDay: String?) -> [String] {
-    byDay.map { $0.split(separator: ",").map(String.init) } ?? []
+  /// `BYDAY`'s value, split on its commas, or nil for an empty item (`MO,,WE`) — the comma
+  /// list Codex itself would never write empty.
+  private static func days(_ byDay: String?) -> [String]? {
+    guard let byDay else { return [] }
+    let items = byDay.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+    guard items.allSatisfy({ !$0.isEmpty }) else { return nil }
+    return items
   }
 
   /// The rule in Codex's spelling (`RRULE:` and upper case), or nil when it is not one
-  /// single-line rule of `KEY=VALUE` parts.
+  /// single-line rule of unique `KEY=VALUE` parts. Scalar-checked for `\r`/`\n`: a `Character`
+  /// comparison misses an embedded `\r\n`, since CR-LF is itself one `Character` in Swift and so
+  /// never equal to the bare `Character` `"\n"`.
   static func normalizedRRule(_ raw: String) -> String? {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty, !trimmed.contains("\n") else { return nil }
+    guard !trimmed.isEmpty else { return nil }
+    guard !trimmed.unicodeScalars.contains("\r"), !trimmed.unicodeScalars.contains("\n") else {
+      return nil
+    }
     var body = trimmed.uppercased()
     if body.hasPrefix("RRULE:") { body = String(body.dropFirst(6)) }
-    let parts = body.split(separator: ";")
-    guard !parts.isEmpty, parts.allSatisfy({ $0.split(separator: "=").count == 2 }) else {
-      return nil
+    let rawParts = body.split(separator: ";")
+    guard !rawParts.isEmpty else { return nil }
+    var seenKeys: Set<Substring> = []
+    for part in rawParts {
+      let pair = part.split(separator: "=")
+      guard pair.count == 2, seenKeys.insert(pair[0]).inserted else { return nil }
     }
     return "RRULE:" + body
   }
@@ -305,9 +411,12 @@ nonisolated enum CodexAutomationFile {
     return out
   }
 
+  /// A comma list of numbers in `range`, or nil for an empty item (`7,,8`) or one out of range.
   private static func numbers(_ list: String?, in range: ClosedRange<Int>) -> [Int]? {
     guard let list else { return [] }
-    let values = list.split(separator: ",").map { Int($0) }
+    let items = list.split(separator: ",", omittingEmptySubsequences: false)
+    guard items.allSatisfy({ !$0.isEmpty }) else { return nil }
+    let values = items.map { Int($0) }
     guard values.allSatisfy({ $0.map(range.contains) ?? false }) else { return nil }
     return values.compactMap { $0 }
   }
@@ -339,8 +448,10 @@ nonisolated enum CodexAutomationFile {
     }
     guard let hours = numbers(p["BYHOUR"], in: 0...23),
       let minutes = numbers(p["BYMINUTE"], in: 0...59)
-    else { return "\(quotedRule) has an hour or minute out of range." }
-    let ruleDays = days(p["BYDAY"])
+    else { return "\(quotedRule) has an hour or minute that is out of range or malformed." }
+    guard let ruleDays = days(p["BYDAY"]) else {
+      return "\(quotedRule) has a malformed BYDAY list."
+    }
     guard ruleDays.allSatisfy(weekdays.contains) else {
       return "\(quotedRule) has a BYDAY that is not MO, TU, WE, TH, FR, SA or SU."
     }
@@ -359,15 +470,23 @@ nonisolated enum CodexAutomationFile {
   /// The rule itself when it is not one this can read.
   static func summary(_ rrule: String) -> String {
     guard let p = parts(rrule), let freq = p["FREQ"] else { return rrule }
-    let hours = numbers(p["BYHOUR"], in: 0...23) ?? []
-    let minutes = numbers(p["BYMINUTE"], in: 0...59) ?? []
-    let times = hours.flatMap { h in
-      (minutes.isEmpty ? [0] : minutes).map { String(format: "%02ld:%02ld", h, $0) }
+    guard let hours = numbers(p["BYHOUR"], in: 0...23),
+      let minutes = numbers(p["BYMINUTE"], in: 0...59), let ruleDays = days(p["BYDAY"])
+    else { return rrule }
+    let times: [String]
+    if !hours.isEmpty {
+      times = hours.flatMap { h in
+        (minutes.isEmpty ? [0] : minutes).map { String(format: "%02ld:%02ld", h, $0) }
+      }
+    } else if !minutes.isEmpty && minutes != [0] {
+      // No anchor hour, but the minute still says something — e.g. "at minute 30".
+      times = minutes.map { "minute \($0)" }
+    } else {
+      times = []
     }
     let at = times.isEmpty ? "" : " at " + times.joined(separator: ", ")
     if p["COUNT"] == "1" { return "once" + at }
     let interval = Int(p["INTERVAL"] ?? "1") ?? 1
-    let ruleDays = days(p["BYDAY"])
     switch freq {
     case "HOURLY": return interval == 1 ? "hourly" : "every \(interval) hours"
     case "DAILY": return (interval == 1 ? "daily" : "every \(interval) days") + at
