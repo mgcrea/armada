@@ -19,6 +19,9 @@ enum SidebarItem: Hashable {
   /// Every saved project, in one pane of its own. The project selected in it is that
   /// pane's to keep, as a session is an account pane's.
   case projects
+  /// Every scheduled task on this Mac, read-only. Listed while there is a Codex home or the
+  /// Claude app has scheduled tasks.
+  case schedules
   /// The voice conversation's questions and replies. Listed only while voice is on.
   case voice
 
@@ -29,6 +32,7 @@ enum SidebarItem: Hashable {
 
   private static let usageToken = "usage"
   private static let projectsToken = "projects"
+  private static let schedulesToken = "schedules"
   private static let voiceToken = "voice"
   private static let codexPrefix = "codex:"
   private static let grokPrefix = "grok:"
@@ -40,6 +44,7 @@ enum SidebarItem: Hashable {
     case .codex(let id): Self.codexPrefix + id
     case .grok(let id): Self.grokPrefix + id
     case .projects: Self.projectsToken
+    case .schedules: Self.schedulesToken
     case .voice: Self.voiceToken
     }
   }
@@ -49,6 +54,8 @@ enum SidebarItem: Hashable {
       self = .usage
     } else if stored == Self.projectsToken {
       self = .projects
+    } else if stored == Self.schedulesToken {
+      self = .schedules
     } else if stored == Self.voiceToken {
       self = .voice
     } else if stored.hasPrefix(Self.codexPrefix) {
@@ -68,6 +75,7 @@ struct MainWindowView: View {
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
   @State private var projects = ProjectStore.shared
+  @State private var schedules = SchedulesModel.shared
   @State private var monitor = EntitlementMonitor.shared
   /// The agent an account is being added for, while the sheet is up.
   @State private var addingAccount: NewAccount.Vendor?
@@ -105,6 +113,8 @@ struct MainWindowView: View {
       splitView
     }
     .sheet(item: $addingAccount) { AddAccountSheet(vendor: $0) }
+    // Once per showing, for the sidebar row and its badge; the pane reads again while it is up.
+    .task { await schedules.load() }
     .screenshotSubject()
     #if DEBUG
       // Every store a capture draws from is seeded before this window exists, so the
@@ -128,6 +138,11 @@ struct MainWindowView: View {
           Label("Projects", systemImage: "folder")
             .badge(projects.projects.count)
             .tag(SidebarItem.projects)
+          if showsSchedules {
+            Label("Schedules", systemImage: "calendar.badge.clock")
+              .badge(schedules.activeCount)
+              .tag(SidebarItem.schedules)
+          }
           if voiceEnabled {
             Label("Voice", systemImage: "waveform")
               .tag(SidebarItem.voice)
@@ -204,6 +219,8 @@ struct MainWindowView: View {
           }
         case .projects:
           ProjectsPaneView()
+        case .schedules:
+          SchedulesPaneView()
         case .voice:
           VoiceConversationView()
         case nil:
@@ -250,6 +267,10 @@ struct MainWindowView: View {
     }
   }
 
+  /// Codex homes are what Armada changes schedules in; the Claude app's are only shown, so
+  /// its tasks alone earn the row only once they are known to exist.
+  private var showsSchedules: Bool { !codex.isEmpty || schedules.hasClaudeTasks }
+
   /// The stored selection if it still resolves, otherwise the first account.
   ///
   /// An account that has gone away falls back rather than showing an empty pane;
@@ -261,6 +282,7 @@ struct MainWindowView: View {
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
     case .grok(let id) where grok.account(id: id) != nil: .grok(id)
     case .projects: .projects
+    case .schedules where showsSchedules: .schedules
     case .voice where voiceEnabled: .voice
     // A Codex home is a real fallback, not a consolation prize: someone may run
     // Codex and no Claude Code at all, and the window should open on their work.

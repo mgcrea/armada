@@ -16,6 +16,9 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   every scheduled task on the Mac, and create, change or remove Codex automations, through
   Armada's MCP server. Codex still runs them, and Armada posts a notification every time one
   changes. Claude desktop's own scheduled tasks are listed too, read-only.
+- **A Schedules pane.** The sidebar lists every schedule on the Mac, Codex automations by
+  home and the Claude app's tasks, with when each runs next, its prompt and its folder.
+  Read-only: schedules are changed by asking Claude Code.
 
 ## [1.9.0] - 2026-09-28
 
