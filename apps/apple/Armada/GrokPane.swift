@@ -22,6 +22,9 @@ struct GrokPaneView: View {
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
     .toolbar {
+      ForkToolbarItem(
+        availability: account.sessions.sessions.first { $0.id == selection }
+          .map { .grok($0, in: account) })
       NewSessionToolbarItem(
         agent: .grok(account.home), suggestion: account.recentProjects.first?.url)
     }

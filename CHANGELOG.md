@@ -42,10 +42,20 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   account's pane, New Session is at its trailing edge and stays there whichever session is
   selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a
   supervisor session. Grok Build accounts get it too. A session's right-click still starts
-  another one in its folder. Beside it, Focus and Read Transcript act on the Claude Code
-  session you have selected, on ⌘O and ⌘T; Fork, Continue on and Close stay in its details,
-  with what each is about to do. Add Account moved from under the sidebar to beside the
-  sidebar button, so it stays reachable with the sidebar hidden.
+  another one in its folder. Beside it, Focus, Read Transcript, Fork and Continue on act on the
+  session you have selected, on ⌘O, ⌘T and ⌘D; Codex and Grok Build get Fork. They stay in the
+  session's details too, with what each is about to do, and Close stays there alone. Add Account
+  moved from under the sidebar to beside the sidebar button, so it stays reachable with the
+  sidebar hidden.
+
+- **The sessions list shows how long each prompt cache stays warm.** A clock beside a stopped
+  Claude Code session's token count counts down to when its cache expires. A mark after the
+  count gives the cache's state: a flame while it is warm or the session is working, red once
+  the session holds 500K tokens or more, an orange timer in the last quarter of its life, and a
+  blue snowflake once it has expired. The countdown and the count take the same colour, since
+  the count is what the next turn reads from the cache or writes back. On a selected row the
+  whole column turns white so it stays readable. The session's context panel uses the same marks
+  and colours.
 
 ## [1.8.0] - 2026-09-25
 

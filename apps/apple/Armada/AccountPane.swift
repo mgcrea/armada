@@ -74,7 +74,7 @@ struct AccountPaneView: View {
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
     .toolbar {
-      SessionToolbarItems(session: selected)
+      SessionToolbarItems(session: selected, account: account)
       NewSessionToolbarItem(
         agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
     }

@@ -11,6 +11,10 @@ struct NewSessionToolbarItem: ToolbarContent {
   let suggestion: URL?
 
   var body: some ToolbarContent {
+    // Its own capsule, apart from the session actions a pane puts before it. Without the
+    // spacer, a plain button beside it shares one: on Codex, Fork and New Session read as a
+    // pair.
+    ToolbarSpacer(.fixed, placement: .primaryAction)
     ToolbarItem(placement: .primaryAction) {
       NewSessionButton(agent: agent, suggestion: suggestion)
     }
