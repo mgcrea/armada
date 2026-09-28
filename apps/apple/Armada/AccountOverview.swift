@@ -6,9 +6,10 @@ import SwiftUI
 /// window opened on a row nobody had chosen and there was no state in which the pane
 /// was about the *account*. Mail's "No Message Selected" is the shape this follows:
 /// deselecting is a real state, and the space it frees is worth something. Here it
-/// carries what a session row cannot: the account's plan windows and its week, a way to
-/// start another session, and the account itself. What its sessions are doing is counted
-/// above the list instead (`SessionListBar`), where it stays while a session is open.
+/// carries what a session row cannot: the account's plan windows and its week, and the
+/// account itself. Two things that used to be here stay on screen while a session is open
+/// instead: what its sessions are doing, counted above the list (`SessionListBar`), and
+/// starting another, in the window's toolbar (`NewSessionToolbarItem`).
 ///
 /// It is reached by clicking empty space in the list, by ⌘-clicking the selected row,
 /// and at launch, which is where it earns its place: the window now opens on a summary
@@ -36,8 +37,6 @@ struct AccountOverview: View {
             fetchedAt: usage.fetchedAt, now: now, source: usage.source, style: .inline)
         }
       }
-      NewSessionSection(
-        agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
       AccountSection(account: account)
       ArchiveSection(account: account.id)
     }
@@ -62,8 +61,6 @@ struct CodexOverview: View {
           CodexLastTurn(observedAt: observedAt)
         }
       }
-      NewSessionSection(
-        agent: .codex(account.home), suggestion: account.recentProjects.first?.url)
       CodexHomeSection(account: account)
       ArchiveSection(account: account.id)
     }
@@ -140,66 +137,6 @@ struct CodexLastTurn: View {
     .help(
       "Codex only reports its limits inside a session log, so these figures are as old as the last turn it ran."
     )
-  }
-}
-
-/// Start a session on this account, from one control.
-///
-/// **This used to list the six folders the account ran in last**, one click each, above a
-/// folder picker and the supervisor button. The list took the top of the pane for
-/// something the terminal already does as fast, so it made way for the account's usage; a
-/// folder's own sessions still offer "New Session in <project>" on their right-click, and
-/// the Projects pane starts one in any saved project.
-///
-/// A pull-down rather than two buttons, because both start the same thing and differ only
-/// in where. Codex has no supervisor, and a menu of one item is a button with an extra
-/// click, so it gets the button.
-struct NewSessionSection: View {
-  let agent: NewSession.Agent
-  /// Where the folder picker opens: the folder this account ran in last.
-  let suggestion: URL?
-
-  @State private var launcher = NewSessionLauncher.shared
-  @State private var mcp = MCPServerController.shared
-
-  var body: some View {
-    Section {
-      // Claude only: the supervisor is a Claude Code session, and the home folder because it
-      // belongs to no one project. Settings ▸ Supervisor offers a folder picker.
-      if case .claude(let folder) = agent {
-        Menu("New Session") {
-          Button("From Folder…") { chooseFolder() }
-          Button("Supervisor Session") {
-            launcher.startSupervisor(
-              on: folder, in: FileManager.default.homeDirectoryForCurrentUser)
-          }
-          .disabled(mcp.runningPort == nil)
-        }
-        .fixedSize()
-      } else {
-        Button("New Session…") { chooseFolder() }
-      }
-    } footer: {
-      // Names the terminal, because that is a setting somebody chose once and will not
-      // remember, and it is the whole of what this control does that is not obvious.
-      Text(footer)
-    }
-  }
-
-  private func chooseFolder() {
-    launcher.chooseFolder(for: agent, near: suggestion)
-  }
-
-  private var footer: String {
-    var text =
-      launcher.opensInVSCode(agent)
-      ? "Opens a \(agent.vendorName) tab in that folder's \(VSCodeLaunch.name) window, or a new window on this account."
-      : "Opens \(launcher.terminal.name) with \(agent.commandName) running in that folder, on this account."
-    // Here rather than as the item's tooltip, which a disabled menu item never shows.
-    if case .claude = agent, mcp.runningPort == nil {
-      text += " A supervisor session needs the MCP server, in Settings ▸ Supervisor."
-    }
-    return text
   }
 }
 

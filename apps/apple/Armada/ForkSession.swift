@@ -24,8 +24,9 @@ nonisolated struct ForkTarget: Hashable, Sendable {
 
 /// A fork, or the sentence explaining why this row has none.
 ///
-/// Modelled on `FocusButton`'s rule rather than on a disabled control: a button nobody
-/// can press says only that the app wanted one there, and the interesting half is why.
+/// Modelled on how Focus explains itself (`FocusNote`) rather than on a disabled control
+/// alone: a button nobody can press says only that the app wanted one there, and the
+/// interesting half is why.
 enum ForkAvailability {
   case available(ForkTarget)
   case unavailable(String)

@@ -67,6 +67,7 @@ struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var projects = ProjectStore.shared
   @State private var monitor = EntitlementMonitor.shared
   /// The agent an account is being added for, while the sheet is up.
   @State private var addingAccount: NewAccount.Vendor?
@@ -81,6 +82,15 @@ struct MainWindowView: View {
   /// panel, which is why it is a named constant rather than a literal here.
   @AppStorage(SidebarItem.defaultsKey) private var storedAccount: String = ""
   @AppStorage(VoiceController.enabledKey) private var voiceEnabled = false
+
+  /// Whether the sidebar is showing.
+  ///
+  /// `@State`, not `@AppStorage`, so a hidden sidebar comes back on the next launch. The
+  /// split view writes this binding itself, from inside a layout pass, when the window is
+  /// narrowed past what both columns need, and a defaults write there is the abort that
+  /// `HostedWindow.show()` writes up. The window is kept when it closes, so the choice
+  /// still lasts until Armada quits.
+  @State private var columns = NavigationSplitViewVisibility.all
 
   var body: some View {
     // Asked once, across the top of the window, and gone for good once answered
@@ -104,7 +114,7 @@ struct MainWindowView: View {
   }
 
   private var splitView: some View {
-    NavigationSplitView {
+    NavigationSplitView(columnVisibility: $columns) {
       List(selection: selection) {
         Section("Overview") {
           Label("Usage", systemImage: "gauge.with.dots.needle.bottom.50percent")
@@ -112,7 +122,11 @@ struct MainWindowView: View {
           // One row rather than a section listing every project: a project spans the
           // accounts below, so it is not one more of them, and the list with its details
           // beside it needs the pane's width, not the sidebar's.
+          //
+          // The badge counts saved projects, not live sessions as the account rows' do:
+          // live work already shows on each project's own row in the pane.
           Label("Projects", systemImage: "folder")
+            .badge(projects.projects.count)
             .tag(SidebarItem.projects)
           if voiceEnabled {
             Label("Voice", systemImage: "waveform")
@@ -154,18 +168,6 @@ struct MainWindowView: View {
       .navigationSplitViewColumnWidth(min: 190, ideal: 240, max: 280)
       .safeAreaInset(edge: .bottom) {
         VStack(spacing: 4) {
-          // Pinned under the list rather than inside one section: it adds to any of them,
-          // including a Codex or Grok Build section that is not drawn until it has a home.
-          AddAccountMenu(adding: $addingAccount) {
-            Label("Add Account", systemImage: "plus")
-          }
-          .menuStyle(.borderlessButton)
-          .menuIndicator(.hidden)
-          .fixedSize()
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 12)
-          .padding(.bottom, 4)
-          .disabled(!monitor.current.isEntitled)
           LicenceStatusLine()
           Text("Armada \(AppInfo.shortVersion)")
             .font(.caption)
@@ -213,6 +215,37 @@ struct MainWindowView: View {
             )
           }
         }
+      }
+    }
+    .toolbar {
+      // Drawn here, because the split view does not add its own: this window is a hosted
+      // `NSWindow`, not a `WindowGroup`, and it gets no sidebar button and no View menu to
+      // hold ⌃⌘S — Armada is `LSUIElement`, so it has no menu bar. The shortcut rides on
+      // the button instead, and works while the window is key.
+      ToolbarItem(placement: .navigation) {
+        let shown = columns != .detailOnly
+        Button {
+          withAnimation { columns = shown ? .detailOnly : .all }
+        } label: {
+          Label(shown ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.left")
+        }
+        .help(shown ? "Hide the sidebar" : "Show the sidebar")
+        .keyboardShortcut("s", modifiers: [.control, .command])
+      }
+      // In the toolbar rather than pinned under the sidebar, where it lived first: it adds
+      // to any section, including a Codex or Grok Build one that is not drawn until it has
+      // a home, and under the sidebar it went away with the sidebar.
+      //
+      // Leading, beside the toggle: both are about the sidebar, and there it holds still,
+      // where at the trailing edge it moved a slot whenever a pane added or dropped its
+      // own items. Not the `plus`: that is New Session's (`NewSessionToolbarItem`), the
+      // one used every day.
+      ToolbarItem(placement: .navigation) {
+        AddAccountMenu(adding: $addingAccount) {
+          Label("Add Account", systemImage: "person.crop.circle.badge.plus")
+        }
+        .help("Add a Claude Code, Codex or Grok Build account")
+        .disabled(!monitor.current.isEntitled)
       }
     }
   }

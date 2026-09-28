@@ -161,11 +161,9 @@ struct SessionDetail: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         }
-        FocusButton(
-          host: host, cwd: session.registry.cwd, session: session, didLookUp: didLookUpHost)
-        // Below Focus, above Fork: Focus takes you to the live session, this reads it
-        // without disturbing it, and Fork is the one that starts something new.
-        TranscriptButton(session: session)
+        // Focus and Read Transcript are in the window's toolbar (`SessionToolbarItems`);
+        // what stays here is why Focus cannot reach the window, where there is room to say it.
+        FocusNote(host: host, didLookUp: didLookUpHost)
         ForkButton(availability: .claude(session, in: account))
         HandoverButton(availability: .claude(session, in: account))
         CloseSessionButton(session: session, account: account)
@@ -220,33 +218,19 @@ struct SessionDetail: View {
   }
 }
 
-/// "Focus in Visual Studio Code", or an explanation of why there is nothing to focus.
+/// Why Focus in the toolbar cannot reach this session's window, or what would let it.
 ///
-/// **The label still names the application, even now that this can reach a tab.**
-/// "Go to session" would promise the tab every time, and the tab is reached only for a
-/// session the VS Code extension owns, in the window whose title names its folder, when
-/// that window shows a tab for it or for a session beside it; everything else lands on
-/// the window, or on the app. Naming the app is also the more useful label, because it
-/// tells you where you are about to be sent.
-struct FocusButton: View {
+/// Only here, in the session's details: this is where someone looks when the button
+/// disappoints them, so it is the one place worth spending three lines on what would fix
+/// it. The toolbar's tooltip points here, and the popover's right-click says nothing.
+struct FocusNote: View {
   let host: SessionHost?
-  let cwd: String
-  let session: Session
   let didLookUp: Bool
 
   @State private var trust = AccessibilityTrust.shared
 
   var body: some View {
     if let host {
-      Button {
-        FocusSession.focus(host, cwd: cwd, session: session)
-      } label: {
-        Label("Focus in \(host.name)", systemImage: "arrow.up.forward.app")
-      }
-      // Only while it is missing, and only here. This is the one place someone is
-      // looking at the button that disappoints them, so it is the one place worth
-      // spending three lines explaining what would fix it; the popover's
-      // right-click menu gets no room for a sentence and says nothing.
       if !trust.isTrusted {
         VStack(alignment: .leading, spacing: 4) {
           Text(

@@ -19,8 +19,8 @@ import SwiftUI
 /// and counts, then that line without the context figure, so a list dragged to its 320pt
 /// floor still gets every count; the sort menu holds the trailing edge in all three.
 ///
-/// Not in the window's toolbar, which carries only what applies whatever the pane shows: the
-/// sidebar toggle and Add Account.
+/// Not in the window's toolbar, which holds actions: the sidebar toggle, Add Account, and an
+/// account pane's New Session. This is the list's own summary, drawn over the column it counts.
 struct SessionListBar<Item: SessionListItem, Dot: View>: View {
   /// One tile's state: the key `SessionListItem.stateKey` reports, a name short enough for a
   /// tile, and the vendor's own label for the tooltip.

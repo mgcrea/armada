@@ -99,10 +99,12 @@ transcripts, separate rate limits.
 | `TerminalApp` | which terminals can be handed one, and which of them is chosen |
 | `NewSessionLauncher` | the click, and the alert when a launch fails |
 | `AccountOverview` / `CodexOverview` | the detail pane with nothing selected, per vendor |
-| `OverviewUsageSection` / `NewSessionSection` | the two halves both overviews are built from |
+| `OverviewUsageSection` | the plan windows and the week both overviews open on |
+| `NewSessionToolbarItem` | New Session in the window's toolbar, added by each account pane; ⌘N |
+| `SessionToolbarItems` | Focus (⌘O) and Read Transcript (⌘T) for the selected Claude Code session, in the toolbar |
 | `SessionListBar` | the tiles above an account's list, one per state plus projects and context, and the sort menu |
 | `SessionTallySection` | the same counts as a form section, for a selection of several sessions |
-| `RecentProject` | the folders an account has run in, for that menu |
+| `RecentProject` | the folders an account has run in, the latest where New Session's picker opens |
 | `ProjectPath` | folder matching on whole path components, and which saved project a `cwd` belongs to |
 | `Project` / `ProjectsFile` | a saved folder and the agent it starts; `projects.json`, versioned |
 | `ProjectStore` | the saved list, each folder's symlink-resolved spelling, the live account behind an agent |

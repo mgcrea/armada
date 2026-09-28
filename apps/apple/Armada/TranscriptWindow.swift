@@ -84,28 +84,3 @@ struct TranscriptWindowView: View {
     }
   }
 }
-
-/// "Read Transcript", or why there is nothing to read.
-///
-/// **Claude Code only, and it says so rather than opening an empty window.** `TranscriptLog`
-/// parses Claude Code's JSONL; a Codex rollout is a different format with its own entry
-/// shapes, and pointing this at one would find no entries and render as a session that had
-/// never been prompted. `TranscriptTail` already carries the vendor split for the supervisor
-/// tools, and that is the shape to copy when this grows a second reader.
-struct TranscriptButton: View {
-  let session: Session
-
-  var body: some View {
-    if let transcript = session.transcript {
-      Button {
-        TranscriptWindow.shared.show(url: transcript, name: session.displayName)
-      } label: {
-        Label("Read Transcript", systemImage: "text.bubble")
-      }
-    } else {
-      Label("No transcript yet", systemImage: "text.bubble")
-        .foregroundStyle(.secondary)
-        .help("A session that has never been prompted has no transcript file.")
-    }
-  }
-}

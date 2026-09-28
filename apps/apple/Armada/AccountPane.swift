@@ -73,6 +73,11 @@ struct AccountPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .toolbar {
+      SessionToolbarItems(session: selected)
+      NewSessionToolbarItem(
+        agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
+    }
     .newSessionFailureAlert()
     .sessionClosingAlerts()
     .sessionBatchAlerts()

@@ -48,7 +48,7 @@ needs a permission the walk does not. Without that permission this is still what
 and it is still worth having: it is right for terminal users, and right when Armada is not
 the frontmost app.
 
-Sessions with no host at all, where the button is replaced by an explanation:
+Sessions with no host at all, where the toolbar's Focus button is disabled and the session's details explain why (`FocusNote`):
 
 - **tmux and screen.** Verified against a real pane: the shell's only ancestor is the tmux
   server, which is itself a child of launchd (`sleep (79605)` → `tmux (79604)` → `launchd`).
@@ -142,7 +142,7 @@ they should, and the two that should find nothing do.
 
 **The grant.** `AXIsProcessTrusted()` is asked silently — its `WithOptions` sibling puts a
 system alert on screen and this never does. Settings carries the row that offers it and says
-what it buys; the Focus button carries a caption only while the grant is missing. Nothing
+what it buys; the session's details carry a caption under State only while the grant is missing. Nothing
 prompts at launch. The grant is keyed to the code signature and Debug builds have their own
 bundle identifier, so granting `io.mgcrea.armada.debug` says nothing about the shipped
 `io.mgcrea.armada` — expect to grant twice while working on this.

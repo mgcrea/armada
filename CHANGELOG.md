@@ -35,9 +35,17 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   the figures are old. With no session selected, the account's pane shows every window with its
   pace and projection above the week's chart, where the list of recent folders was. Above the
   session list, where the usage strip was, tiles count its sessions by state, with how many
-  projects they span and how much context they hold. Starting a session is one New Session
-  menu: a folder, or on Claude Code a supervisor session. A session's right-click still starts
-  another one in its folder.
+  projects they span and how much context they hold.
+
+- **The main window has a toolbar.** A button beside the window controls hides and shows the
+  sidebar, also on ⌃⌘S, so the session list and its details can have the whole width. On an
+  account's pane, New Session is at its trailing edge and stays there whichever session is
+  selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a
+  supervisor session. Grok Build accounts get it too. A session's right-click still starts
+  another one in its folder. Beside it, Focus and Read Transcript act on the Claude Code
+  session you have selected, on ⌘O and ⌘T; Fork, Continue on and Close stay in its details,
+  with what each is about to do. Add Account moved from under the sidebar to beside the
+  sidebar button, so it stays reachable with the sidebar hidden.
 
 ## [1.8.0] - 2026-09-25
 

@@ -43,6 +43,10 @@ struct CodexPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .toolbar {
+      NewSessionToolbarItem(
+        agent: .codex(account.home), suggestion: account.recentProjects.first?.url)
+    }
     .newSessionFailureAlert()
     .sessionClosingAlerts()
     .onReceive(clock) { _ in now = AppClock.now }
