@@ -14,13 +14,16 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   inferred state, beside a detail pane that includes how full its context window is.
 - **Usage**, per account: the 5-hour and 7-day windows with reset times, asked of the
   account directly through a headless `claude` and falling back to the cache on disk, with
-  a badge saying which answered and how old it is.
+  a badge saying which answered and how old it is. Each sidebar row carries the account's
+  windows as thin bars, with its session count under the icon; the overview lists them in
+  full, per-model ones included.
 - **Menu bar**: an accessory app (`LSUIElement`) with a popover summarising every account,
   and a template glyph that fills when anything is working.
 - **New sessions**, per account: the detail pane with nothing selected is an account
-  overview — the six folders that account ran in last, one click each, a folder picker,
-  and a tally of what the account's sessions are doing. "New Session in <project>" is also
-  on a session's right-click. Starting one opens a terminal window with `claude` or
+  overview — its plan windows with pace and projection over the week's chart, and one New
+  Session pull-down (a folder picker, and on Claude Code a supervisor session). Above the
+  list, a row of tiles counts its sessions by state, with their projects and context.
+  "New Session in <project>" is also on a session's right-click. Starting one opens a terminal window with `claude` or
   `codex` running in that folder on that account: Armada writes a startup script and
   hands it to Terminal, never owns the process, and the new session arrives through the
   watchers like any other.
@@ -96,7 +99,9 @@ transcripts, separate rate limits.
 | `TerminalApp` | which terminals can be handed one, and which of them is chosen |
 | `NewSessionLauncher` | the click, and the alert when a launch fails |
 | `AccountOverview` / `CodexOverview` | the detail pane with nothing selected, per vendor |
-| `NewSessionSection` / `SessionTallySection` | the two halves both overviews are built from |
+| `OverviewUsageSection` / `NewSessionSection` | the two halves both overviews are built from |
+| `SessionListBar` | the tiles above an account's list, one per state plus projects and context, and the sort menu |
+| `SessionTallySection` | the same counts as a form section, for a selection of several sessions |
 | `RecentProject` | the folders an account has run in, for that menu |
 | `ProjectPath` | folder matching on whole path components, and which saved project a `cwd` belongs to |
 | `Project` / `ProjectsFile` | a saved folder and the agent it starts; `projects.json`, versioned |
@@ -134,7 +139,7 @@ transcripts, separate rate limits.
 | `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice and a button to hear it |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
-usage views (`CompactMeter`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
+usage views (`WindowRow`, `SidebarUsage`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
 (`SessionOrder`, `SessionSortMenu`), and the context panel — `ContextPanel` takes figures
 rather than a session, so `ContextSection` and `CodexContextSection` are two short adapters
 over one renderer and cannot drift:
@@ -492,7 +497,7 @@ CLAUDE_CONFIG_DIR=/tmp/fake open apps/apple/.build/Build/Products/Debug/Armada.a
 ```
 
 A truncated registry file is skipped, a `.claude.json` with no `cachedUsageUtilization`
-shows an empty usage strip, and neither crashes.
+shows no usage bars and "No usage data yet" on the overview, and neither crashes.
 
 ## Known gaps
 

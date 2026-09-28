@@ -148,7 +148,10 @@ struct MainWindowView: View {
           }
         }
       }
-      .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
+      // 240 ideal for the usage lines under each account: every column of `CompactUsage` but
+      // the bar is fixed, so the sidebar's width past about 150pt of content is the bar's
+      // alone, and at 210 it was a 45pt bar. The floor stays where it was.
+      .navigationSplitViewColumnWidth(min: 190, ideal: 240, max: 280)
       .safeAreaInset(edge: .bottom) {
         VStack(spacing: 4) {
           // Pinned under the list rather than inside one section: it adds to any of them,
@@ -251,75 +254,40 @@ struct MainWindowView: View {
 /// how many sessions it has.
 struct AccountSidebarRow: View {
   let account: Account
-  @State private var hovering = false
 
   var body: some View {
-    HStack(spacing: 8) {
+    let count = account.sessions.sessions.count
+    SidebarAccountRow(
+      accountID: account.id, name: account.displayName, plan: account.planLabel,
+      path: account.displayPath, count: count,
+      countHelp: count == 1 ? "1 session" : "\(count) sessions",
+      working: account.sessions.sessions.count { $0.state != .idle },
+      workingTint: SessionState.working.tint, usage: SidebarUsage(account: account)
+    ) {
       ClaudeIconView(size: 18)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(account.displayName)
-          .lineLimit(1)
-        if let plan = account.planLabel {
-          Text(plan)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .help(account.displayPath)
-      Spacer(minLength: 4)
-      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
-      // A dot rather than a second number: the count is already the badge, and
-      // what you want at a glance is whether anything in there is moving.
-      if workingCount > 0 {
-        Circle()
-          .fill(SessionState.working.tint)
-          .frame(width: 6, height: 6)
-          .help("\(workingCount) working")
-      }
     }
-    .badge(account.sessions.sessions.count)
-    .onHover { hovering = $0 }
-  }
-
-  private var workingCount: Int {
-    account.sessions.sessions.count { $0.state != .idle }
   }
 }
 
 /// One Codex home in the sidebar.
 ///
-/// Deliberately the same shape as `AccountSidebarRow` — icon, name, plan, badge,
-/// working dot — with one difference that is not cosmetic: **the badge counts live
-/// sessions, not rows.** The Codex pane lists recent sessions as well as live
-/// ones, and a badge of "14" next to a home where nothing is running would be the
-/// most prominent wrong number in the window.
+/// The same `SidebarAccountRow` as `AccountSidebarRow`, with one difference that is not
+/// cosmetic: **the count counts live sessions, not rows.** The Codex pane lists recent
+/// sessions as well as live ones, and a "14" beside a home where nothing is running
+/// would be the most prominent wrong number in the window.
 struct CodexSidebarRow: View {
   let account: CodexAccount
-  @State private var hovering = false
 
   var body: some View {
-    HStack(spacing: 8) {
+    let live = account.sessions.liveSessions.count
+    SidebarAccountRow(
+      accountID: account.id, name: account.displayName, plan: account.planLabel,
+      path: account.displayPath, count: live,
+      countHelp: live == 1 ? "1 live session" : "\(live) live sessions",
+      working: account.sessions.workingCount, workingTint: CodexSessionState.working.tint,
+      usage: SidebarUsage(account: account)
+    ) {
       CodexIconView(size: 18)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(account.displayName)
-          .lineLimit(1)
-        if let plan = account.planLabel {
-          Text(plan)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .help(account.displayPath)
-      Spacer(minLength: 4)
-      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
-      if account.sessions.workingCount > 0 {
-        Circle()
-          .fill(CodexSessionState.working.tint)
-          .frame(width: 6, height: 6)
-          .help("\(account.sessions.workingCount) working")
-      }
     }
-    .badge(account.sessions.liveSessions.count)
-    .onHover { hovering = $0 }
   }
 }

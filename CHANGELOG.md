@@ -29,6 +29,16 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - **A session continued on another account keeps its name.** The copy used to arrive as an
   untitled row.
 
+- **Usage moved to the sidebar and the account's overview.** Each account in the sidebar shows
+  its plan windows as the menu bar panel shows them, pace marker and reset included, with the
+  session count under its icon. They stay in view whichever session is selected, and fade when
+  the figures are old. With no session selected, the account's pane shows every window with its
+  pace and projection above the week's chart, where the list of recent folders was. Above the
+  session list, where the usage strip was, tiles count its sessions by state, with how many
+  projects they span and how much context they hold. Starting a session is one New Session
+  menu: a folder, or on Claude Code a supervisor session. A session's right-click still starts
+  another one in its folder.
+
 ## [1.8.0] - 2026-09-25
 
 ### Added

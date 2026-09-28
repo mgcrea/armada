@@ -60,7 +60,7 @@ struct CodexPaneView: View {
     scrollTarget = id
   }
 
-  /// The left half: the usage strip and the session list.
+  /// The left half: the list's tally and sort menu, and the session list.
   ///
   /// Extracted for the same reason `AccountPaneView` extracts its own — one `body`
   /// holding the strip, a branch, a `ScrollViewReader`, a grouped `List` and the
@@ -68,7 +68,10 @@ struct CodexPaneView: View {
   /// added ("unable to type-check this expression in reasonable time").
   private var sessions: some View {
     VStack(spacing: 0) {
-      CodexUsageHeader(account: account, now: now)
+      SessionListBar(sessions: account.sessions.sessions, tiles: CodexSessionState.barTiles) {
+        key in
+        CodexStateDot(state: CodexSessionState(rawValue: key) ?? .ended)
+      }
       if account.sessions.sessions.isEmpty {
         ContentUnavailableView {
           Label(
@@ -164,7 +167,7 @@ struct CodexPaneView: View {
     if let selected {
       CodexSessionDetail(session: selected, account: account, now: now)
     } else {
-      CodexOverview(account: account)
+      CodexOverview(account: account, now: now)
     }
   }
 
@@ -176,100 +179,6 @@ struct CodexPaneView: View {
     let recent = total == 1 ? "1 recent session" : "\(total) recent sessions"
     let head = account.planLabel.map { "\($0) · " } ?? ""
     return live == 0 ? "\(head)\(recent)" : "\(head)\(live) live · \(recent)"
-  }
-}
-
-/// Codex's two plan windows, and how much to trust them.
-///
-/// The age of the figures is given more room than in the Claude header, and it has
-/// to be. Claude Code maintains `cachedUsageUtilization` as a document Armada can
-/// read whenever it likes; Codex states its limits only inside a `token_count`
-/// event, so the newest figures are exactly as old as the last turn anyone ran. On
-/// a Mac where Codex ran at 07:00 and it is now lunchtime, the 5-hour window those
-/// figures describe has already rolled over. Hence "last turn 2 hours ago" in the
-/// corner, and the shared meter's own "window has since reset" underneath.
-struct CodexUsageHeader: View {
-  let account: CodexAccount
-
-  let now: Date
-
-  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
-  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
-
-  var body: some View {
-    // The same `UsageStrip` as `UsageHeader`, so the two headers give way to a narrow
-    // pane in the same steps and the sort menu lands in the same place in both.
-    UsageStrip {
-      if let usage = account.usage, !usage.isEmpty {
-        meter(usage.primary)
-        meter(usage.secondary)
-      } else {
-        Label(
-          account.sessions.didScan ? "No usage reported yet" : "Reading usage…",
-          systemImage: "gauge.with.dots.needle.bottom.50percent"
-        )
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      }
-    } status: {
-      if let usage = account.usage, !usage.isEmpty {
-        lastTurn(usage.observedAt)
-      }
-    }
-  }
-
-  /// The age of the figures, on one line for `UsageStrip`'s top corner and laid out
-  /// as `StalenessBadge(style: .inline)` is. Its own view rather than that badge,
-  /// because what dates these figures is a turn, not a cache or a probe, and the
-  /// words should say so.
-  private func lastTurn(_ observedAt: Date) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 3) {
-      Text("last turn").font(.caption2).foregroundStyle(.tertiary)
-      Text(observedAt, format: .clockRelative(presentation: .named))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-    .lineLimit(1)
-    .help(
-      "Codex only reports its limits inside a session log, so these figures are as old as the last turn it ran."
-    )
-  }
-
-  /// The same `CompactMeter` the Claude pane uses, including its footnote — which
-  /// already says "window has since reset" for a `resets_at` in the past, so the
-  /// case this header cares most about is handled by the shared component rather
-  /// than by a second treatment invented here.
-  ///
-  /// The forecast is offered and `UsageForecast` decides, which is not what this
-  /// did at first.
-  ///
-  /// It passed `nil` outright, reasoning that Codex figures are too intermittent to
-  /// project from. That was the right worry and the wrong place to act on it:
-  /// `UsageForecast` already refuses a reading older than 10% of its window —
-  /// 30 minutes for the session window, 16.8 hours for the weekly one — and it
-  /// measures the rate to `asOf` rather than to `now`, so a reading that passes the
-  /// guard gives sound arithmetic however it was obtained. Refusing here as well
-  /// meant the same Codex numbers showed a pace tick in the Usage pane and none in
-  /// this header, which is a disagreement between two views of one fact.
-  @ViewBuilder
-  private func meter(_ window: CodexWindow?) -> some View {
-    if let window {
-      CompactMeter(
-        title: LocalizedStringKey(window.title),
-        subtitle: LocalizedStringKey(window.subtitle),
-        window: window.usage,
-        forecast: forecast(window),
-        now: now,
-        menuBarLimit: window.length.map { MenuBarLimit(accountID: account.id, length: $0) })
-    }
-  }
-
-  private func forecast(_ window: CodexWindow) -> UsageForecast? {
-    guard let length = window.length else { return nil }
-    return UsageForecast(
-      window: window.usage, length: length,
-      profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
-      asOf: account.usage?.observedAt, now: now)
   }
 }
 

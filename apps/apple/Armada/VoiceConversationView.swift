@@ -58,7 +58,7 @@ struct VoiceConversationView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  /// Not a toolbar: the main window is a hosted `NSWindow` with no `NSToolbar`. See `UsageStrip`.
+  /// In the pane rather than the window's toolbar, for the reason `SessionListBar` gives.
   private var footer: some View {
     HStack {
       Text("Kept until you start a new conversation, switch accounts or quit Armada.")

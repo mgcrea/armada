@@ -9,7 +9,8 @@ import SwiftUI
 /// justify a sidebar row, and that was right. This one answers the objection rather
 /// than ignoring it: it carries the per-model windows the header strip has no room
 /// for, the pace and projection for each, and the recorded history drawn as the
-/// week's actual climb. The header strip stays — it is the glance; this is the look.
+/// week's actual climb. The glance is each sidebar row's bars (`SidebarUsage`); an
+/// account's overview is this card for that one account (`OverviewUsageSection`).
 struct UsagePaneView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
@@ -105,7 +106,7 @@ struct AccountUsageCard: View {
       }
 
       if let usage = account.usage, !usage.isEmpty {
-        ForEach(rows(for: usage)) { row in
+        ForEach(account.windowRows(for: usage, now: now)) { row in
           WindowRow(row: row, profile: profile, fetchedAt: usage.fetchedAt, now: now)
         }
         WeeklyChart(
@@ -119,47 +120,6 @@ struct AccountUsageCard: View {
     }
     .padding(16)
     .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
-  }
-
-  /// One row per window the cache lists.
-  ///
-  /// Prefers the `limits` array, which is the only place the per-model window
-  /// appears, and falls back to the two flat keys when it is missing — that array is
-  /// a newer shape in the same undocumented cache, and this pane should still say
-  /// something on the day it goes away.
-  private func rows(for usage: UsageSnapshot) -> [WindowRowModel] {
-    let fromLimits = usage.limits.compactMap { limit -> WindowRowModel? in
-      guard let length = limit.length else { return nil }
-      // Unscoped rows only. A refusal names `five_hour` or `seven_day`, which are
-      // the account-wide windows; it says nothing about a per-model row like the
-      // weekly Fable one, and correcting that to 100% would be an invention.
-      let window =
-        limit.scopeModelName == nil
-        ? corrected(length, in: usage) ?? limit.window
-        : limit.window
-      return WindowRowModel(
-        id: limit.id, title: limit.title, subtitle: limit.subtitle, window: window,
-        length: length, isBinding: limit.isActive,
-        menuBarLimit: MenuBarLimit(
-          accountID: account.id, length: length, model: limit.scopeModelName))
-    }
-    if !fromLimits.isEmpty { return fromLimits }
-    return [
-      corrected(.fiveHour, in: usage).map {
-        WindowRowModel(
-          id: "five_hour", title: "Session", subtitle: "5 hours", window: $0, length: .fiveHour,
-          isBinding: false, menuBarLimit: MenuBarLimit(accountID: account.id, length: .fiveHour))
-      },
-      corrected(.sevenDay, in: usage).map {
-        WindowRowModel(
-          id: "seven_day", title: "Weekly", subtitle: "7 days", window: $0, length: .sevenDay,
-          isBinding: false, menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
-      },
-    ].compactMap { $0 }
-  }
-
-  private func corrected(_ length: UsageWindowLength, in usage: UsageSnapshot) -> UsageWindow? {
-    usage.window(length, correctedBy: account.quotaHit, now: now)
   }
 }
 
@@ -194,7 +154,7 @@ struct CodexUsageCard: View {
 
       if let usage = account.usage, !usage.isEmpty {
         let snapshot = usage.asSnapshot
-        ForEach(rows(for: snapshot)) { row in
+        ForEach(account.windowRows(for: snapshot)) { row in
           WindowRow(row: row, profile: profile, fetchedAt: snapshot.fetchedAt, now: now)
         }
         WeeklyChart(
@@ -208,23 +168,6 @@ struct CodexUsageCard: View {
     }
     .padding(16)
     .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
-  }
-
-  private func rows(for snapshot: UsageSnapshot) -> [WindowRowModel] {
-    [
-      snapshot.fiveHour.map {
-        WindowRowModel(
-          id: "codex-five-hour", title: "Session", subtitle: "5 hours", window: $0,
-          length: .fiveHour, isBinding: false,
-          menuBarLimit: MenuBarLimit(accountID: account.id, length: .fiveHour))
-      },
-      snapshot.sevenDay.map {
-        WindowRowModel(
-          id: "codex-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
-          length: .sevenDay, isBinding: false,
-          menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
-      },
-    ].compactMap { $0 }
   }
 }
 
@@ -286,6 +229,72 @@ struct WindowRowModel: Identifiable {
   let menuBarLimit: MenuBarLimit
 }
 
+/// The windows a usage card and an account's overview both list, built once so the two
+/// cannot disagree about which windows an account has or what they are called.
+extension Account {
+  /// One row per window the cache lists.
+  ///
+  /// Prefers the `limits` array, which is the only place the per-model window
+  /// appears, and falls back to the two flat keys when it is missing — that array is
+  /// a newer shape in the same undocumented cache, and these rows should still say
+  /// something on the day it goes away.
+  func windowRows(for usage: UsageSnapshot, now: Date) -> [WindowRowModel] {
+    let fromLimits = usage.limits.compactMap { limit -> WindowRowModel? in
+      guard let length = limit.length else { return nil }
+      // Unscoped rows only. A refusal names `five_hour` or `seven_day`, which are
+      // the account-wide windows; it says nothing about a per-model row like the
+      // weekly Fable one, and correcting that to 100% would be an invention.
+      let window =
+        limit.scopeModelName == nil
+        ? corrected(length, in: usage, now: now) ?? limit.window
+        : limit.window
+      return WindowRowModel(
+        id: limit.id, title: limit.title, subtitle: limit.subtitle, window: window,
+        length: length, isBinding: limit.isActive,
+        menuBarLimit: MenuBarLimit(
+          accountID: id, length: length, model: limit.scopeModelName))
+    }
+    if !fromLimits.isEmpty { return fromLimits }
+    return [
+      corrected(.fiveHour, in: usage, now: now).map {
+        WindowRowModel(
+          id: "five_hour", title: "Session", subtitle: "5 hours", window: $0, length: .fiveHour,
+          isBinding: false, menuBarLimit: MenuBarLimit(accountID: id, length: .fiveHour))
+      },
+      corrected(.sevenDay, in: usage, now: now).map {
+        WindowRowModel(
+          id: "seven_day", title: "Weekly", subtitle: "7 days", window: $0, length: .sevenDay,
+          isBinding: false, menuBarLimit: MenuBarLimit(accountID: id, length: .sevenDay))
+      },
+    ].compactMap { $0 }
+  }
+
+  private func corrected(_ length: UsageWindowLength, in usage: UsageSnapshot, now: Date)
+    -> UsageWindow?
+  {
+    usage.window(length, correctedBy: quotaHit, now: now)
+  }
+}
+
+extension CodexAccount {
+  func windowRows(for snapshot: UsageSnapshot) -> [WindowRowModel] {
+    [
+      snapshot.fiveHour.map {
+        WindowRowModel(
+          id: "codex-five-hour", title: "Session", subtitle: "5 hours", window: $0,
+          length: .fiveHour, isBinding: false,
+          menuBarLimit: MenuBarLimit(accountID: id, length: .fiveHour))
+      },
+      snapshot.sevenDay.map {
+        WindowRowModel(
+          id: "codex-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
+          length: .sevenDay, isBinding: false,
+          menuBarLimit: MenuBarLimit(accountID: id, length: .sevenDay))
+      },
+    ].compactMap { $0 }
+  }
+}
+
 /// One window: the name, the number, the bar and the verdict.
 struct WindowRow: View {
   let row: WindowRowModel
@@ -297,7 +306,7 @@ struct WindowRow: View {
 
   var body: some View {
     // Nothing to project from a window a refusal has already closed — see the same
-    // guard in `UsageHeader` and `AccountSummary`.
+    // guard in `AccountSummary`.
     let forecast =
       row.window.rejectedAt == nil
       ? UsageForecast(
@@ -322,8 +331,8 @@ struct WindowRow: View {
         Spacer(minLength: 8)
         UsageFigure(window: row.window, now: now, font: .body)
       }
-      // 11pt for the reason `CompactMeter` gives: the tick used to add 3pt to
-      // whatever the track asked for, and this pane was sized against the result.
+      // 11pt because the tick used to add 3pt to whatever the track asked for, and
+      // this pane was sized against the result.
       UsageBar(
         percent: row.window.utilization, forecast: forecast, height: 11,
         voided: row.window.hasRolled(asOf: now))

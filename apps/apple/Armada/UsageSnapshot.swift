@@ -32,9 +32,9 @@ nonisolated struct UsageWindow: Sendable, Hashable {
 /// on both folders here), and `scope`, which is how a per-model window appears —
 /// `weekly_scoped` for Fable, 16%, on this Mac on 2026-09-11.
 ///
-/// Read for the Usage pane only. The header strip keeps using the two flat keys,
-/// because this array is a newer shape in the same undocumented cache and the strip
-/// should not start failing the day its name changes.
+/// Read for the Usage pane and the account overview only. The sidebar and the menu bar
+/// keep using the two flat keys, because this array is a newer shape in the same
+/// undocumented cache and the glance should not start failing the day its name changes.
 nonisolated struct UsageLimit: Sendable, Hashable, Identifiable {
   let kind: String
   let group: String

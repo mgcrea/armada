@@ -3,9 +3,9 @@ import SwiftUI
 /// The one plan limit whose figure rides beside the menu bar glyph.
 ///
 /// **Named by account, window and model rather than by a row's id.** The Usage pane
-/// lists windows from the `limits` array, the header strips from the two flat keys,
-/// and the two id schemes share nothing — so a star keyed on either would light in
-/// one place and not the other for what is the same window. Account plus length plus
+/// lists windows from the `limits` array and falls back to the two flat keys without
+/// it, and the two id schemes share nothing — so a star keyed on either would go out
+/// the day an account's cache gained or lost the array, for what is the same window. Account plus length plus
 /// model is what both of them can say.
 ///
 /// One at a time, and that is the whole point of it: the glyph is 18pt, and a second

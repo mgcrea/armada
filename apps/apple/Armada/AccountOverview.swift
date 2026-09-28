@@ -6,31 +6,38 @@ import SwiftUI
 /// window opened on a row nobody had chosen and there was no state in which the pane
 /// was about the *account*. Mail's "No Message Selected" is the shape this follows:
 /// deselecting is a real state, and the space it frees is worth something. Here it
-/// carries the two things a session row cannot — where to start a new session, and
-/// what the whole account is doing.
+/// carries what a session row cannot: the account's plan windows and its week, a way to
+/// start another session, and the account itself. What its sessions are doing is counted
+/// above the list instead (`SessionListBar`), where it stays while a session is open.
 ///
 /// It is reached by clicking empty space in the list, by ⌘-clicking the selected row,
 /// and at launch, which is where it earns its place: the window now opens on a summary
 /// rather than on an arbitrary session.
 ///
 /// Claude and Codex get one each because their sections differ in what the vendors
-/// record, and both are assembled from the same two shared pieces below — the same
+/// record, and both are assembled from the same shared pieces below — the same
 /// arrangement `ContextPanel` and its two adapters already use.
 struct AccountOverview: View {
   let account: Account
+  let now: Date
 
   var body: some View {
     Form {
-      NewSessionSection(agent: .claude(account.folder), projects: account.recentProjects)
-      SessionTallySection(
-        sessions: account.sessions.sessions,
-        empty: "Nothing is running in this account."
-      ) { key in
-        // The list's own dot, not a second one: the ring on an inferred state is part
-        // of what a state dot means here, and a tally drawing a plain circle would be
-        // claiming more than the rows below it do.
-        StateDot(state: SessionState(rawValue: key) ?? .idle)
+      let usage = account.usage.flatMap { $0.isEmpty ? nil : $0 }
+      // The chart is fed the uncorrected weekly window, as the Usage pane's is: one account's
+      // week should not be two different lines depending on the pane.
+      OverviewUsageSection(
+        accountID: account.id, rows: usage.map { account.windowRows(for: $0, now: now) } ?? [],
+        week: usage?.sevenDay, fetchedAt: usage?.fetchedAt, now: now,
+        empty: account.didReadUsage ? "No usage data yet" : "Reading usage…"
+      ) {
+        if let usage {
+          StalenessBadge(
+            fetchedAt: usage.fetchedAt, now: now, source: usage.source, style: .inline)
+        }
       }
+      NewSessionSection(
+        agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
       AccountSection(account: account)
       ArchiveSection(account: account.id)
     }
@@ -41,19 +48,22 @@ struct AccountOverview: View {
 /// The Codex half, section for section.
 struct CodexOverview: View {
   let account: CodexAccount
+  let now: Date
 
   var body: some View {
     Form {
-      NewSessionSection(agent: .codex(account.home), projects: account.recentProjects)
-      // "Recent", not "running": this pane's list holds the last 12 hours, so most of
-      // what the tally counts has ended. The empty line says so rather than implying
-      // the home is idle right now.
-      SessionTallySection(
-        sessions: account.sessions.sessions,
-        empty: "Nothing has run here in the last 12 hours."
-      ) { key in
-        CodexStateDot(state: CodexSessionState(rawValue: key) ?? .ended)
+      let snapshot = account.usage.flatMap { $0.isEmpty ? nil : $0.asSnapshot }
+      OverviewUsageSection(
+        accountID: account.id, rows: snapshot.map { account.windowRows(for: $0) } ?? [],
+        week: snapshot?.sevenDay, fetchedAt: snapshot?.fetchedAt, now: now,
+        empty: account.sessions.didScan ? "No usage reported yet" : "Reading usage…"
+      ) {
+        if let observedAt = account.usage?.observedAt {
+          CodexLastTurn(observedAt: observedAt)
+        }
       }
+      NewSessionSection(
+        agent: .codex(account.home), suggestion: account.recentProjects.first?.url)
       CodexHomeSection(account: account)
       ArchiveSection(account: account.id)
     }
@@ -61,89 +71,140 @@ struct CodexOverview: View {
   }
 }
 
-/// Start a session here, or anywhere.
+/// An account's plan windows and its week, first thing on its overview.
 ///
-/// **The recents are the point.** A folder picker alone would be slower than the
-/// terminal the person already has open; the six folders this account ran in last, one
-/// click each, are the thing they do not have. The picker stays underneath for the
-/// seventh.
+/// **This is where the usage strip above the session list went.** The strip was the glance,
+/// and it showed one account's two percentages beside a list that, with a session
+/// selected, is about something else. The glance is the sidebar row's now (`SidebarUsage`),
+/// for every account at once, and this is the look: every window the account has, per-model
+/// ones included, each with its pace and projection, over the week's recorded climb. It is
+/// the Usage pane's card for this one account, built from the same rows.
+struct OverviewUsageSection<Status: View>: View {
+  let accountID: String
+  let rows: [WindowRowModel]
+  /// The weekly window the chart is drawn from, and nil for no chart.
+  let week: UsageWindow?
+  let fetchedAt: Date?
+  let now: Date
+  /// Said when there are no windows to list.
+  let empty: String
+  /// How old the figures are, in the header's trailing corner.
+  @ViewBuilder let status: () -> Status
+
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
+
+  var body: some View {
+    let profile = PaceProfile(storedDays: storedWeights, storedHours: storedHours)
+    Section {
+      if rows.isEmpty {
+        Text(empty).foregroundStyle(.secondary)
+      } else {
+        ForEach(rows) { row in
+          WindowRow(row: row, profile: profile, fetchedAt: fetchedAt, now: now)
+        }
+        if week?.resetsAt != nil {
+          WeeklyChart(
+            accountID: accountID, window: week, profile: profile, fetchedAt: fetchedAt,
+            now: now)
+        }
+      }
+    } header: {
+      HStack(alignment: .firstTextBaseline) {
+        Text("Usage")
+        Spacer(minLength: 8)
+        status()
+      }
+    }
+  }
+}
+
+/// The age of a Codex home's figures, laid out as `StalenessBadge(style: .inline)` is.
 ///
-/// `PanelRow` is the menu bar panel's row, reused rather than copied: it carries the
-/// hover fill and the pointer that a `.plain` button in a `Form` does not get, and
-/// nothing about it was ever specific to the popover.
+/// Its own view rather than that badge, because what dates these figures is a turn, not a
+/// cache or a probe, and the words should say so. Codex states its limits only inside a
+/// `token_count` event, so the newest figures are exactly as old as the last turn anyone
+/// ran, and on a Mac where Codex ran at 07:00 the 5-hour window they describe is gone by
+/// lunch. `WindowRow` already says "window has since reset" for that case.
+struct CodexLastTurn: View {
+  let observedAt: Date
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 3) {
+      Text("last turn").font(.caption2).foregroundStyle(.tertiary)
+      Text(observedAt, format: .clockRelative(presentation: .named))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+    .lineLimit(1)
+    .help(
+      "Codex only reports its limits inside a session log, so these figures are as old as the last turn it ran."
+    )
+  }
+}
+
+/// Start a session on this account, from one control.
+///
+/// **This used to list the six folders the account ran in last**, one click each, above a
+/// folder picker and the supervisor button. The list took the top of the pane for
+/// something the terminal already does as fast, so it made way for the account's usage; a
+/// folder's own sessions still offer "New Session in <project>" on their right-click, and
+/// the Projects pane starts one in any saved project.
+///
+/// A pull-down rather than two buttons, because both start the same thing and differ only
+/// in where. Codex has no supervisor, and a menu of one item is a button with an extra
+/// click, so it gets the button.
 struct NewSessionSection: View {
   let agent: NewSession.Agent
-  let projects: [RecentProject]
+  /// Where the folder picker opens: the folder this account ran in last.
+  let suggestion: URL?
 
   @State private var launcher = NewSessionLauncher.shared
   @State private var mcp = MCPServerController.shared
 
   var body: some View {
     Section {
-      ForEach(projects) { project in
-        PanelRow(help: "Start a \(agent.vendorName) session in \(project.displayPath)") {
-          launcher.start(agent, in: project.url)
-        } label: {
-          HStack(spacing: 8) {
-            Image(systemName: "folder")
-              .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 1) {
-              Text(project.name)
-                .lineLimit(1)
-              // The path rather than a disambiguating suffix: two checkouts called
-              // `website` are the case this has to make legible, and at this width the
-              // whole path fits where a menu item's single line would not have.
-              Text(project.displayPath)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.head)
-            }
-            Spacer(minLength: 8)
-            if let started = project.lastStartedAt {
-              Text(started, format: .clockRelative(presentation: .numeric))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-            }
-          }
-        }
-        .contextMenu {
-          ProjectContextButton(path: project.path, agent: agent.projectAgent)
-        }
-      }
-      Button("Choose Folder…") {
-        launcher.chooseFolder(for: agent, near: projects.first?.url)
-      }
       // Claude only: the supervisor is a Claude Code session, and the home folder because it
       // belongs to no one project. Settings ▸ Supervisor offers a folder picker.
       if case .claude(let folder) = agent {
-        Button("Start Supervisor Session") {
-          launcher.startSupervisor(
-            on: folder, in: FileManager.default.homeDirectoryForCurrentUser)
+        Menu("New Session") {
+          Button("From Folder…") { chooseFolder() }
+          Button("Supervisor Session") {
+            launcher.startSupervisor(
+              on: folder, in: FileManager.default.homeDirectoryForCurrentUser)
+          }
+          .disabled(mcp.runningPort == nil)
         }
-        .disabled(mcp.runningPort == nil)
-        .help(
-          mcp.runningPort == nil
-            ? "Turn on the MCP server in Settings ▸ Supervisor to start a session that can see every session on this Mac."
-            : "Start claude in your home folder, connected to Armada, to ask about every session at once."
-        )
+        .fixedSize()
+      } else {
+        Button("New Session…") { chooseFolder() }
       }
-    } header: {
-      Text("New session")
     } footer: {
       // Names the terminal, because that is a setting somebody chose once and will not
-      // remember, and it is the whole of what this button does that is not obvious.
-      Text(
-        launcher.opensInVSCode(agent)
-          ? "Opens a \(agent.vendorName) tab in that folder's \(VSCodeLaunch.name) window, or a new window on this account."
-          : "Opens \(launcher.terminal.name) with \(agent.commandName) running in that folder, on this account."
-      )
+      // remember, and it is the whole of what this control does that is not obvious.
+      Text(footer)
     }
+  }
+
+  private func chooseFolder() {
+    launcher.chooseFolder(for: agent, near: suggestion)
+  }
+
+  private var footer: String {
+    var text =
+      launcher.opensInVSCode(agent)
+      ? "Opens a \(agent.vendorName) tab in that folder's \(VSCodeLaunch.name) window, or a new window on this account."
+      : "Opens \(launcher.terminal.name) with \(agent.commandName) running in that folder, on this account."
+    // Here rather than as the item's tooltip, which a disabled menu item never shows.
+    if case .claude = agent, mcp.runningPort == nil {
+      text += " A supervisor session needs the MCP server, in Settings ▸ Supervisor."
+    }
+    return text
   }
 }
 
-/// What this account's sessions are doing, in one block.
+/// What a set of sessions is doing, in one block: the detail pane's for a selection of
+/// several. An account's own sessions are counted above its list, by `SessionListBar`.
 ///
 /// **Built from the list's own grouping**, `SessionOrder.group(_:by:)` with `.state`,
 /// so the buckets, their order and their names are the same ones the list shows when

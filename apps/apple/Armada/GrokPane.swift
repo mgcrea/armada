@@ -37,14 +37,7 @@ struct GrokPaneView: View {
     selection = id
   }
 
-  private var sessions: some View {
-    VStack(spacing: 0) {
-      GrokUsageHeader(account: account, now: now)
-      sessionList
-    }
-  }
-
-  @ViewBuilder private var sessionList: some View {
+  @ViewBuilder private var sessions: some View {
     if account.sessions.sessions.isEmpty {
       ContentUnavailableView {
         Label(
@@ -89,7 +82,7 @@ struct GrokPaneView: View {
     if let selected = account.sessions.sessions.first(where: { $0.id == selection }) {
       GrokSessionDetail(session: selected, now: now)
     } else {
-      GrokOverview(account: account)
+      GrokOverview(account: account, now: now)
     }
   }
 
@@ -182,47 +175,6 @@ struct GrokSummary: View {
       return recent == 0 ? "No recent sessions" : "Nothing running, \(recent) today"
     }
     return live.count == 1 ? "1 session open" : "\(live.count) sessions open"
-  }
-}
-
-/// The allowance, as `GrokControl` last read it.
-///
-/// One meter, because Grok has one window: a unified weekly (or, on some plans, monthly) credit
-/// allowance shared by every model. It is a live answer, like the Claude probe's, so its age
-/// shows in the corner the way `UsageHeader` shows one.
-struct GrokUsageHeader: View {
-  let account: GrokAccount
-  let now: Date
-
-  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
-  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
-
-  var body: some View {
-    UsageStrip {
-      if let usage = account.usage {
-        CompactMeter(
-          title: usage.length == .sevenDay ? "Weekly" : "Allowance",
-          subtitle: usage.length == .sevenDay ? "7 days" : LocalizedStringKey(usage.period ?? ""),
-          window: usage.usage,
-          forecast: usage.length.map {
-            UsageForecast(
-              window: usage.usage, length: $0,
-              profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
-              asOf: usage.observedAt, now: now)
-          } ?? nil,
-          now: now,
-          menuBarLimit: usage.length.map { MenuBarLimit(accountID: account.id, length: $0) })
-      } else {
-        Label("Reading usage…", systemImage: "gauge.with.dots.needle.bottom.50percent")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .help("Armada asks your own grok for the allowance every few minutes.")
-      }
-    } status: {
-      if let usage = account.usage {
-        StalenessBadge(fetchedAt: usage.observedAt, now: now, source: .live, style: .inline)
-      }
-    }
   }
 }
 
@@ -328,9 +280,32 @@ struct GrokSessionDetail: View {
 /// The home itself, with nothing selected.
 struct GrokOverview: View {
   let account: GrokAccount
+  let now: Date
 
   var body: some View {
     Form {
+      // One row, weekly plans only: a monthly allowance has no `UsageWindowLength` to pace or
+      // chart against, and shows as a plain figure, as `GrokUsageCard` does.
+      let week = account.usage?.window(.sevenDay)
+      OverviewUsageSection(
+        accountID: account.id,
+        rows: week.map {
+          [
+            WindowRowModel(
+              id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
+              length: .sevenDay, isBinding: false,
+              menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
+          ]
+        } ?? [],
+        week: week, fetchedAt: account.usage?.observedAt, now: now,
+        empty: account.usage.map {
+          "\($0.utilization)% of the \($0.period ?? "current") allowance used"
+        } ?? "Reading usage…"
+      ) {
+        if let usage = account.usage {
+          StalenessBadge(fetchedAt: usage.observedAt, now: now, source: .live, style: .inline)
+        }
+      }
       Section {
         LabeledContent("Folder", value: account.displayPath)
         LabeledContent("Live sessions", value: String(account.sessions.liveSessions.count))
@@ -359,35 +334,21 @@ struct GrokStateDot: View {
   }
 }
 
-/// One Grok Build home in the sidebar. The badge counts live sessions, as `CodexSidebarRow`'s does.
+/// One Grok Build home in the sidebar. The count counts live sessions, as `CodexSidebarRow`'s does.
 struct GrokSidebarRow: View {
   let account: GrokAccount
-  @State private var hovering = false
 
   var body: some View {
-    HStack(spacing: 8) {
+    let live = account.sessions.liveSessions.count
+    SidebarAccountRow(
+      accountID: account.id, name: account.displayName, plan: account.planLabel,
+      path: account.displayPath, count: live,
+      countHelp: live == 1 ? "1 live session" : "\(live) live sessions",
+      working: account.sessions.workingCount, workingTint: GrokSessionState.working.tint,
+      usage: SidebarUsage(account: account)
+    ) {
       GrokIconView(size: 18)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(account.displayName)
-          .lineLimit(1)
-        if let plan = account.planLabel {
-          Text(plan)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .help(account.displayPath)
-      Spacer(minLength: 4)
-      PanelVisibilityEye(accountID: account.id, rowHovered: hovering)
-      if account.sessions.workingCount > 0 {
-        Circle()
-          .fill(GrokSessionState.working.tint)
-          .frame(width: 6, height: 6)
-          .help("\(account.sessions.workingCount) working")
-      }
     }
-    .badge(account.sessions.liveSessions.count)
-    .onHover { hovering = $0 }
   }
 }
 
