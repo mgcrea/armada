@@ -54,6 +54,14 @@ struct AccountPaneView: View {
   init(account: Account) {
     self.account = account
     _history = State(initialValue: SessionHistoryModel(accountID: account.id))
+    #if DEBUG
+      // The History plate opens on History with one session picked. See
+      // `DemoSeed.stagedHistory(for:)`.
+      if let staged = DemoSeed.stagedHistory(for: account.id) {
+        _mode = State(initialValue: .history)
+        _historySelection = State(initialValue: [staged])
+      }
+    #endif
   }
 
   var body: some View {

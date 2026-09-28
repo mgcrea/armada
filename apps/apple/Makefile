@@ -317,7 +317,7 @@ unit: ## Check the parsers, forecasts, sort order and licence refusals, with no 
 # Each `name:stage` opens the app directly onto that screen via -ScreenshotStage;
 # the stages are `DemoSeed.Stage`. Store ORDER is not here — it is screens[] in the
 # config.
-SCREENS = usage:usage menubar:menubar account:account transcript:transcript projects:projects codex:codex
+SCREENS = usage:usage menubar:menubar account:account history:history transcript:transcript projects:projects codex:codex
 
 # Set to recapture a subset without touching the other captures:
 #

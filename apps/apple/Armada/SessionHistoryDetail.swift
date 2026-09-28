@@ -99,6 +99,13 @@ struct SessionHistoryDetail: View {
       reply = read
       didReadReply = true
     }
+    #if DEBUG
+      // The History plate waits for both things it shows that are read off the main actor:
+      // this reply, and the rows' titles, which land in one batch with this row's.
+      .onChange(of: didReadReply && entry.title != nil, initial: true) { _, ready in
+        if ready { DemoSeed.signalReady(from: .history) }
+      }
+    #endif
   }
 
   @ViewBuilder private func continueActions(disabled: Bool) -> some View {

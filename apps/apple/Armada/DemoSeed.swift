@@ -88,6 +88,7 @@ import SwiftUI
       case projects
       case codex
       case menubar
+      case history
 
       static var allNames: String { allCases.map(\.rawValue).joined(separator: ", ") }
 
@@ -96,7 +97,7 @@ import SwiftUI
       var sidebar: SidebarItem? {
         switch self {
         case .usage: .usage
-        case .account: .account(Fixture.acme.path)
+        case .account, .history: .account(Fixture.acme.path)
         case .projects: .projects
         case .codex: .codex(Fixture.codexHome.path)
         // Never built on these stages — see `openStagedWindow()`.
@@ -114,7 +115,9 @@ import SwiftUI
         case .account: Fixture.billingSessionID
         case .codex: Fixture.codexWorkingID
         case .projects: Fixture.projectBillingID
-        case .usage, .transcript, .menubar: nil
+        // Not the live list's: History's selection is its own, and a live id here would
+        // flip the pane back to Live. See `stagedHistory(for:)`.
+        case .usage, .transcript, .menubar, .history: nil
         }
       }
     }
@@ -128,6 +131,18 @@ import SwiftUI
         fatalError("-\(Key.stage) was '\(raw)' — expected one of \(Stage.allNames)")
       }
       return stage
+    }
+
+    /// The History session `AccountPaneView` opens with picked, on the History plate and
+    /// on the one account it is aimed at. Nil everywhere else, and on every ordinary
+    /// launch.
+    ///
+    /// An initial state rather than a route: `MainWindowRoute` only ever names a live
+    /// session, and taking one flips the pane to Live.
+    static func stagedHistory(for accountID: String) -> String? {
+      // First, before `stage` is read: it traps on an ordinary launch.
+      guard isEnabled, stage == .history, accountID == Fixture.acme.path else { return nil }
+      return Fixture.historyPickedID
     }
 
     // MARK: - Entry points
@@ -162,7 +177,7 @@ import SwiftUI
         TranscriptWindow.shared.show(url: transcriptURL, name: Fixture.billingTitle)
       case .menubar:
         PanelStand.show()
-      case .usage, .account, .projects, .codex:
+      case .usage, .account, .projects, .codex, .history:
         guard let sidebar = stage.sidebar else { return }
         MainWindowRoute.shared.stageForScreenshot(sidebar, session: stage.selection)
       }
@@ -299,7 +314,7 @@ import SwiftUI
     /// The version the plates claim. Pinned rather than read, so a release does not
     /// churn every golden, and so the Debug build's `-dev` suffix never shows. Bump it
     /// deliberately, in the commit that re-captures.
-    static let version = "1.7.0"
+    static let version = "1.9.0"
 
     /// A licence that is rendered and never verified — `EntitlementMonitor` is handed
     /// it directly. Its email is the RFC 2606 reserved domain.
@@ -352,6 +367,10 @@ import SwiftUI
       static let billingTitle = "Migrate billing webhooks to Stripe v2 events"
       static let codexWorkingID = "0199a3f2-6c1d-7e40-b8a5-4d2f91c0e6a7"
       static let projectBillingID = "B1A7C0DE-0000-4000-8000-000000000001"
+      /// The History plate's pick: today's storefront session, the ledger's
+      /// `demo-<days back>-<project>` row. It heads the list, tied with the api
+      /// session on its last write and ahead of it on id.
+      static let historyPickedID = "demo-00-1"
 
       static let billingService = project("acme/billing-service")
       static let storefront = project("acme/storefront")
@@ -474,6 +493,7 @@ import SwiftUI
       UsageIndex.shared.demoInstall(ledger)
 
       writeTranscript()
+      writeHistory()
     }
 
     private static let week: TimeInterval = 7 * 24 * 60 * 60
@@ -748,6 +768,119 @@ import SwiftUI
         generation: 1, rows: rows, sessions: sessions, earliestDay: earliest, firstPassDone: true)
     }
 
+    // MARK: - The history
+
+    /// Where History lists transcripts from, for every account, in place of its own
+    /// `projects/`: no fixture account's folder exists, so the real listing would drop
+    /// every row. The temporary directory, as the transcript fixture's is.
+    static var historyProjectsDir: URL {
+      URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)
+        .appending(path: "armada-screenshot-history/projects", directoryHint: .isDirectory)
+    }
+
+    /// Titles for Acme's ledger rows, by project (the ledger's `index`) and then by
+    /// weekday back from `now`. Two weeks, so the list runs past the bottom of the plate
+    /// and the count above it is not the handful on screen; and no more than one of
+    /// `SessionHistoryModel`'s title batches, so every title lands in the same redraw.
+    private static let historyTitles: [[String]] = [
+      [
+        "Backfill invoice.paid events missed during the outage",
+        "Add a dead-letter queue for failed webhook deliveries",
+        "Reconcile proration credits on mid-cycle plan changes",
+        "Trace the duplicate refund on INV-2291",
+        "Move tax calculation behind the Stripe Tax flag",
+        "Write the runbook for rotating the webhook secret",
+        "Split the invoice mailer out of the request path",
+        "Cover the dunning schedule with integration tests",
+        "Audit which handlers still read v1 payload fields",
+        "Bump stripe-go to v82 and fix the breaking calls",
+      ],
+      [
+        "Cut the checkout bundle under 200 KB",
+        "Fix the cart badge drifting out of sync after login",
+        "Lazy-load product images below the fold",
+        "Port the address form to the new validation hooks",
+        "Track down the hydration warning on /collections",
+        "Add Apple Pay to express checkout",
+        "Replace the carousel with a scroll-snap strip",
+        "Make the size picker reachable by keyboard",
+        "Snapshot-test the order confirmation email",
+        "Remove the legacy coupon field",
+      ],
+      [
+        "Paginate /v1/orders with opaque cursors",
+        "Profile the slow /v1/search query plan",
+        "Add request ids to every error response",
+        "Deprecate the /v0 routes with a Sunset header",
+        "Generate the OpenAPI spec from the handlers",
+        "Rate-limit API keys per organization",
+        "Retry idempotent writes on serialization failures",
+        "Document the webhook signature check",
+        "Move session tokens to Redis",
+        "Fix the flaky auth middleware test",
+      ],
+    ]
+
+    /// What the pick's detail leads with: where the session stopped, which is what tells
+    /// one ended session from the next.
+    private static let historyPickedReply =
+      "Checkout is at 187 KB gzipped, down from 262 KB. Most of it was the date library: the delivery picker now uses Intl.DateTimeFormat, and Stripe Elements loads only once the payment step opens. Lighthouse on /checkout goes from 71 to 94 on the mobile profile. The analytics snippet is the biggest thing left at 31 KB, and whether it can wait until after the first interaction is your call."
+
+    /// One short transcript per titled row: the prompt, the last reply, and the
+    /// `ai-title` History reads. Each file is dated the row's last write, as Claude
+    /// Code's would be, and the folder is emptied first so nothing from an earlier
+    /// capture is listed.
+    private static func writeHistory() {
+      let fileManager = FileManager.default
+      let root = historyProjectsDir
+      try? fileManager.removeItem(at: root)
+      let formatter = ISO8601DateFormatter()
+      let rows = ledger.sessions.filter { $0.account == Fixture.acme.path && $0.vendor == .claude }
+      // Newest day first, so a row's weekday ordinal is its place in its project's titles.
+      let days = Array(Set(rows.map { Calendar.current.startOfDay(for: $0.firstAt) }))
+        .sorted(by: >)
+      for row in rows {
+        let parts = row.sessionID.split(separator: "-")
+        guard parts.count == 3, let project = Int(parts[2]), project < historyTitles.count,
+          let day = days.firstIndex(of: Calendar.current.startOfDay(for: row.firstAt)),
+          day < historyTitles[project].count
+        else { continue }
+        let title = historyTitles[project][day]
+        let reply =
+          row.sessionID == Fixture.historyPickedID
+          ? historyPickedReply
+          : "Done. The change is on its own branch with tests, ready for review."
+        func line(_ type: String, _ at: Date, _ text: String) -> [String: Any] {
+          [
+            "type": type, "uuid": "\(row.sessionID)-\(type)",
+            "timestamp": formatter.string(from: at),
+            "sessionId": row.sessionID, "cwd": row.cwd,
+            "message": [
+              "role": type, "model": "claude-opus-5-5",
+              "content": [["type": "text", "text": text]],
+            ],
+          ]
+        }
+        let lines: [[String: Any]] = [
+          line("user", row.firstAt, title),
+          line("assistant", row.lastAt, reply),
+          ["type": "ai-title", "aiTitle": title, "sessionId": row.sessionID],
+        ]
+        let data = lines.compactMap { try? JSONSerialization.data(withJSONObject: $0) }
+          .reduce(into: Data()) {
+            $0.append($1)
+            $0.append(0x0A)
+          }
+        // Claude Code's own folder name for a cwd, though History lists every folder.
+        let folder = root.appending(
+          path: row.cwd.replacingOccurrences(of: "/", with: "-"), directoryHint: .isDirectory)
+        let file = folder.appending(path: "\(row.sessionID).jsonl")
+        try? fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+        try? fileManager.setAttributes([.modificationDate: row.lastAt], ofItemAtPath: file.path)
+      }
+    }
+
     // MARK: - The transcript
 
     /// Where the transcript fixture is written. The temporary directory, because
@@ -963,6 +1096,10 @@ import SwiftUI
       case main
       case transcript
       case menubar
+      /// The History plate, which is the main window but not ready when it is built:
+      /// its rows are listed and titled, and the pick's last reply read, off the main
+      /// actor. `SessionHistoryDetail` reports once both have landed.
+      case history
     }
 
     /// Tell appshot the screen it asked for has rendered.
@@ -970,8 +1107,8 @@ import SwiftUI
     /// The frame poll sees stillness, not readiness — an empty list and a pane still
     /// loading are both perfectly still. Every store is seeded synchronously in
     /// `apply()` before any window is built, so for the main window the body running
-    /// *is* the content existing. The transcript is the one async screen: it reads
-    /// its file on a detached task, and reports only once the entries have landed.
+    /// *is* the content existing. The transcript and History are the async screens:
+    /// each reads files on a detached task, and reports only once they have landed.
     @MainActor static func signalReady(from source: ReadySource) {
       // First, before `stage` is read: every Debug build calls this, and `stage`
       // traps on the missing argument an ordinary launch never passes.
@@ -980,6 +1117,7 @@ import SwiftUI
         switch stage {
         case .transcript: .transcript
         case .menubar: .menubar
+        case .history: .history
         case .usage, .account, .projects, .codex: .main
         }
       guard source == expected else { return }

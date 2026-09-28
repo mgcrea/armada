@@ -81,6 +81,13 @@
       "subtitle": "Live state for every Claude Code session on the account, with its context window, what compaction cost it, and how long its prompt cache stays warm."
     },
     {
+      "//": "An account's History: what ran and has nothing behind it now, by day. The pick is today's storefront session, at the head of the list, so the detail leads with where it stopped. The rows are the ledger fixture's last two weeks for Acme, each given a transcript DemoSeed writes to the temporary directory, because History lists files and no fixture account folder exists.",
+      "id": "history",
+      "website": "history",
+      "title": "Pick up any session\nwhere it stopped.",
+      "subtitle": "Every session that is no longer running, by day and searchable, with its last reply to tell them apart. Resume it, or continue it on another account."
+    },
+    {
       "//": "Projects are the person's own list, across all three vendors. The selected project is the one the ledger fixture makes busiest, so the week's figures are not a row of zeros.",
       "id": "projects",
       "website": "projects",

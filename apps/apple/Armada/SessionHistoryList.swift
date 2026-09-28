@@ -76,7 +76,7 @@ final class SessionHistoryModel {
     let rows = SessionHistory.pick(from: ledger, account: accountID, live: live)
     if rows != picked || !loaded {
       let directories = Dictionary(
-        accounts.map { ($0.id, $0.folder.projectsDir) }, uniquingKeysWith: { first, _ in first })
+        accounts.map { ($0.id, Self.projectsDir(of: $0)) }, uniquingKeysWith: { first, _ in first })
       let located = await Task.detached(priority: .userInitiated) {
         Self.locate(rows, in: directories)
       }.value
@@ -127,9 +127,18 @@ final class SessionHistoryModel {
       : entries.filter { SessionHistory.matches(query, title: $0.title, cwd: $0.row.cwd) }
     let byID = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     shownCount = shown.count
-    days = SessionHistory.days(shown.map(\.row), now: Date()).map { day in
+    days = SessionHistory.days(shown.map(\.row), now: AppClock.now).map { day in
       DayGroup(id: day.id, title: day.title, entries: day.rows.compactMap { byID[$0.sessionID] })
     }
+  }
+
+  /// Where an account's transcripts are listed from: its `projects/`, or under a capture the
+  /// fixture folder `DemoSeed` writes, since no fixture account's own folder exists.
+  private static func projectsDir(of account: Account) -> URL {
+    #if DEBUG
+      if ScreenshotMode.isEnabled { return DemoSeed.historyProjectsDir }
+    #endif
+    return account.folder.projectsDir
   }
 
   /// Each row's transcript, from one listing of every project folder of the accounts involved,
