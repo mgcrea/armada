@@ -16,7 +16,7 @@ nonisolated struct SaveInput: Sendable, Equatable {
 }
 
 nonisolated enum SaveResult: Sendable, Equatable {
-  case saved(CodexAutomation, created: Bool)
+  case saved(CodexAutomation, created: Bool, earlyRun: CodexAutomations.EarlyRun?)
   case refused(String)
 }
 
@@ -43,6 +43,17 @@ nonisolated struct CodexAutomations: Sendable {
   struct RunTimes: Sendable, Equatable {
     let lastRunAt: Date?
     let nextRunAt: Date?
+  }
+
+  /// Why Codex may run a just-saved automation once outside its rule. Measured in
+  /// docs/implementation.md: Codex keeps a row's `next_run_at` while the row's status matches the
+  /// file's, and a row Armada paused still says `ACTIVE`. Armada writes neither database, so it
+  /// can only say so.
+  nonisolated enum EarlyRun: Sendable, Equatable {
+    /// Resumed with a stored run time that passed while it was paused: due at once.
+    case dueWhilePaused
+    /// A new rule on an active task, with a run time still stored from the old rule.
+    case oldTime
   }
 
   static let accountOwnedRefusal =
@@ -80,6 +91,18 @@ nonisolated struct CodexAutomations: Sendable {
   /// The sentence for a heartbeat: `save` and `remove` both refuse one, word for word.
   static func heartbeatRefusal(_ id: String) -> String {
     "\(id) is a heartbeat, tied to one Codex thread; change it in the Codex app."
+  }
+
+  /// Why `save` and `remove` leave an automation alone for its kind, or nil for `cron`, the one
+  /// kind they change. Also the list's read-only reason, so the two never disagree.
+  static func kindRefusal(_ automation: CodexAutomation) -> String? {
+    switch automation.kind {
+    case "cron": nil
+    case "heartbeat": heartbeatRefusal(automation.id)
+    default:
+      "\"\(automation.id)\" is a kind of Codex automation Armada does not change; change it in "
+        + "the Codex app."
+    }
   }
 
   private func fileURL(_ id: String) -> URL {
@@ -191,6 +214,15 @@ nonisolated struct CodexAutomations: Sendable {
 
   private func performSave(_ input: SaveInput, now: Date) -> SaveResult {
     if isAccountOwned() { return .refused(Self.accountOwnedRefusal) }
+    // An update keeps an omitted field, but never writes an empty one: a create cannot omit them.
+    for (field, value) in [("name", input.name), ("prompt", input.prompt)]
+    where value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+      return .refused("`\(field)` cannot be empty.")
+    }
+    // A prompt keeps its line breaks; a name is the one line the Codex app shows for the task.
+    if let name = input.name, name.unicodeScalars.contains(where: { $0 == "\n" || $0 == "\r" }) {
+      return .refused("`name` is one line; it cannot hold a line break.")
+    }
     for (field, value) in [
       ("name", input.name), ("prompt", input.prompt), ("cwd", input.cwd), ("model", input.model),
       ("reasoningEffort", input.reasoningEffort),
@@ -226,9 +258,7 @@ nonisolated struct CodexAutomations: Sendable {
         return .refused("\(id) was edited by hand (\(why)), so Armada will not rewrite it.")
       case .notAutomation: return .refused("\(id) is not an automation Codex would run.")
       }
-      guard automation.kind == "cron" else {
-        return .refused(Self.heartbeatRefusal(id))
-      }
+      if let refusal = Self.kindRefusal(automation) { return .refused(refusal) }
       created = false
     } else {
       guard let name = input.name, let prompt = input.prompt, let rule, let cwd = input.cwd else {
@@ -249,7 +279,9 @@ nonisolated struct CodexAutomations: Sendable {
       created = true
     }
 
+    var earlyRun: EarlyRun?
     if !created {
+      let before = automation
       if let name = input.name { automation.name = name }
       if let prompt = input.prompt { automation.prompt = prompt }
       if let rule { automation.rrule = rule }
@@ -260,6 +292,7 @@ nonisolated struct CodexAutomations: Sendable {
         automation.target = target(forFolder: folder)
       }
       automation.updatedAt = stamp
+      earlyRun = self.earlyRun(before: before, after: automation, newRule: rule, now: now)
     }
     if let model = input.model { automation.model = model.isEmpty ? nil : model }
     if let effort = input.reasoningEffort {
@@ -267,7 +300,20 @@ nonisolated struct CodexAutomations: Sendable {
     }
 
     if let failure = write(automation, created: created) { return .refused(failure) }
-    return .saved(automation, created: created)
+    return .saved(automation, created: created, earlyRun: earlyRun)
+  }
+
+  /// What the Codex row left behind means for an update, read from `codex-dev.db` read-only. A
+  /// row with no `next_run_at` gets a fresh one, and a missing row a fresh row, so only a stored
+  /// time can fire early. A rule is compared in Codex's spelling, so a respelled rule is not new.
+  private func earlyRun(
+    before: CodexAutomation, after: CodexAutomation, newRule: String?, now: Date
+  ) -> EarlyRun? {
+    guard after.status == "ACTIVE", let next = runTimes()[after.id]?.nextRunAt else { return nil }
+    if before.status == "PAUSED", next <= now { return .dueWhilePaused }
+    let oldRule = CodexAutomationFile.normalizedRRule(before.rrule) ?? before.rrule
+    if let newRule, newRule != oldRule { return .oldTime }
+    return nil
   }
 
   /// `fB`: a temporary file beside the real one, then a rename over it.
@@ -318,9 +364,7 @@ nonisolated struct CodexAutomations: Sendable {
     guard case .automation(let automation) = listed.parsed else {
       return .refused("\(id) was edited by hand, so Armada leaves it for you to remove.")
     }
-    guard automation.kind == "cron" else {
-      return .refused(Self.heartbeatRefusal(id))
-    }
+    if let refusal = Self.kindRefusal(automation) { return .refused(refusal) }
     do {
       try FileManager.default.removeItem(at: listed.fileURL.deletingLastPathComponent())
       return .removed(automation)

@@ -2550,7 +2550,7 @@ struct UnitCheck {
     check("no database means no run times", store.runTimes().isEmpty)
     check("no database is not account-owned", !store.isAccountOwned())
 
-    guard case .saved(let made, let created) = store.save(create, now: now) else {
+    guard case .saved(let made, let created, _) = store.save(create, now: now) else {
       check("a create saves", false)
       return
     }
@@ -2583,7 +2583,7 @@ struct UnitCheck {
     let later = now.addingTimeInterval(60)
     var again = create
     again.id = "daily-probe"
-    if case .saved(let second, let createdAgain) = store.save(again, now: later) {
+    if case .saved(let second, let createdAgain, _) = store.save(again, now: later) {
       check("an update is not a create", !createdAgain)
       check(
         "an update keeps the id and created_at",
@@ -2596,7 +2596,7 @@ struct UnitCheck {
 
     var pause = SaveInput(id: "daily-probe")
     pause.status = "paused"
-    if case .saved(let paused, _) = store.save(pause, now: later) {
+    if case .saved(let paused, _, _) = store.save(pause, now: later) {
       check(
         "an update keeps what it was not given",
         paused.prompt == made.prompt && paused.rrule == made.rrule)
@@ -2607,7 +2607,7 @@ struct UnitCheck {
 
     var twin = create
     twin.name = "Daily  probe!"
-    if case .saved(let second, _) = store.save(twin, now: now) {
+    if case .saved(let second, _, _) = store.save(twin, now: now) {
       check("a colliding name counts up", second.id == "daily-probe-2")
     } else {
       // Ruling m7: this branch used to fall through silently on a failure.
@@ -2757,7 +2757,7 @@ struct UnitCheck {
     let versionTwo = "version = 2\n"
     try? versionTwo.write(
       to: blockedDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
-    if case .saved(let takenSave, _) = blocked.save(create, now: now) {
+    if case .saved(let takenSave, _, _) = blocked.save(create, now: now) {
       check("a folder list() skips still blocks its name", takenSave.id == "daily-probe-2")
     } else {
       check("a save next to a blocked folder works", false)
@@ -2779,7 +2779,7 @@ struct UnitCheck {
       to: handCollisionDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
     var handCreate = create
     handCreate.name = "hand"
-    if case .saved(let handSaved, let handCreated) = caseInsensitive.save(handCreate, now: now) {
+    if case .saved(let handSaved, let handCreated, _) = caseInsensitive.save(handCreate, now: now) {
       check("a create says so even next to a case-different folder", handCreated)
       check("`hand` counts up past `Hand`", handSaved.id == "hand-2")
     } else {
@@ -2805,7 +2805,7 @@ struct UnitCheck {
     var leftover = create
     leftover.name = "old"
     leftover.cwd = "/work/cadence"
-    if case .saved(let a, _) = seeded.save(leftover, now: now) {
+    if case .saved(let a, _, _) = seeded.save(leftover, now: now) {
       check("a leftover database row's id is not reused", a.id == "old-2")
       check("a project root becomes the target", a.target == .project("proj-1"))
     } else {
@@ -2855,6 +2855,148 @@ struct UnitCheck {
         if case .refused(let why) = owned.remove(id: "x") { return why.contains("OpenAI account") }
         return false
       }())
+
+    // Final review 4: an update cannot empty `name` or `prompt`, as a create cannot omit them.
+    let emptied = CodexAutomations(home: codexHomeFixture())
+    _ = emptied.save(create, now: now)
+    var emptyName = SaveInput(id: "daily-probe")
+    emptyName.name = "  "
+    check(
+      "an update to a blank name is refused",
+      refused(emptied.save(emptyName, now: now))?.contains("`name`") == true)
+    var emptyPrompt = SaveInput(id: "daily-probe")
+    emptyPrompt.prompt = "\n"
+    check(
+      "an update to a blank prompt is refused",
+      refused(emptied.save(emptyPrompt, now: now))?.contains("`prompt`") == true)
+
+    // Final review 5: a name is one line; a prompt keeps its line breaks.
+    var twoLineName = SaveInput(id: "daily-probe")
+    twoLineName.name = "Daily\nprobe"
+    check(
+      "a line break in the name is refused, naming the field",
+      refused(emptied.save(twoLineName, now: now))?.contains("`name`") == true)
+    var crName = create
+    crName.name = "Daily\rprobe"
+    check(
+      "a carriage return in a new name is refused",
+      refused(emptied.save(crName, now: now))?.contains("`name`") == true)
+    check(
+      "the refused update left the name as it was",
+      emptied.list().contains {
+        if case .automation(let a) = $0.parsed { return a.name == "Daily probe" }
+        return false
+      })
+
+    // Final review 6: a kind that is neither cron nor heartbeat is read, never changed, with a
+    // sentence of its own rather than the heartbeat's.
+    let future = CodexAutomation(
+      id: "future", kind: "future", name: "Future", prompt: "p", status: "ACTIVE",
+      rrule: "RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0", model: nil, reasoningEffort: nil,
+      notificationPolicy: nil, pluginTemplateId: nil, executionEnvironment: "local",
+      localEnvironmentConfigPath: nil, target: .project("p"), cwds: ["/work/armada"],
+      targetThreadId: nil, createdAt: 1, updatedAt: 2)
+    let futureDir = emptied.directory.appending(path: "future")
+    try? FileManager.default.createDirectory(at: futureDir, withIntermediateDirectories: true)
+    let futureBytes = CodexAutomationFile.serialize(future)
+    try? futureBytes.write(
+      to: futureDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    let neutral = CodexAutomations.kindRefusal(future)
+    check(
+      "an unknown kind reads as an automation",
+      emptied.list().contains {
+        if case .automation(let a) = $0.parsed { return a.kind == "future" }
+        return false
+      })
+    check(
+      "an unknown kind has a neutral read-only reason, not the heartbeat's",
+      neutral != nil && neutral != CodexAutomations.heartbeatRefusal("future")
+        && neutral?.contains("Codex app") == true)
+    check("a cron automation has no kind refusal", CodexAutomations.kindRefusal(made) == nil)
+    check(
+      "a heartbeat's kind refusal is the heartbeat sentence",
+      CodexAutomations.kindRefusal(beat) == CodexAutomations.heartbeatRefusal("beat"))
+    check(
+      "save refuses an unknown kind with that sentence",
+      refused(emptied.save(SaveInput(id: "future", name: "x"), now: now)) == neutral)
+    check(
+      "remove refuses an unknown kind with that sentence",
+      {
+        if case .refused(let why) = emptied.remove(id: "future") { return why == neutral }
+        return false
+      }())
+    check(
+      "and its bytes are unchanged",
+      (try? String(contentsOf: futureDir.appending(path: "automation.toml"), encoding: .utf8))
+        == futureBytes)
+
+    // Final review 1: Codex keeps a row's `next_run_at` while the row's status matches the
+    // file's (docs/implementation.md), so resuming a task whose stored time passed while paused
+    // runs it at once, and a new rule on an active task still fires once at the old time.
+    let dueAt: Int64 = 1_789_990_000_000  // before `now`
+    let laterAt: Int64 = 1_790_050_000_000  // after `now`
+    let resumable = CodexAutomations(
+      home: codexHomeFixture(
+        runRows: [
+          ("daily-probe", nil, dueAt, nil), ("weekly-probe", nil, laterAt, nil),
+          ("later-probe", nil, laterAt, nil),
+        ]))
+    func earlyRun(_ result: SaveResult) -> CodexAutomations.EarlyRun?? {
+      if case .saved(_, _, let early) = result { return .some(early) }
+      return nil
+    }
+    // A row for an id blocks a create of it, so the two tasks are planted as Codex's own files.
+    func plant(_ id: String, status: String, rrule: String) {
+      let a = CodexAutomation(
+        id: id, kind: "cron", name: id, prompt: "p", status: status, rrule: rrule, model: nil,
+        reasoningEffort: nil, notificationPolicy: nil, pluginTemplateId: nil,
+        executionEnvironment: "local", localEnvironmentConfigPath: nil, target: .project("p"),
+        cwds: ["/work/armada"], targetThreadId: nil, createdAt: 1, updatedAt: 2)
+      let dir = resumable.directory.appending(path: id)
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      try? CodexAutomationFile.serialize(a).write(
+        to: dir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    }
+    plant("daily-probe", status: "PAUSED", rrule: "RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0")
+    plant("weekly-probe", status: "ACTIVE", rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=7;BYMINUTE=0")
+    var fresh = create
+    fresh.name = "Fresh probe"
+    check("a create never warns", earlyRun(resumable.save(fresh, now: now)) == .some(nil))
+    var stillPaused = SaveInput(id: "daily-probe")
+    stillPaused.prompt = "Say \"still\"."
+    check(
+      "a paused task kept paused does not warn",
+      earlyRun(resumable.save(stillPaused, now: now)) == .some(nil))
+    var resume = SaveInput(id: "daily-probe")
+    resume.status = "active"
+    check(
+      "resuming a task whose stored run time passed warns it may run at once",
+      earlyRun(resumable.save(resume, now: now)) == .dueWhilePaused)
+    check(
+      "saving it again, already active, does not warn",
+      earlyRun(resumable.save(SaveInput(id: "daily-probe", name: "Daily probe"), now: now))
+        == .some(nil))
+    plant("later-probe", status: "PAUSED", rrule: "RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0")
+    var resumeLater = SaveInput(id: "later-probe")
+    resumeLater.status = "active"
+    check(
+      "resuming a task whose stored run time is still ahead does not warn",
+      earlyRun(resumable.save(resumeLater, now: now)) == .some(nil))
+    var sameRule = SaveInput(id: "weekly-probe")
+    sameRule.rrule = "freq=weekly;byday=mo;byhour=7;byminute=0"
+    check(
+      "the same rule in another spelling does not warn",
+      earlyRun(resumable.save(sameRule, now: now)) == .some(nil))
+    var moved = SaveInput(id: "weekly-probe")
+    moved.rrule = "RRULE:FREQ=WEEKLY;BYDAY=TU;BYHOUR=7;BYMINUTE=0"
+    check(
+      "a new rule on an active task with a stored run time warns of the old time",
+      earlyRun(resumable.save(moved, now: now)) == .oldTime)
+    var freshMoved = SaveInput(id: "fresh-probe")
+    freshMoved.rrule = "RRULE:FREQ=WEEKLY;BYDAY=TU;BYHOUR=7;BYMINUTE=0"
+    check(
+      "a new rule on a task Codex has no row for does not warn",
+      earlyRun(resumable.save(freshMoved, now: now)) == .some(nil))
   }
 
   // MARK: - Claude desktop scheduled tasks

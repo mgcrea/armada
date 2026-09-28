@@ -148,6 +148,76 @@ struct ScheduleToolsTests {
     #expect(result.text.contains("Codex will not run it until it is active."))
   }
 
+  @Test("A save that may make Codex run it early says so, in each of the two ways")
+  func saveEarlyRun() async throws {
+    let store = FakeScheduleStore()
+    store.outcome = .saved(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+        status: "active", created: false, earlyRun: .dueWhilePaused))
+    let resumed = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "active"], store: store)
+    #expect(!resumed.isError)
+    #expect(resumed.text.contains("Codex may run it once right away: it came due while paused."))
+    store.outcome = .saved(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 08:00",
+        status: "active", created: false, earlyRun: .oldTime))
+    let moved = await call(
+      "armada_save_schedule", ["id": "daily-intel", "rrule": "RRULE:FREQ=DAILY;BYHOUR=8"],
+      store: store)
+    #expect(moved.text.contains("Codex may run it once more at its old time."))
+    let plain = await call("armada_save_schedule", ["id": "daily-intel", "name": "x"])
+    #expect(!plain.text.contains("Codex may run it once"))
+    let save = try #require(
+      table(FakeScheduleStore()).listing(allowWrites: true).first {
+        $0.name == "armada_save_schedule"
+      })
+    #expect(save.description.contains("Resuming"))
+  }
+
+  @Test("Save and delete say a notification was posted only when one was")
+  func notificationPosted() async {
+    let store = FakeScheduleStore()
+    let posted = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "paused"], store: store)
+    #expect(posted.text.contains("A notification was posted."))
+    store.outcome = .saved(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+        status: "active", created: false, notificationPosted: false))
+    let save = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "active"], store: store)
+    #expect(!save.text.contains("A notification was posted."))
+    #expect(
+      save.text.contains("Notifications for Armada are off in System Settings, so none was shown."))
+    store.outcome = .deleted(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+        status: "active", created: false, notificationPosted: false))
+    let delete = await call("armada_delete_schedule", ["id": "daily-intel"], store: store)
+    #expect(!delete.text.contains("A notification was posted."))
+    #expect(delete.text.contains("none was shown"))
+    store.outcome = .deleted(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+        status: "active", created: false))
+    let deletePosted = await call("armada_delete_schedule", ["id": "daily-intel"], store: store)
+    #expect(deletePosted.text.contains("A notification was posted."))
+  }
+
+  @Test("An update that would empty the name or the prompt is refused before the store")
+  func updateEmpty() async {
+    let store = FakeScheduleStore()
+    let name = await call(
+      "armada_save_schedule", ["id": "daily-intel", "name": "  "], store: store)
+    #expect(name.isError && name.text.contains("`name`"))
+    let prompt = await call(
+      "armada_save_schedule", ["id": "daily-intel", "prompt": " \n "], store: store)
+    #expect(prompt.isError && prompt.text.contains("`prompt`"))
+    #expect(store.saveRequests.isEmpty)
+  }
+
   @Test("A create without its required fields is refused before the store")
   func createMissing() async {
     let store = FakeScheduleStore()

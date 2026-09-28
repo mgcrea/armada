@@ -122,9 +122,32 @@ public struct ScheduleChange: Sendable, Equatable {
   public let summary: String
   public let status: String
   public let created: Bool
+  /// Why Codex may run it once outside its rule after this save; nil when nothing says it will.
+  public let earlyRun: EarlyRun?
+  /// Whether macOS took the notification: false when notifications for Armada are off.
+  public var notificationPosted: Bool
+
+  /// Codex keeps a task's stored next run time while the task stays active in its database, and
+  /// Armada writes neither database, so a save can leave that time behind (docs/implementation.md,
+  /// "Codex automations written from outside the app").
+  public enum EarlyRun: Sendable, Equatable {
+    /// Resumed with a stored run time that passed while it was paused.
+    case dueWhilePaused
+    /// A new rule on an active task, with a run time still stored from the old one.
+    case oldTime
+
+    /// Said in the tool's answer and in the notification alike.
+    public var sentence: String {
+      switch self {
+      case .dueWhilePaused: "Codex may run it once right away: it came due while paused."
+      case .oldTime: "Codex may run it once more at its old time."
+      }
+    }
+  }
 
   public init(
-    id: String, name: String, account: String, summary: String, status: String, created: Bool
+    id: String, name: String, account: String, summary: String, status: String, created: Bool,
+    earlyRun: EarlyRun? = nil, notificationPosted: Bool = true
   ) {
     self.id = id
     self.name = name
@@ -132,6 +155,8 @@ public struct ScheduleChange: Sendable, Equatable {
     self.summary = summary
     self.status = status
     self.created = created
+    self.earlyRun = earlyRun
+    self.notificationPosted = notificationPosted
   }
 }
 

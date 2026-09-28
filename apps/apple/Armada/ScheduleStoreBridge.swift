@@ -25,7 +25,7 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
         switch listed.parsed {
         case .automation(let a):
           let run = runs[a.id]
-          let heartbeat = a.kind == "heartbeat"
+          let kindRefusal = CodexAutomations.kindRefusal(a)
           out.append(
             ScheduleRow(
               vendor: "codex", accountID: home.id, account: home.displayName, id: a.id,
@@ -37,10 +37,8 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
               // paused automation's `nextRunAt` from the database would be stale. Only an
               // active file's next fire time is trustworthy.
               nextRunAt: a.apiStatus == "active" ? run?.nextRunAt : nil,
-              prompt: a.prompt, editable: !owned && !heartbeat,
-              readOnlyReason: owned
-                ? CodexAutomations.accountOwnedRefusal
-                : heartbeat ? CodexAutomations.heartbeatRefusal(a.id) : nil))
+              prompt: a.prompt, editable: !owned && kindRefusal == nil,
+              readOnlyReason: owned ? CodexAutomations.accountOwnedRefusal : kindRefusal))
         case .handEdited(let why):
           out.append(
             ScheduleRow(
@@ -182,9 +180,10 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
     switch CodexAutomations(home: home).save(input, now: Date()) {
     case .refused(let message):
       return .refused(message)
-    case .saved(let a, let created):
-      let change = Self.change(a, home: home, created: created)
-      ScheduleNotifier.post(verb: created ? "scheduled" : "changed", change: change)
+    case .saved(let a, let created, let earlyRun):
+      var change = Self.change(a, home: home, created: created, earlyRun: earlyRun)
+      change.notificationPosted = await ScheduleNotifier.post(
+        verb: created ? "scheduled" : "changed", change: change, folder: a.cwds.first)
       return .saved(change)
     }
   }
@@ -205,12 +204,13 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
     case .refused(let message):
       return .refused(message)
     case .removed(let a):
-      let change =
+      var change =
         a.map { Self.change($0, home: home, created: false) }
         ?? ScheduleChange(
           id: request.id, name: request.id, account: home.displayName, summary: "", status: "",
           created: false)
-      ScheduleNotifier.post(verb: "deleted", change: change)
+      change.notificationPosted = await ScheduleNotifier.post(
+        verb: "deleted", change: change, folder: a?.cwds.first)
       return .deleted(change)
     }
   }
@@ -220,11 +220,19 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
     return .refused("Armada could not tell which Codex home to use.")
   }
 
-  private static func change(_ a: CodexAutomation, home: CodexHome, created: Bool) -> ScheduleChange
-  {
+  private static func change(
+    _ a: CodexAutomation, home: CodexHome, created: Bool,
+    earlyRun: CodexAutomations.EarlyRun? = nil
+  ) -> ScheduleChange {
     ScheduleChange(
       id: a.id, name: a.name, account: home.displayName,
       summary: CodexAutomationFile.summary(a.rrule),
-      status: a.apiStatus, created: created)
+      status: a.apiStatus, created: created,
+      earlyRun: earlyRun.map {
+        switch $0 {
+        case .dueWhilePaused: .dueWhilePaused
+        case .oldTime: .oldTime
+        }
+      })
   }
 }
