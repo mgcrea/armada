@@ -124,8 +124,18 @@ public struct ScheduleChange: Sendable, Equatable {
   public let created: Bool
   /// Why Codex may run it once outside its rule after this save; nil when nothing says it will.
   public let earlyRun: EarlyRun?
-  /// Whether macOS took the notification: false when notifications for Armada are off.
-  public var notificationPosted: Bool
+  /// What became of the notification: the answer claims one only when macOS took it.
+  public var notification: NotificationOutcome
+
+  /// Never waits on a person: while macOS is still asking for permission, the answer goes back
+  /// at once and the notification follows if they allow it.
+  public enum NotificationOutcome: Sendable, Equatable {
+    case posted
+    /// Notifications for Armada are off, or macOS would not take this one.
+    case off
+    /// macOS is showing its permission prompt; nothing is shown until the person answers.
+    case asking
+  }
 
   /// Codex keeps a task's stored next run time while the task stays active in its database, and
   /// Armada writes neither database, so a save can leave that time behind (docs/implementation.md,
@@ -147,7 +157,7 @@ public struct ScheduleChange: Sendable, Equatable {
 
   public init(
     id: String, name: String, account: String, summary: String, status: String, created: Bool,
-    earlyRun: EarlyRun? = nil, notificationPosted: Bool = true
+    earlyRun: EarlyRun? = nil, notification: NotificationOutcome = .posted
   ) {
     self.id = id
     self.name = name
@@ -156,7 +166,7 @@ public struct ScheduleChange: Sendable, Equatable {
     self.status = status
     self.created = created
     self.earlyRun = earlyRun
-    self.notificationPosted = notificationPosted
+    self.notification = notification
   }
 }
 

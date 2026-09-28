@@ -182,7 +182,7 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
       return .refused(message)
     case .saved(let a, let created, let earlyRun):
       var change = Self.change(a, home: home, created: created, earlyRun: earlyRun)
-      change.notificationPosted = await ScheduleNotifier.post(
+      change.notification = await ScheduleNotifier.post(
         verb: created ? "scheduled" : "changed", change: change, folder: a.cwds.first)
       return .saved(change)
     }
@@ -209,7 +209,7 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
         ?? ScheduleChange(
           id: request.id, name: request.id, account: home.displayName, summary: "", status: "",
           created: false)
-      change.notificationPosted = await ScheduleNotifier.post(
+      change.notification = await ScheduleNotifier.post(
         verb: "deleted", change: change, folder: a?.cwds.first)
       return .deleted(change)
     }

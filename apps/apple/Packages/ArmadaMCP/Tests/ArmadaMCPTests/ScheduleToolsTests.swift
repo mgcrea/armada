@@ -176,34 +176,36 @@ struct ScheduleToolsTests {
     #expect(save.description.contains("Resuming"))
   }
 
-  @Test("Save and delete say a notification was posted only when one was")
-  func notificationPosted() async {
+  @Test(
+    "Save and delete say a notification was posted only when one was",
+    arguments: [
+      (ScheduleChange.NotificationOutcome.posted, "A notification was posted."),
+      (.off, "Notifications for Armada are off in System Settings, so none was shown."),
+      (.asking, "macOS is asking whether Armada may show notifications, so none was shown yet."),
+    ])
+  func notification(_ outcome: ScheduleChange.NotificationOutcome, _ sentence: String) async {
     let store = FakeScheduleStore()
-    let posted = await call(
-      "armada_save_schedule", ["id": "daily-intel", "status": "paused"], store: store)
-    #expect(posted.text.contains("A notification was posted."))
-    store.outcome = .saved(
-      ScheduleChange(
-        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
-        status: "active", created: false, notificationPosted: false))
+    let change = ScheduleChange(
+      id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+      status: "active", created: false, notification: outcome)
+    store.outcome = .saved(change)
     let save = await call(
       "armada_save_schedule", ["id": "daily-intel", "status": "active"], store: store)
-    #expect(!save.text.contains("A notification was posted."))
-    #expect(
-      save.text.contains("Notifications for Armada are off in System Settings, so none was shown."))
-    store.outcome = .deleted(
-      ScheduleChange(
-        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
-        status: "active", created: false, notificationPosted: false))
+    #expect(save.text.hasSuffix(sentence))
+    store.outcome = .deleted(change)
     let delete = await call("armada_delete_schedule", ["id": "daily-intel"], store: store)
-    #expect(!delete.text.contains("A notification was posted."))
-    #expect(delete.text.contains("none was shown"))
-    store.outcome = .deleted(
-      ScheduleChange(
-        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
-        status: "active", created: false))
-    let deletePosted = await call("armada_delete_schedule", ["id": "daily-intel"], store: store)
-    #expect(deletePosted.text.contains("A notification was posted."))
+    #expect(delete.text.hasSuffix(sentence))
+    if outcome != .posted {
+      #expect(!save.text.contains("A notification was posted."))
+      #expect(!delete.text.contains("A notification was posted."))
+    }
+  }
+
+  @Test("A store's change defaults to a posted notification")
+  func notificationDefault() {
+    let change = ScheduleChange(
+      id: "a", name: "a", account: "Codex", summary: "", status: "active", created: true)
+    #expect(change.notification == .posted)
   }
 
   @Test("An update that would empty the name or the prompt is refused before the store")

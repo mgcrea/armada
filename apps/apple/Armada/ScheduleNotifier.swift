@@ -12,10 +12,14 @@ nonisolated enum ScheduleNotifier {
   /// `nonisolated` because the bridge calls it off the main actor. Only `Sendable` values cross
   /// in; the content object is built here.
   ///
-  /// **Awaited, not fired and forgotten**, so the tool claims a notification only when macOS took
-  /// one: false when notifications for Armada are off, or were never allowed, or `add` failed.
+  /// **Never waits on a person.** The file is already written when this runs, so an answer held
+  /// up by the permission prompt could time out and be retried into a second task. Undetermined,
+  /// the request goes on in its own task and the answer says macOS is asking; allowed, the `add`
+  /// is awaited so the tool claims a notification only when macOS took one.
   /// `folder` is the automation's working folder, named by its last component.
-  static func post(verb: String, change: ScheduleChange, folder: String?) async -> Bool {
+  static func post(
+    verb: String, change: ScheduleChange, folder: String?
+  ) async -> ScheduleChange.NotificationOutcome {
     let title =
       change.summary.isEmpty
       ? "An agent \(verb) \(change.name), on Codex"
@@ -30,15 +34,30 @@ nonisolated enum ScheduleNotifier {
     let body = "Account: \(change.account).\(project) \(status)"
     let identifier = "schedule-\(change.id)-\(UUID().uuidString)"
     let center = UNUserNotificationCenter.current()
-    guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else {
-      return false
+    switch await center.notificationSettings().authorizationStatus {
+    case .denied:
+      return .off
+    case .notDetermined:
+      Task {
+        guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else {
+          return
+        }
+        _ = await add(title: title, body: body, identifier: identifier)
+      }
+      return .asking
+    default:
+      return await add(title: title, body: body, identifier: identifier) ? .posted : .off
     }
+  }
+
+  /// Built here from strings, so no content object crosses into the request's task.
+  private static func add(title: String, body: String, identifier: String) async -> Bool {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     content.threadIdentifier = "schedules"
     do {
-      try await center.add(
+      try await UNUserNotificationCenter.current().add(
         UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
       return true
     } catch {

@@ -1187,11 +1187,14 @@ public enum Tools {
     }
   }
 
-  /// Only what macOS took is claimed: the app says whether it posted one.
+  /// Only what macOS took is claimed: the app says what became of the notification.
   private static func notificationSentence(_ change: ScheduleChange) -> String {
-    change.notificationPosted
-      ? "A notification was posted."
-      : "Notifications for Armada are off in System Settings, so none was shown."
+    switch change.notification {
+    case .posted: "A notification was posted."
+    case .off: "Notifications for Armada are off in System Settings, so none was shown."
+    case .asking:
+      "macOS is asking whether Armada may show notifications, so none was shown yet."
+    }
   }
 
   private static func changeValue(_ change: ScheduleChange) -> JSONValue {
