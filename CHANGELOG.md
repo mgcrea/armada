@@ -8,6 +8,15 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.9.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Manage Codex schedules from Claude Code.** With Allow writes on, Claude Code can list
+  every scheduled task on the Mac, and create, change or remove Codex automations, through
+  Armada's MCP server. Codex still runs them, and Armada posts a notification every time one
+  changes. Claude desktop's own scheduled tasks are listed too, read-only.
+
 ## [1.9.0] - 2026-09-28
 
 ### Added
