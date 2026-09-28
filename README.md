@@ -181,7 +181,7 @@ same from either directory.
 
 ```bash
 make build          # build Armada.app (Debug)
-make run            # build, quit any running copy, and launch it
+make run            # build, quit any running copy, and relaunch it (window too, if it was open)
 make quit           # quit it and wait for the process to go
 make build-release  # build, sign, notarize and staple (needs AC_KEY_ID, AC_ISSUER_ID, AC_KEY_PATH)
 make clean          # remove .build

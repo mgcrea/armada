@@ -120,8 +120,19 @@ quit: ## Quit the running app and wait for the process to go
 # `quit` first: without it `open` activates the instance that is already running and a
 # fix reads as not working. xcodebuild would also be overwriting the bundle underneath
 # a live process.
-run: build quit ## Build and launch the app
-	@app="$(APP_BUNDLE)"; open "$$app" 2>/dev/null || { sleep 1; open "$$app"; }
+#
+# The main window comes back if the instance being quit had a window up. `lsappinfo`
+# answers that with no Accessibility grant: `DockPresence` makes the app `Foreground`
+# while a window is open and a `UIElement` otherwise. Which window it was is not
+# recorded, so a Settings or Transcript window left open brings back the main one,
+# as a click on the Dock icon would. Read before `quit`, as a recipe rather than a
+# prerequisite, so the answer cannot arrive after the app is gone.
+run: build ## Build and launch the app, with its main window if the last one had it open
+	@if lsappinfo info -only ApplicationType -app $(BUNDLE_ID) | grep -q 'type="Foreground"'; then \
+		args="--args -OpenMainWindowAtLaunch YES"; \
+	fi; \
+	$(MAKE) --no-print-directory quit; \
+	app="$(APP_BUNDLE)"; open "$$app" $$args 2>/dev/null || { sleep 1; open "$$app" $$args; }
 
 clean: ## Remove build products
 	rm -rf $(DERIVED_DATA)

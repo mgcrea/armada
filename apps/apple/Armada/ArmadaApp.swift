@@ -231,6 +231,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Constructs nothing unless the user has already opted in: an Armada nobody
     // has said yes to has never resolved a name. See `UpdateController`.
     UpdateController.shared.startIfConsented()
+    // `make run` passes this when the build it just quit had a window up, so a rebuild
+    // comes back the way it was left rather than as a bare menu bar item. Debug only:
+    // no shipped binary opens a window because a launch argument said so.
+    #if DEBUG
+      if UserDefaults.standard.bool(forKey: "OpenMainWindowAtLaunch") { showMain() }
+    #endif
   }
 
   /// A click on the Dock icon, which exists only while a window is open.

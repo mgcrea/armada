@@ -973,13 +973,16 @@ import SwiftUI
     /// *is* the content existing. The transcript is the one async screen: it reads
     /// its file on a detached task, and reports only once the entries have landed.
     @MainActor static func signalReady(from source: ReadySource) {
+      // First, before `stage` is read: every Debug build calls this, and `stage`
+      // traps on the missing argument an ordinary launch never passes.
+      guard isEnabled else { return }
       let expected: ReadySource =
         switch stage {
         case .transcript: .transcript
         case .menubar: .menubar
         case .usage, .account, .projects, .codex: .main
         }
-      guard isEnabled, source == expected else { return }
+      guard source == expected else { return }
       guard let path = argument(Key.readyFile) else { return }
       // One runloop turn after the body, so the frame this reports has been
       // committed rather than merely queued.
