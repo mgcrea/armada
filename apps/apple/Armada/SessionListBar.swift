@@ -67,12 +67,12 @@ struct SessionListBar<Item: SessionListItem, Dot: View>: View {
       Divider().frame(height: 30)
       ForEach(tiles) { tile in
         let count = counts[tile.id] ?? 0
+        // The dot after the figure rather than before the caption, so every caption in the
+        // row, the total's and the projects' included, starts at its tile's leading edge.
         stat(count.formatted(), dimmed: count == 0) {
-          HStack(alignment: .firstTextBaseline, spacing: 4) {
-            dot(tile.id).centeredOnCapHeight(of: .caption1)
-            Text(tile.short)
-              .alignmentGuide(.statText) { $0[.leading] }
-          }
+          dot(tile.id).centeredOnCapHeight(of: .title3)
+        } caption: {
+          Text(tile.short)
         }
         .help(help(count, tile))
       }
@@ -88,21 +88,21 @@ struct SessionListBar<Item: SessionListItem, Dot: View>: View {
 
   private func narrow(_ counts: [String: Int], showsContext: Bool) -> some View {
     HStack(spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 3) {
+      HStack(spacing: 3) {
         Image(systemName: "rectangle.stack").foregroundStyle(.secondary)
         Text(sessions.count.formatted()).fontWeight(.semibold)
       }
       .help(totalHelp)
       ForEach(tiles) { tile in
         let count = counts[tile.id] ?? 0
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-          dot(tile.id).centeredOnCapHeight(of: .callout)
+        HStack(spacing: 3) {
+          dot(tile.id)
           Text(count.formatted())
             .foregroundStyle(count == 0 ? .tertiary : .primary)
         }
         .help(help(count, tile))
       }
-      HStack(alignment: .firstTextBaseline, spacing: 3) {
+      HStack(spacing: 3) {
         Image(systemName: "folder").foregroundStyle(.secondary)
         Text(projectCount.formatted())
       }
@@ -121,18 +121,25 @@ struct SessionListBar<Item: SessionListItem, Dot: View>: View {
   /// The figure over its caption. Held to one line each: squeezed, a `Text` with no limit
   /// wraps a character per line, which is what once made the usage strip here hundreds of
   /// points tall in a narrow pane.
-  ///
-  /// Aligned on `.statText`, so a figure starts where its caption's words do and not over
-  /// the state dot in front of them. A caption with no dot has nothing to skip, and the
-  /// guide falls back to its leading edge.
   private func stat<Caption: View>(
     _ value: String, dimmed: Bool, @ViewBuilder caption: () -> Caption
   ) -> some View {
-    VStack(alignment: .statText, spacing: 1) {
-      Text(value)
-        .font(.title3.weight(.medium).monospacedDigit())
-        .foregroundStyle(dimmed ? .tertiary : .primary)
-        .contentTransition(.numericText())
+    stat(value, dimmed: dimmed, marker: { EmptyView() }, caption: caption)
+  }
+
+  /// With a marker, such as a state dot, after the figure on its line.
+  private func stat<Marker: View, Caption: View>(
+    _ value: String, dimmed: Bool, @ViewBuilder marker: () -> Marker,
+    @ViewBuilder caption: () -> Caption
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 1) {
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Text(value)
+          .font(.title3.weight(.medium).monospacedDigit())
+          .foregroundStyle(dimmed ? .tertiary : .primary)
+          .contentTransition(.numericText())
+        marker()
+      }
       caption()
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -213,24 +220,13 @@ extension CodexSessionState {
   }
 }
 
-extension HorizontalAlignment {
-  /// Where a tile's caption text starts, past any dot in front of it. See
-  /// `SessionListBar.stat`.
-  private enum StatText: AlignmentID {
-    static func defaultValue(in context: ViewDimensions) -> CGFloat { context[.leading] }
-  }
-
-  fileprivate static let statText = HorizontalAlignment(StatText.self)
-}
-
 extension View {
   /// Centres a view with no text in it, such as a state dot, on the capitals of the text it
   /// sits beside in a `.firstTextBaseline` stack.
   ///
   /// A plain centred `HStack` centres the dot on the text's whole line box, descender space
-  /// included, which puts it visibly low beside "Working" or a count. The line's capitals are
-  /// what the eye centres on, so the dot's middle goes at half their height above the
-  /// baseline. SF Symbols need none of this: they carry a baseline of their own.
+  /// included, which puts it visibly low beside a figure. Digits are capital height, so the
+  /// dot's middle goes at half that height above the baseline.
   fileprivate func centeredOnCapHeight(of style: NSFont.TextStyle) -> some View {
     let capHeight = NSFont.preferredFont(forTextStyle: style).capHeight
     return alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + capHeight / 2 }
