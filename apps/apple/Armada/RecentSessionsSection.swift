@@ -77,6 +77,7 @@ struct RecentSessionsSection: View {
     }
     .contextMenu {
       Button("Resume Session") { SessionResumer.resume(entry.row) }
+      ContinueElsewhereItems(entry: entry, accounts: otherAccounts(than: entry))
       Button("Read Transcript") {
         TranscriptWindow.shared.show(url: entry.transcript, name: entry.displayName)
       }
@@ -96,6 +97,11 @@ struct RecentSessionsSection: View {
     }
     parts.append(entry.accountName)
     return parts.joined(separator: " · ")
+  }
+
+  /// Every Claude account but the one this row's transcript is on.
+  private func otherAccounts(than entry: Entry) -> [Account] {
+    accounts.all.filter { $0.id != entry.row.account }
   }
 
   private var liveIDs: Set<String> {
@@ -157,6 +163,39 @@ struct RecentSessionsSection: View {
   }
 }
 
+/// "Continue on <account>" for an ended row: one item for one other account, a submenu for
+/// several, nothing on a Mac with one.
+///
+/// **The live row's action, for a session that has none.** Continuing on another account was
+/// only offered while a session ran, and a session stopped at one account's limit is the one
+/// most worth moving: it is also usually one that has ended, or a VS Code tab restored with
+/// no process behind it, which Armada cannot see as live. The accounts are listed when the
+/// menu opens; whether the session can go is decided when an item is picked.
+private struct ContinueElsewhereItems: View {
+  let entry: RecentSessionsSection.Entry
+  let accounts: [Account]
+
+  var body: some View {
+    if accounts.count > 1 {
+      Menu(HandoverTarget.copiesOnly ? "Copy to Another Account" : "Continue on Another Account") {
+        items(titled: \.displayName)
+      }
+    } else {
+      items {
+        HandoverTarget.copiesOnly ? "Copy to \($0.displayName)" : "Continue on \($0.displayName)"
+      }
+    }
+  }
+
+  private func items(titled title: @escaping (Account) -> String) -> some View {
+    ForEach(accounts, id: \.id) { account in
+      Button(title(account)) {
+        SessionResumer.continueElsewhere(entry.row, on: account.id, title: entry.title)
+      }
+    }
+  }
+}
+
 /// Resume, asked for by a person: `SessionResume`'s checks, then the terminal.
 ///
 /// The refusals are worded for someone looking at the row. Most cannot be reached from the list,
@@ -172,6 +211,40 @@ enum SessionResumer {
         .claude(target.account.folder),
         in: URL(filePath: target.cwd, directoryHint: .isDirectory),
         start: .resume(sessionID: row.sessionID))
+    case .refused(let refusal):
+      launcher.failure = message(for: refusal)
+    }
+  }
+
+  /// Continue on another account: Resume's checks, then the live row's handover, which copies
+  /// the transcript across and forks it there.
+  ///
+  /// **The same checks as Resume**, because the one thing a copy of a live transcript risks is
+  /// what resuming it risks: something may still be writing it. A fork rather than a resume
+  /// under the same id, as for a live row, so the id stays one account's; here it also leaves
+  /// the original where it was should its restored VS Code tab be typed into later.
+  static func continueElsewhere(_ row: UsageSessionRow, on accountID: String, title: String?) {
+    let launcher = NewSessionLauncher.shared
+    switch SessionResume.prepare(row.sessionID, preferring: row.account, now: Date()) {
+    case .ready(let source):
+      guard let destination = Accounts.shared.account(id: accountID) else {
+        launcher.failure = "That account is no longer set up in Armada."
+        return
+      }
+      // `prepare` falls back to another account's copy when this row's own transcript has gone,
+      // which can be the very account asked for.
+      guard destination.id != source.account.id else {
+        launcher.failure =
+          "This conversation is only on \(destination.displayName) now, so Resume continues it there."
+        return
+      }
+      launcher.handOver(
+        HandoverTarget(
+          transcript: source.transcript,
+          project: URL(filePath: source.cwd, directoryHint: .isDirectory),
+          sessionID: row.sessionID, folder: destination.folder,
+          accountName: destination.displayName,
+          name: SessionBatch.carriedName(title: title, registryName: nil, nameSource: nil)))
     case .refused(let refusal):
       launcher.failure = message(for: refusal)
     }

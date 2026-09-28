@@ -8,6 +8,15 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.8.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Continue an ended session on another account.** Right-click a session under a project's
+  Recently ended to continue it on another Claude account, as you already could while it ran.
+  This includes a VS Code tab restored with no session behind it. Armada copies the conversation
+  across and opens a fork of it there, so the original stays where it was.
+
 ## [1.8.0] - 2026-09-25
 
 ### Added
