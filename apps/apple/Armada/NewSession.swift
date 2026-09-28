@@ -143,10 +143,13 @@ nonisolated enum NewSession {
   /// `prompt` is an opening message an agent sent through `armada_start_session`, already
   /// checked by `Tools.promptRefusal`. It travels in a file, never in the script — see
   /// `LaunchScript.promptLines`.
+  ///
+  /// `name` is the display name a Claude Code session starts under, for a conversation that
+  /// arrives from another account and should keep the name it had there. See `HandoverTarget`.
   @MainActor
   static func start(
     _ agent: Agent, in project: URL, terminal: TerminalApp, start: Start = .fresh,
-    supervisor: Supervisor? = nil, prompt: String? = nil,
+    supervisor: Supervisor? = nil, prompt: String? = nil, name: String? = nil,
     completion: @escaping @MainActor (String) -> Void = { _ in }
   ) -> String? {
     let fileManager = FileManager.default
@@ -180,7 +183,7 @@ nonisolated enum NewSession {
       script = try write(
         script: body(
           agent: agent, project: project, binary: binary, start: start, mcpConfig: mcpConfig,
-          promptFile: promptFile),
+          promptFile: promptFile, name: name),
         in: directory, for: project)
     } catch {
       return "Armada could not write the startup script: \(error.localizedDescription)"
@@ -219,7 +222,8 @@ nonisolated enum NewSession {
   /// feature reads as "the button does nothing", and the two lines below are what turn
   /// it into a message.
   private static func body(
-    agent: Agent, project: URL, binary: URL, start: Start, mcpConfig: URL?, promptFile: URL?
+    agent: Agent, project: URL, binary: URL, start: Start, mcpConfig: URL?, promptFile: URL?,
+    name: String?
   ) -> String {
     let path = project.standardizedFileURL.path(percentEncoded: false)
     let prompt = promptFile.map { LaunchScript.promptLines(file: $0.path(percentEncoded: false)) }
@@ -233,7 +237,7 @@ nonisolated enum NewSession {
     lines += [
       // The message last: both CLIs take it as the trailing positional word.
       ([quoted(binary.path(percentEncoded: false))]
-        + arguments(for: agent, start: start, mcpConfig: mcpConfig)
+        + arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name)
         + (prompt.map { [$0.argument] } ?? []))
         .joined(separator: " "),
       "status=$?",
@@ -258,7 +262,9 @@ nonisolated enum NewSession {
   /// The id is quoted like every other value that reaches the script. Both vendors mint
   /// uuids and neither needs it, but the invocation line should not be the one place in
   /// this file that assumes what a session id looks like.
-  private static func arguments(for agent: Agent, start: Start, mcpConfig: URL?) -> [String] {
+  private static func arguments(
+    for agent: Agent, start: Start, mcpConfig: URL?, name: String?
+  ) -> [String] {
     var arguments: [String] =
       switch (agent, start) {
       case (_, .fresh), (.codex, .identified):
@@ -286,6 +292,12 @@ nonisolated enum NewSession {
       case (.grok, .fork(let sessionID)):
         ["--resume", quoted(sessionID), "--fork-session"]
       }
+    // `--name=<value>` in one word, so a name that begins with a dash cannot be read as a flag.
+    // Parsed beside `--resume <id> --fork-session` on 2.1.283 (2026-09-28). Never for the
+    // supervisor, which names itself below.
+    if case .claude = agent, mcpConfig == nil, let name {
+      arguments.append(quoted("--name=" + name))
+    }
     // The supervisor's flags, from `claude --help` on 2.1.269. Order matters for one reason:
     // `--mcp-config` and `--allowedTools` are variadic and swallow words until the next flag,
     // so the opening prompt goes last, after `--name`, which takes exactly one.

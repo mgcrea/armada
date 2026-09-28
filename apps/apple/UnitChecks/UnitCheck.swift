@@ -47,6 +47,7 @@ struct UnitCheck {
     recentSessions()
     launchScript()
     sessionClosePolicy()
+    sessionBatch()
     newAccount()
     addedHomes()
     editorLaunch()
@@ -1833,6 +1834,60 @@ struct UnitCheck {
     check(
       "a person's does not, so their click cannot refuse an agent",
       !SessionClosePolicy.armsThrottle(.person))
+  }
+
+  // MARK: - SessionBatch
+
+  static func sessionBatch() {
+    section("SessionBatch")
+    expectEqual(
+      "a copy keeps the title the row shows",
+      SessionBatch.carriedName(title: "API refactor", registryName: "armada", nameSource: nil),
+      "API refactor")
+    expectEqual(
+      "then a name somebody gave it",
+      SessionBatch.carriedName(title: nil, registryName: "Release prep", nameSource: "user"),
+      "Release prep")
+    check(
+      "but not one Claude Code derived from the folder",
+      SessionBatch.carriedName(title: nil, registryName: "armada", nameSource: "derived") == nil)
+    check(
+      "and a blank title is no title",
+      SessionBatch.carriedName(title: "  ", registryName: nil, nameSource: nil) == nil)
+
+    check(
+      "a batch that all went through has nothing to say",
+      SessionBatch.report(verb: "moved", attempted: 3, refusals: []) == nil)
+    let refusal = SessionBatch.Refusal(name: "Docs", reason: "It has no complete turn yet.")
+    expectEqual(
+      "a refusal is named once, ahead of a reason that does not name it",
+      SessionBatch.line(for: refusal), "Docs: It has no complete turn yet.")
+    expectEqual(
+      "and not repeated when the reason already does",
+      SessionBatch.line(
+        for: SessionBatch.Refusal(name: "Docs", reason: "Docs started a turn as you closed it.")),
+      "Docs started a turn as you closed it.")
+    expectEqual(
+      "a partial batch says how many went",
+      SessionBatch.report(verb: "moved", attempted: 3, refusals: [refusal]),
+      "2 of 3 sessions were moved.\n\nDocs: It has no complete turn yet.")
+    let licence = "Armada has no licence and no trial running, so it closes nothing."
+    expectEqual(
+      "and a reason that is not about any one session is said once",
+      SessionBatch.report(
+        verb: "closed", attempted: 2,
+        refusals: [
+          SessionBatch.Refusal(name: "A", reason: licence),
+          SessionBatch.Refusal(name: "B", reason: licence),
+        ]),
+      "None of the 2 sessions were closed.\n\nA, B: \(licence)")
+    expectEqual(
+      "a short name found inside the reason still gets named",
+      SessionBatch.line(for: SessionBatch.Refusal(name: "A", reason: licence)), "A: \(licence)")
+    expectEqual(
+      "a batch of one that failed reads as one",
+      SessionBatch.report(verb: "closed", attempted: 1, refusals: [refusal]),
+      "The session was not closed.\n\nDocs: It has no complete turn yet.")
   }
 
   // MARK: - NewAccount

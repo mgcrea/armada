@@ -12,10 +12,22 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
+- **Move several sessions to another account at once.** Select more than one session in an
+  account's list with ⌘-click or ⇧-click, or click a project's header to select all of its
+  sessions. The pane then shows what they add up to, with Move, Continue and Close for all of them.
+  Move copies each conversation to the other account, opens it there, and closes it here only once
+  the copy is in place. Armada asks once if any of them is working, and afterwards says in one
+  message which sessions did not go and why.
+
 - **Continue an ended session on another account.** Right-click a session under a project's
   Recently ended to continue it on another Claude account, as you already could while it ran.
   This includes a VS Code tab restored with no session behind it. Armada copies the conversation
   across and opens a fork of it there, so the original stays where it was.
+
+### Changed
+
+- **A session continued on another account keeps its name.** The copy used to arrive as an
+  untitled row.
 
 ## [1.8.0] - 2026-09-25
 

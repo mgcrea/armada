@@ -17,6 +17,10 @@ nonisolated struct HandoverTarget: Hashable, Sendable {
   let sessionID: String
   let folder: ClaudeConfigFolder
   let accountName: String
+  /// What the copy starts under, so it arrives as a row with the original's name rather than
+  /// an untitled one. Nil for a session with no name worth carrying. See
+  /// `SessionBatch.carriedName`.
+  let name: String?
 
   var agent: NewSession.Agent { .claude(folder) }
   var start: NewSession.Start { .fork(sessionID: sessionID) }
@@ -38,7 +42,12 @@ nonisolated struct HandoverTarget: Hashable, Sendable {
   var note: String {
     Self.copiesOnly
       ? "Armada copies this conversation to \(accountName) and starts nothing. Open it from Claude Code's past conversations in a window on \(accountName), after closing this session, since it keeps the same session id there. Earlier turns stay counted against this account."
-      : "Armada copies this conversation to \(accountName) and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under \(accountName) as a separate, untitled row. Earlier turns stay counted against this account."
+      : "Armada copies this conversation to \(accountName) and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under \(accountName) as \(Self.arrival(named: name)). Earlier turns stay counted against this account."
+  }
+
+  /// How the copy shows up in the other account's list.
+  static func arrival(named name: String?) -> String {
+    name == nil ? "a separate, untitled row" : "a separate row under the same name"
   }
 }
 
@@ -73,11 +82,14 @@ enum HandoverAvailability {
         "This session records no folder, so there is nowhere to continue it.")
     }
     let project = URL(filePath: session.registry.cwd, directoryHint: .isDirectory)
+    let name = SessionBatch.carriedName(
+      title: session.title, registryName: session.registry.name,
+      nameSource: session.registry.nameSource)
     return .available(
       others.map {
         HandoverTarget(
           transcript: transcript, project: project, sessionID: session.registry.sessionId,
-          folder: $0.folder, accountName: $0.displayName)
+          folder: $0.folder, accountName: $0.displayName, name: name)
       })
   }
 }
@@ -97,10 +109,22 @@ extension NewSessionLauncher {
     }
     if HandoverTarget.copiesOnly { return }
     if fromMenuBar {
-      startFromMenuBar(target.agent, in: target.project, start: target.start)
+      startFromMenuBar(target.agent, in: target.project, start: target.start, name: target.name)
     } else {
-      start(target.agent, in: target.project, start: target.start)
+      start(target.agent, in: target.project, start: target.start, name: target.name)
     }
+  }
+
+  /// `handOver`, handing back the failure rather than showing it, for `SessionBatchActions`.
+  /// Nil once the copy is in place and, unless Settings says copy only, the launch is under way.
+  func handOverReporting(_ target: HandoverTarget) -> String? {
+    do {
+      try TranscriptHandover.stage(transcript: target.transcript, into: target.folder.projectsDir)
+    } catch {
+      return Self.handoverFailure(error, to: target)
+    }
+    if HandoverTarget.copiesOnly { return nil }
+    return startReporting(target.agent, in: target.project, start: target.start, name: target.name)
   }
 
   private static func handoverFailure(_ error: Error, to target: HandoverTarget) -> String {
@@ -148,7 +172,7 @@ struct HandoverButton: View {
         Text(
           copiesOnly
             ? "Armada copies this conversation to the account you pick and starts nothing. Open it from Claude Code's past conversations in a window on that account, after closing this session, since it keeps the same session id there."
-            : "Armada copies this conversation to the account you pick and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under that account as a separate, untitled row."
+            : "Armada copies this conversation to the account you pick and opens it there in a terminal, and this session keeps running, untouched. The copy gets a new session id and arrives under that account as \(HandoverTarget.arrival(named: targets.first?.name))."
         )
         .font(.caption)
         .foregroundStyle(.secondary)

@@ -58,21 +58,51 @@ final class SessionClosing {
   private func send(_ sessionID: String, name: String, force: Bool, fromMenuBar: Bool) {
     inFlight.insert(sessionID)
     Task {
-      let outcome = await SessionCloserBridge.close(
-        CloseSessionRequest(sessionID: sessionID, force: force), origin: .person)
-      inFlight.remove(sessionID)
-      switch outcome {
-      case .closed(let closed) where !closed.exited:
-        report(
-          "\(name) was sent a quit and then killed, and its process is still there. It is "
-            + "probably stuck on a disk or the network, and will go when that lets it.",
-          fromMenuBar: fromMenuBar)
-      case .closed:
-        // Nothing to say: the row leaves the list when the registry file does.
-        break
-      case .refused(let message):
+      if let message = await closing(sessionID, name: name, force: force) {
         report(message, fromMenuBar: fromMenuBar)
       }
+    }
+  }
+
+  /// Close several sessions at once, handing back the ones that did not close.
+  ///
+  /// **No question here.** `SessionBatchActions` asks once for the whole batch before it calls
+  /// this, and `force` is its answer. Without `force`, a session that started a turn in the
+  /// meantime is refused by the bridge and comes back in the list, as a single close would.
+  ///
+  /// All at once rather than one after the other: each close can wait up to `killGrace` on its
+  /// own process, and eight in a row would be a minute of rows leaving the list one by one.
+  func closeAll(_ sessions: [Session], force: Bool) async -> [SessionBatch.Refusal] {
+    let targets = sessions.filter { !inFlight.contains($0.id) }.map { ($0.id, $0.displayName) }
+    for (id, _) in targets { inFlight.insert(id) }
+    let answers = await withTaskGroup(of: (Int, String?).self) { group in
+      for (index, (id, name)) in targets.enumerated() {
+        group.addTask { (index, await self.closing(id, name: name, force: force)) }
+      }
+      var answers: [(Int, String?)] = []
+      for await answer in group { answers.append(answer) }
+      return answers
+    }
+    // Back in the order they were asked for, so the report reads in list order.
+    return answers.sorted { $0.0 < $1.0 }.compactMap { index, message in
+      message.map { SessionBatch.Refusal(name: targets[index].1, reason: $0) }
+    }
+  }
+
+  /// One close already marked in flight, answered with what to tell the person, or nil.
+  private func closing(_ sessionID: String, name: String, force: Bool) async -> String? {
+    let outcome = await SessionCloserBridge.close(
+      CloseSessionRequest(sessionID: sessionID, force: force), origin: .person)
+    inFlight.remove(sessionID)
+    switch outcome {
+    case .closed(let closed) where !closed.exited:
+      return "\(name) was sent a quit and then killed, and its process is still there. It is "
+        + "probably stuck on a disk or the network, and will go when that lets it."
+    case .closed:
+      // Nothing to say: the row leaves the list when the registry file does.
+      return nil
+    case .refused(let message):
+      return message
     }
   }
 

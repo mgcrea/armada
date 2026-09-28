@@ -251,6 +251,7 @@ UNIT_SRC := \
 	Armada/RecentSessions.swift \
 	Armada/LaunchScript.swift \
 	Armada/SessionClosePolicy.swift \
+	Armada/SessionBatch.swift \
 	Armada/NewAccount.swift \
 	Armada/CodexHome.swift \
 	Armada/GrokHome.swift \

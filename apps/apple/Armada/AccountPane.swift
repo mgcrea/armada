@@ -10,7 +10,9 @@ import SwiftUI
 struct AccountPaneView: View {
   let account: Account
 
-  @State private var selection: String?
+  /// Every selected row. One is a session's detail and none the account's overview; several
+  /// are `SessionSelectionDetail`, which acts on all of them at once.
+  @State private var selection: Set<String> = []
   @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -71,6 +73,7 @@ struct AccountPaneView: View {
     .navigationSubtitle(subtitle)
     .newSessionFailureAlert()
     .sessionClosingAlerts()
+    .sessionBatchAlerts()
     .onReceive(clock) { _ in now = AppClock.now }
     // When the rows change and when Armada is activated, never on the clock: every
     // answer is Accessibility IPC with the windows the sessions sit in.
@@ -91,9 +94,11 @@ struct AccountPaneView: View {
     ) { _ in
       focusEpoch += 1
     }
-    // A session ending should not leave the detail on a row that is gone.
+    // A session ending should not leave the detail on a row that is gone. A batch that moved
+    // or closed several leaves whatever is still here selected.
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
-      if let selection, !ids.contains(selection) { self.selection = nil }
+      let kept = selection.intersection(ids)
+      if kept != selection { selection = kept }
     }
     // Both, because either can be the one that runs. Clicking a row in the panel for
     // the account already on screen changes nothing about this view's identity, so
@@ -106,7 +111,7 @@ struct AccountPaneView: View {
   /// Take the session the menu bar panel asked for, if it asked for one here.
   private func applyRoute() {
     guard let id = route.takeSession(in: .account(account.id)) else { return }
-    selection = id
+    selection = [id]
     scrollTarget = id
   }
 
@@ -144,7 +149,12 @@ struct AccountPaneView: View {
                 Section {
                   ForEach(group.items, content: row)
                 } header: {
+                  // Clicking a header selects its sessions, and ⌘-clicking adds them: with
+                  // grouping by project, that is every session in one checkout, ready to move.
                   SessionGroupHeader(group: group)
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectGroup(group.items.map(\.id)) }
+                    .help("Click to select these sessions, ⌘-click to add them")
                 }
               }
             }
@@ -158,9 +168,14 @@ struct AccountPaneView: View {
           // `String`; a mismatch compiles and the menu silently never appears.
           //
           // No `primaryAction:`: double-clicking a row stays plain selection.
+          //
+          // Several ids are a right-click inside a selection of several rows, and get the
+          // batch's items instead: see `SessionBatchContextItems`.
           .contextMenu(forSelectionType: String.self) { ids in
             // Built on demand, so this is one cached lookup per right-click.
-            if let session = session(for: ids) {
+            if ids.count > 1 {
+              SessionBatchContextItems(sessions: sessions(for: ids), account: account)
+            } else if let session = session(for: ids) {
               if let host = SessionHostLookup.host(for: session.registry) {
                 Button("Focus in \(host.name)") {
                   FocusSession.focus(host, cwd: session.registry.cwd, session: session)
@@ -237,23 +252,48 @@ struct AccountPaneView: View {
   /// `AccountOverview` — reached at launch, by clicking empty space in the list, and by
   /// ⌘-clicking the selected row.
   private var selected: Session? {
-    account.sessions.sessions.first { $0.id == selection }
+    guard selection.count == 1, let id = selection.first else { return nil }
+    return account.sessions.sessions.first { $0.id == id }
   }
 
-  /// The right half: one session, or the account it belongs to.
+  /// The right half: several sessions, one, or the account they belong to.
   @ViewBuilder private var detail: some View {
-    if let selected {
+    let several = sessions(for: selection)
+    if several.count > 1 {
+      SessionSelectionDetail(sessions: several, account: account)
+    } else if let selected {
       SessionDetail(session: selected, account: account, now: now)
     } else {
       AccountOverview(account: account)
     }
   }
 
-  /// The one session a context menu is about. Selection here is single, so a set of
-  /// anything but one row is a click on empty space and has no session behind it.
+  /// The one session a context menu is about, or nil for a set of any other size: empty is a
+  /// click on empty space, and several is `SessionBatchContextItems`'s.
   private func session(for ids: Set<String>) -> Session? {
     guard let id = ids.first, ids.count == 1 else { return nil }
     return account.sessions.sessions.first { $0.id == id }
+  }
+
+  /// The sessions behind `ids`, in the order the list shows them, so a batch's detail and
+  /// its report read top to bottom as the rows do.
+  private func sessions(for ids: Set<String>) -> [Session] {
+    guard !ids.isEmpty else { return [] }
+    let shown =
+      grouping == .none
+      ? SessionOrder.sorted(account.sessions.sessions, by: sort)
+      : SessionOrder.arrange(account.sessions.sessions, sort: sort, grouping: grouping)
+        .flatMap(\.items)
+    return shown.filter { ids.contains($0.id) }
+  }
+
+  /// A header's click: its sessions become the selection, or join it with ⌘ held.
+  private func selectGroup(_ ids: [String]) {
+    if NSEvent.modifierFlags.contains(.command) {
+      selection.formUnion(ids)
+    } else {
+      selection = Set(ids)
+    }
   }
 
   private var subtitle: String {

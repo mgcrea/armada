@@ -39,21 +39,36 @@ final class NewSessionLauncher {
   }
 
   func start(
-    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh,
+    name: String? = nil
   ) {
-    trustIfSaved(agent, in: project)
-    if let message = launch(
-      agent, in: project, start: start, prompt: nil,
-      completion: { [weak self] message in self?.failure = message })
-    {
+    if let message = startReporting(agent, in: project, start: start, name: name) {
       failure = message
     }
   }
 
+  /// `start`, handing back the failure it would have shown.
+  ///
+  /// For a caller starting several sessions at once, which owes the person one sentence about
+  /// all of them rather than an alert each (see `SessionBatch`). The asynchronous half still
+  /// lands in `failure`, because by the time it arrives the batch has already answered.
+  func startReporting(
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh,
+    name: String? = nil
+  ) -> String? {
+    trustIfSaved(agent, in: project)
+    return launch(
+      agent, in: project, start: start, prompt: nil, name: name,
+      completion: { [weak self] message in self?.failure = message })
+  }
+
   /// The one fork in the road: VS Code for what `VSCodeLaunch` takes, the terminal for the rest.
+  ///
+  /// `name` reaches only a terminal launch. VS Code takes fresh sessions alone (see
+  /// `VSCodeLaunch.handles`), and the one caller that names a session starts a fork.
   private func launch(
     _ agent: NewSession.Agent, in project: URL, start: NewSession.Start, prompt: String?,
-    completion: @escaping @MainActor (String) -> Void
+    name: String? = nil, completion: @escaping @MainActor (String) -> Void
   ) -> String? {
     if case .claude(let folder) = agent, opensInVSCode(agent, start: start) {
       return VSCodeLaunch.start(
@@ -61,7 +76,7 @@ final class NewSessionLauncher {
         in: project, prompt: prompt, completion: completion)
     }
     return NewSession.start(
-      agent, in: project, terminal: terminal, start: start, prompt: prompt,
+      agent, in: project, terminal: terminal, start: start, prompt: prompt, name: name,
       completion: completion)
   }
 
@@ -76,11 +91,12 @@ final class NewSessionLauncher {
   /// LaunchServices error; for VS Code it is most of them — a window that would not come to
   /// the front, a folder in Restricted Mode — and each needs somewhere to be read.
   func startFromMenuBar(
-    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh,
+    name: String? = nil
   ) {
     trustIfSaved(agent, in: project)
     if let message = launch(
-      agent, in: project, start: start, prompt: nil,
+      agent, in: project, start: start, prompt: nil, name: name,
       completion: { [weak self] message in
         self?.failure = message
         AppDelegate.shared?.showMain()
