@@ -77,7 +77,8 @@ struct RecentSessionsSection: View {
     }
     .contextMenu {
       Button("Resume Session") { SessionResumer.resume(entry.row) }
-      ContinueElsewhereItems(entry: entry, accounts: otherAccounts(than: entry))
+      ContinueElsewhereItems(
+        row: entry.row, title: entry.title, accounts: otherAccounts(than: entry))
       Button("Read Transcript") {
         TranscriptWindow.shared.show(url: entry.transcript, name: entry.displayName)
       }
@@ -150,7 +151,7 @@ struct RecentSessionsSection: View {
 
   /// The newest title in the transcript's tail, which is where `TranscriptTitle` finds it 96%
   /// of the time and the only place this list looks.
-  nonisolated private static func title(of transcript: URL) -> String? {
+  nonisolated static func title(of transcript: URL) -> String? {
     guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
     defer { try? handle.close() }
     guard let size = try? handle.seekToEnd() else { return nil }
@@ -171,8 +172,11 @@ struct RecentSessionsSection: View {
 /// most worth moving: it is also usually one that has ended, or a VS Code tab restored with
 /// no process behind it, which Armada cannot see as live. The accounts are listed when the
 /// menu opens; whether the session can go is decided when an item is picked.
-private struct ContinueElsewhereItems: View {
-  let entry: RecentSessionsSection.Entry
+///
+/// Shared with an account's History, which lists the same ledger rows.
+struct ContinueElsewhereItems: View {
+  let row: UsageSessionRow
+  let title: String?
   let accounts: [Account]
 
   var body: some View {
@@ -187,10 +191,10 @@ private struct ContinueElsewhereItems: View {
     }
   }
 
-  private func items(titled title: @escaping (Account) -> String) -> some View {
+  private func items(titled label: @escaping (Account) -> String) -> some View {
     ForEach(accounts, id: \.id) { account in
-      Button(title(account)) {
-        SessionResumer.continueElsewhere(entry.row, on: account.id, title: entry.title)
+      Button(label(account)) {
+        SessionResumer.continueElsewhere(row, on: account.id, title: title)
       }
     }
   }
@@ -225,20 +229,44 @@ enum SessionResumer {
   /// the original where it was should its restored VS Code tab be typed into later.
   static func continueElsewhere(_ row: UsageSessionRow, on accountID: String, title: String?) {
     let launcher = NewSessionLauncher.shared
+    switch handover(row, on: accountID, title: title) {
+    case .ready(let target): launcher.handOver(target)
+    case .refused(let reason): launcher.failure = reason
+    }
+  }
+
+  /// `continueElsewhere`, handing back why it did not go rather than showing it, for a batch
+  /// that reports once. Nil once the copy is in place and the launch is under way.
+  static func continueElsewhereReporting(
+    _ row: UsageSessionRow, on accountID: String, title: String?
+  ) -> String? {
+    switch handover(row, on: accountID, title: title) {
+    case .ready(let target): NewSessionLauncher.shared.handOverReporting(target)
+    case .refused(let reason): reason
+    }
+  }
+
+  private enum Handover {
+    case ready(HandoverTarget)
+    case refused(String)
+  }
+
+  private static func handover(
+    _ row: UsageSessionRow, on accountID: String, title: String?
+  ) -> Handover {
     switch SessionResume.prepare(row.sessionID, preferring: row.account, now: Date()) {
     case .ready(let source):
       guard let destination = Accounts.shared.account(id: accountID) else {
-        launcher.failure = "That account is no longer set up in Armada."
-        return
+        return .refused("That account is no longer set up in Armada.")
       }
       // `prepare` falls back to another account's copy when this row's own transcript has gone,
       // which can be the very account asked for.
       guard destination.id != source.account.id else {
-        launcher.failure =
+        return .refused(
           "This conversation is only on \(destination.displayName) now, so Resume continues it there."
-        return
+        )
       }
-      launcher.handOver(
+      return .ready(
         HandoverTarget(
           transcript: source.transcript,
           project: URL(filePath: source.cwd, directoryHint: .isDirectory),
@@ -246,7 +274,7 @@ enum SessionResumer {
           accountName: destination.displayName,
           name: SessionBatch.carriedName(title: title, registryName: nil, nameSource: nil)))
     case .refused(let refusal):
-      launcher.failure = message(for: refusal)
+      return .refused(message(for: refusal))
     }
   }
 

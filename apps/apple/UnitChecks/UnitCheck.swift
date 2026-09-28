@@ -45,6 +45,7 @@ struct UnitCheck {
     usageIngest()
     projectStats()
     recentSessions()
+    sessionHistory()
     launchScript()
     sessionClosePolicy()
     sessionBatch()
@@ -1792,6 +1793,104 @@ struct UnitCheck {
       RecentSessions.pick(
         from: rows, project: "outer", candidates: candidates, live: [], limit: 8
       ).filter { $0.sessionID == "new" }.map(\.account), ["/a"])
+  }
+
+  // MARK: - SessionHistory
+
+  static func sessionHistory() {
+    section("SessionHistory.pick")
+    func row(
+      _ id: String, _ lastAt: String, account: String = "/a", vendor: UsageVendor = .claude,
+      isChild: Bool = false
+    ) -> UsageSessionRow {
+      UsageSessionRow(
+        account: account, vendor: vendor, sessionID: id, cwd: "/work/\(id)",
+        firstAt: date(lastAt).addingTimeInterval(-600), lastAt: date(lastAt), isChild: isChild)
+    }
+    let rows = [
+      row("old", "2026-09-18T09:00:00Z"),
+      row("new", "2026-09-21T09:00:00Z"),
+      row("live", "2026-09-21T10:00:00Z"),
+      row("codex", "2026-09-21T12:00:00Z", vendor: .codex),
+      row("child", "2026-09-21T13:00:00Z", isChild: true),
+      row("theirs", "2026-09-20T09:00:00Z", account: "/b"),
+      // The copy a handover staged on /b, written later than the original on /a.
+      row("new", "2026-09-21T11:00:00Z", account: "/b"),
+    ]
+    func ids(_ account: String?) -> [String] {
+      SessionHistory.pick(from: rows, account: account, live: ["live"]).map(\.sessionID)
+    }
+    expectEqual(
+      "one account's, newest first, without the live one, another vendor's or a child's",
+      ids("/a"), ["new", "old"])
+    expectEqual("another account's are its own", ids("/b"), ["new", "theirs"])
+    expectEqual(
+      "every account's, with an id held by two accounts listed once",
+      ids(nil), ["new", "theirs", "old"])
+    expectEqual(
+      "and that once on the account that wrote it last",
+      SessionHistory.pick(from: rows, account: nil, live: []).first { $0.sessionID == "new" }?
+        .account, "/b")
+
+    section("SessionHistory.days")
+    let now = parisDate(2026, 9, 28, 10)
+    let english = Locale(identifier: "en_US")
+    func title(_ year: Int, _ month: Int, _ day: Int) -> String {
+      SessionHistory.dayTitle(
+        for: parisDate(year, month, day, 15), now: now, calendar: paris, locale: english)
+    }
+    expectEqual("today", title(2026, 9, 28), "Today")
+    expectEqual("yesterday", title(2026, 9, 27), "Yesterday")
+    expectEqual("earlier this week by weekday", title(2026, 9, 22), "Tuesday")
+    expectEqual("a week ago by date", title(2026, 9, 21), "Sep 21")
+    expectEqual("another year with its year", title(2025, 12, 31), "Dec 31, 2025")
+    let dayRows = [
+      UsageSessionRow(
+        account: "/a", vendor: .claude, sessionID: "late", cwd: "/w",
+        firstAt: parisDate(2026, 9, 27, 22), lastAt: parisDate(2026, 9, 27, 23), isChild: false),
+      UsageSessionRow(
+        account: "/a", vendor: .claude, sessionID: "early", cwd: "/w",
+        firstAt: parisDate(2026, 9, 27, 0), lastAt: parisDate(2026, 9, 27, 1), isChild: false),
+      UsageSessionRow(
+        account: "/a", vendor: .claude, sessionID: "now", cwd: "/w",
+        firstAt: parisDate(2026, 9, 28, 8), lastAt: parisDate(2026, 9, 28, 9), isChild: false),
+    ]
+    let days = SessionHistory.days(
+      SessionHistory.pick(from: dayRows, account: "/a", live: []), now: now, calendar: paris,
+      locale: english)
+    expectEqual(
+      "a day per local calendar day, newest first", days.map(\.title), ["Today", "Yesterday"])
+    expectEqual(
+      "each day's rows in the order they came", days.map { $0.rows.map(\.sessionID) },
+      [["now"], ["late", "early"]])
+
+    section("SessionHistory.matches")
+    check("no query matches everything", SessionHistory.matches("  ", title: nil, cwd: "/w"))
+    check(
+      "a title matches regardless of case and accents",
+      SessionHistory.matches("revue", title: "Révue de l'app", cwd: "/w"))
+    check(
+      "so does the folder",
+      SessionHistory.matches("silhouette", title: nil, cwd: "/Users/o/Projects/apps/silhouette"))
+    check(
+      "every word has to be found, in either",
+      SessionHistory.matches(
+        "mobile silhouette", title: "Mobile app viability", cwd: "/p/silhouette"))
+    check(
+      "and a word found in neither is no match",
+      !SessionHistory.matches("mobile calque", title: "Mobile app viability", cwd: "/p/silhouette"))
+
+    section("SessionHistory.countLabel")
+    expectEqual(
+      "the whole history", SessionHistory.countLabel(shown: 1, total: 1, locale: english),
+      "1 session")
+    expectEqual(
+      "in thousands", SessionHistory.countLabel(shown: 1_461, total: 1_461, locale: english),
+      "1,461 sessions")
+    expectEqual(
+      "what a search leaves of it",
+      SessionHistory.countLabel(shown: 12, total: 1_461, locale: english),
+      "12 of 1,461 sessions")
   }
 
   // MARK: - LaunchScript

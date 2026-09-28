@@ -19,6 +19,12 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   the copy is in place. Armada asks once if any of them is working, and afterwards says in one
   message which sessions did not go and why.
 
+- **Session history for each account.** An account's pane has a Live and History switch in the
+  toolbar. History lists the account's Claude Code sessions that are no longer running, by day
+  and searchable by title or folder, including VS Code tabs restored with nothing behind them.
+  Pick one to see where it stopped, then resume it, continue it on another account, or read it.
+  Select several to continue them all on another account at once.
+
 - **Continue an ended session on another account.** Right-click a session under a project's
   Recently ended to continue it on another Claude account, as you already could while it ran.
   This includes a VS Code tab restored with no session behind it. Armada copies the conversation

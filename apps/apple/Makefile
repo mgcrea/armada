@@ -260,6 +260,7 @@ UNIT_SRC := \
 	Armada/UsageIngest.swift \
 	Armada/ProjectStats.swift \
 	Armada/RecentSessions.swift \
+	Armada/SessionHistory.swift \
 	Armada/LaunchScript.swift \
 	Armada/SessionClosePolicy.swift \
 	Armada/SessionBatch.swift \

@@ -15,6 +15,14 @@ struct AccountPaneView: View {
   /// Every selected row. One is a session's detail and none the account's overview; several
   /// are `SessionSelectionDetail`, which acts on all of them at once.
   @State private var selection: Set<String> = []
+
+  /// Live or History. Not remembered: the pane opens on what is running, so an account never
+  /// looks empty for having been left on History.
+  @State private var mode = SessionListMode.live
+  /// History's own selection, apart from the live list's: its ids are other sessions.
+  @State private var historySelection: Set<String> = []
+  @State private var history: SessionHistoryModel
+
   @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -42,6 +50,11 @@ struct AccountPaneView: View {
 
   private var sort: SessionSort { SessionSort(stored: storedSort) }
   private var grouping: SessionGrouping { SessionGrouping(stored: storedGrouping) }
+
+  init(account: Account) {
+    self.account = account
+    _history = State(initialValue: SessionHistoryModel(accountID: account.id))
+  }
 
   var body: some View {
     // A split view rather than an `.inspector`. The inspector is a system-owned
@@ -74,6 +87,9 @@ struct AccountPaneView: View {
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
     .toolbar {
+      ToolbarItem(placement: .principal) {
+        SessionListModePicker(mode: $mode)
+      }
       SessionToolbarItems(session: selected, account: account)
       NewSessionToolbarItem(
         agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
@@ -118,12 +134,34 @@ struct AccountPaneView: View {
   /// Take the session the menu bar panel asked for, if it asked for one here.
   private func applyRoute() {
     guard let id = route.takeSession(in: .account(account.id)) else { return }
+    // The panel only ever names a live session.
+    mode = .live
     selection = [id]
     scrollTarget = id
   }
 
-  /// The left half: the list's tally and sort menu, and the session list.
-  private var sessions: some View {
+  /// The left half: what is running, or the account's history.
+  @ViewBuilder private var sessions: some View {
+    switch mode {
+    case .live: liveSessions
+    case .history: historySessions
+    }
+  }
+
+  /// History: the sessions of this account with no process behind them, by day. See
+  /// `SessionHistoryList`.
+  private var historySessions: some View {
+    VStack(spacing: 0) {
+      SessionHistoryBar(model: history)
+      SessionHistoryList(model: history, selection: $historySelection)
+    }
+    // Only while History is up: the live list is short enough to read, and a search field
+    // over it would read as a search of the history too.
+    .searchable(text: $history.query, placement: .toolbar, prompt: "Search history")
+  }
+
+  /// The list's tally and sort menu, and the live session list.
+  private var liveSessions: some View {
     // The header is a sibling above the list, not a `safeAreaInset` on it. As an
     // inset it floats and the list scrolls under — which looks right at rest and
     // clips the first row on arrival, because the list starts at the container's
@@ -260,18 +298,35 @@ struct AccountPaneView: View {
   /// with nowhere to be described. Nil is now a state with a view of its own — see
   /// `AccountOverview` — reached at launch, by clicking empty space in the list, and by
   /// ⌘-clicking the selected row.
+  ///
+  /// Nil in History too, so the toolbar's session actions do not act on a live row that is
+  /// not on screen.
   private var selected: Session? {
-    guard selection.count == 1, let id = selection.first else { return nil }
+    guard mode == .live, selection.count == 1, let id = selection.first else { return nil }
     return account.sessions.sessions.first { $0.id == id }
   }
 
   /// The right half: several sessions, one, or the account they belong to.
   @ViewBuilder private var detail: some View {
     let several = sessions(for: selection)
-    if several.count > 1 {
+    if mode == .history {
+      historyDetail
+    } else if several.count > 1 {
       SessionSelectionDetail(sessions: several, account: account)
     } else if let selected {
       SessionDetail(session: selected, account: account, now: now)
+    } else {
+      AccountOverview(account: account, now: now)
+    }
+  }
+
+  /// History's right half, by the same rule: several, one, or the account.
+  @ViewBuilder private var historyDetail: some View {
+    let picked = history.entries(for: historySelection)
+    if picked.count > 1 {
+      SessionHistorySelectionDetail(entries: picked)
+    } else if let entry = picked.first {
+      SessionHistoryDetail(entry: entry)
     } else {
       AccountOverview(account: account, now: now)
     }
