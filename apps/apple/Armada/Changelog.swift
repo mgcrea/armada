@@ -212,7 +212,83 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_8_0, v1_7_0, v1_6_0, v1_5_0, v1_4_0]
+  static let releases: [Release] = [v1_9_0, v1_8_0, v1_7_0, v1_6_0, v1_5_0]
+
+  // swift-format-ignore
+  private static let v1_9_0: Release = Release(
+    version: "1.9.0",
+    date: "2026-09-28",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Move several sessions to another account at once.",
+            body: [
+              "Select more than one session in an account's list with ⌘-click or ⇧-click, or click a project's header to select all of its sessions. The pane then shows what they add up to, with Move, Continue and Close for all of them. Move copies each conversation to the other account, opens it there, and closes it here only once the copy is in place. Armada asks once if any of them is working, and afterwards says in one message which sessions did not go and why.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Session history for each account.",
+            body: [
+              "An account's pane has a Live and History switch in the toolbar. History lists the account's Claude Code sessions that are no longer running, by day and searchable by title or folder, including VS Code tabs restored with nothing behind them. Pick one to see where it stopped, then resume it, continue it on another account, or read it. Select several to continue them all on another account at once.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Continue an ended session on another account.",
+            body: [
+              "Right-click a session under a project's Recently ended to continue it on another Claude account, as you already could while it ran. This includes a VS Code tab restored with no session behind it. Armada copies the conversation across and opens a fork of it there, so the original stays where it was.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "A session continued on another account keeps its name.",
+            body: [
+              "The copy used to arrive as an untitled row.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Usage moved to the sidebar and the account's overview.",
+            body: [
+              "Each account in the sidebar shows its plan windows as the menu bar panel shows them, pace marker and reset included, with the session count under its icon. They stay in view whichever session is selected, and fade when the figures are old. With no session selected, the account's pane shows every window with its pace and projection above the week's chart, where the list of recent folders was. Above the session list, where the usage strip was, tiles count its sessions by state, with how many projects they span and how much context they hold.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "The main window has a toolbar.",
+            body: [
+              "A button beside the window controls hides and shows the sidebar, also on ⌃⌘S, so the session list and its details can have the whole width. On an account's pane, New Session is at its trailing edge and stays there whichever session is selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a supervisor session. Grok Build accounts get it too. A session's right-click still starts another one in its folder. Beside it, Focus, Read Transcript, Fork and Continue on act on the session you have selected, on ⌘O, ⌘T and ⌘D; Codex and Grok Build get Fork. They stay in the session's details too, with what each is about to do, and Close stays there alone. Add Account moved from under the sidebar to beside the sidebar button, so it stays reachable with the sidebar hidden.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "The sessions list shows how long each prompt cache stays warm.",
+            body: [
+              "A clock beside a stopped Claude Code session's token count counts down to when its cache expires. A mark after the count gives the cache's state: a flame while it is warm or the session is working, red once the session holds 500K tokens or more, an orange timer in the last quarter of its life, and a blue snowflake once it has expired. The countdown and the count take the same colour, since the count is what the next turn reads from the cache or writes back. On a selected row the whole column turns white so it stays readable. The session's context panel uses the same marks and colours.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 7,
+            headline: "Reading an account's usage no longer starts your MCP servers or runs your hooks.",
+            body: [
+              "Armada checks each Claude Code account's limits every few minutes by running `claude` in the background, and each check used to start every MCP server you have set up and run your hooks, including any `SessionEnd` hook that saves sessions. The check now runs with neither and gets the same figures.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "A plugin's background summaries no longer show up as sessions.",
+            body: [
+              "A plugin that runs `claude -p` from the temporary folder, as the remember plugin does, used to add a short-lived row named like `t-fc` to the sessions list.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_8_0: Release = Release(
@@ -349,112 +425,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_4_0: Release = Release(
-    version: "1.4.0",
-    date: "2026-09-18",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Read a session's conversation in a window of its own.",
-            body: [
-              "\"Read Transcript\", on a session's details or its right-click menu, opens what that session has been saying and doing — the turns, the thinking, the tool calls — in a window sized to read in, rather than in the sidebar's detail column, which wraps a conversation into a strip two or three words wide. Thinking and Tools are checkboxes in the footer, so a long session can be read as just the conversation, and the footer counts what the filters are hiding. A long tool result or a screenshot is cut short in the window and kept whole on disk. Claude Code sessions only: Codex and Grok Build write a transcript in a different format, and a session that has never been prompted has no transcript to read.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Follow a session as it works.",
-            body: [
-              "Follow, in the transcript window's footer, re-reads the file as it grows and keeps you at the newest turn — read a session beside the editor it is working in and watch the turns land. It is on by default and remembered for the next window. Expanding a row or changing a filter no longer yanks you to the bottom, so you can stop and read something while the session keeps going.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Choose what the transcript window is made of.",
-            body: [
-              "Settings ▸ General ▸ Transcript picks between Solid, Frosted, Desktop through and Glass. Solid is the default and stays the most readable: it is the only one whose contrast does not depend on the wallpaper behind it. The picker says what each one costs rather than what it looks like, because the other three get harder to read the busier the desktop is.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Start sessions in Ghostty.",
-            body: [
-              "Ghostty joins Terminal and iTerm in the terminal picker, and is offered only if you have it. It was left out on the belief that it could not run a session's startup script; measured against the call Armada actually makes, it runs it, starts in the right folder, and closes the surface when the session ends. One wart, and it is Ghostty's: launching it cold opens its own default window beside the session's.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 4,
-            headline: "Armada no longer quits while you resize a window.",
-            body: [
-              "Remembering a window's size wrote it out from inside the window's own layout pass, and that write could land back in the layout pass that was still running — which macOS refuses to re-enter, taking the app down with it. Resizing the main window or Settings could end the app outright. Sizes are still remembered, and one saved by an earlier version is still restored.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Move several sessions to another account at once.",
-            body: [
-              "Select more than one session in an account's list with ⌘-click or ⇧-click, or click a project's header to select all of its sessions. The pane then shows what they add up to, with Move, Continue and Close for all of them. Move copies each conversation to the other account, opens it there, and closes it here only once the copy is in place. Armada asks once if any of them is working, and afterwards says in one message which sessions did not go and why.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Continue an ended session on another account.",
-            body: [
-              "Right-click a session under a project's Recently ended to continue it on another Claude account, as you already could while it ran. This includes a VS Code tab restored with no session behind it. Armada copies the conversation across and opens a fork of it there, so the original stays where it was.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "A session continued on another account keeps its name.",
-            body: [
-              "The copy used to arrive as an untitled row.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Usage moved to the sidebar and the account's overview.",
-            body: [
-              "Each account in the sidebar shows its plan windows as the menu bar panel shows them, pace marker and reset included, with the session count under its icon. They stay in view whichever session is selected, and fade when the figures are old. With no session selected, the account's pane shows every window with its pace and projection above the week's chart, where the list of recent folders was. Above the session list, where the usage strip was, tiles count its sessions by state, with how many projects they span and how much context they hold.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "The main window has a toolbar.",
-            body: [
-              "A button beside the window controls hides and shows the sidebar, also on ⌃⌘S, so the session list and its details can have the whole width. On an account's pane, New Session is at its trailing edge and stays there whichever session is selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a supervisor session. Grok Build accounts get it too. A session's right-click still starts another one in its folder. Beside it, Focus, Read Transcript, Fork and Continue on act on the session you have selected, on ⌘O, ⌘T and ⌘D; Codex and Grok Build get Fork. They stay in the session's details too, with what each is about to do, and Close stays there alone. Add Account moved from under the sidebar to beside the sidebar button, so it stays reachable with the sidebar hidden.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "The sessions list shows how long each prompt cache stays warm.",
-            body: [
-              "A clock beside a stopped Claude Code session's token count counts down to when its cache expires. A mark after the count gives the cache's state: a flame while it is warm or the session is working, red once the session holds 500K tokens or more, an orange timer in the last quarter of its life, and a blue snowflake once it has expired. The countdown and the count take the same colour, since the count is what the next turn reads from the cache or writes back. On a selected row the whole column turns white so it stays readable. The session's context panel uses the same marks and colours.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

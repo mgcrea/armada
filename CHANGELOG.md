@@ -5,10 +5,10 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.8.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.9.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.9.0] - 2026-09-28
 
 ### Added
 
@@ -62,6 +62,18 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   the count is what the next turn reads from the cache or writes back. On a selected row the
   whole column turns white so it stays readable. The session's context panel uses the same marks
   and colours.
+
+### Fixed
+
+- **Reading an account's usage no longer starts your MCP servers or runs your hooks.** Armada
+  checks each Claude Code account's limits every few minutes by running `claude` in the
+  background, and each check used to start every MCP server you have set up and run your hooks,
+  including any `SessionEnd` hook that saves sessions. The check now runs with neither and gets
+  the same figures.
+
+- **A plugin's background summaries no longer show up as sessions.** A plugin that runs
+  `claude -p` from the temporary folder, as the remember plugin does, used to add a short-lived
+  row named like `t-fc` to the sessions list.
 
 ## [1.8.0] - 2026-09-25
 
