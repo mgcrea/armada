@@ -12,10 +12,11 @@ import Foundation
 ///   of the person's own.
 /// - `--allowedTools` names the read tools one by one, plus `armada_start_session` and
 ///   `armada_focus_session` only while Settings ▸ Supervisor allows writes. `--disallowedTools`
-///   names `armada_close_session` and `armada_send_message` always, and those two whenever writes
-///   are off. Headless, an allowed tool runs without asking and a tool that is not allowed is
-///   denied, never asked about, so the brief makes voice say what it will start and wait for the
-///   person to confirm on their next question. Bringing a window forward changes nothing, so it
+///   names `armada_close_session`, `armada_send_message`, `armada_save_schedule` and
+///   `armada_delete_schedule` always, and start and focus whenever writes are off. Headless, an
+///   allowed tool runs without asking and a tool that is not allowed is denied, never asked
+///   about, so the brief makes voice say what it will start and wait for the person to confirm
+///   on their next question. Bringing a window forward changes nothing, so it
 ///   runs when asked, without that confirmation.
 /// - `--setting-sources local` keeps the person's user settings, and with them their hooks
 ///   and plugins, out of it. Measured 2026-09-15: with user settings a SessionStart hook ran
@@ -40,7 +41,10 @@ public enum SupervisorArguments {
   public static let writeTools = [startTool, focusTool]
 
   /// Tools the server can offer that voice must never call, whatever Allow writes says.
-  public static let deniedTools = ["armada_close_session", "armada_send_message"]
+  public static let deniedTools = [
+    "armada_close_session", "armada_send_message", "armada_save_schedule",
+    "armada_delete_schedule",
+  ]
 
   public static let interruptRequestID = "armada-voice-interrupt"
 
