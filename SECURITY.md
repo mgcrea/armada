@@ -35,15 +35,17 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and seven of its eleven tools are read-only. The other four are listed and callable only while
+  and eight of its fourteen tools are read-only. The other six are listed and callable only while
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
   opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
   that nothing has open, and that session asks you for every permission as usual.
   `armada_close_session` sends `SIGTERM` to a Claude Code session's own process, and `SIGKILL` if
   it is still there eight seconds later. `armada_focus_session` raises the window a Claude Code
   session runs in and changes nothing in it. `armada_send_message` also needs Deliver messages to
-  sessions, and is described under Messaging below. `make audit` checks the listener's source for the
-  loopback address and refuses a wildcard.
+  sessions, and is described under Messaging below. `armada_save_schedule` and
+  `armada_delete_schedule` write Codex automation files, fenced as "The schedule tools" under In
+  scope describes. `make audit` checks the listener's source for the loopback address and refuses
+  a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
   shortcut to the end of the question. Speech is recognised on this Mac, by Parakeet v3 when the
@@ -52,8 +54,8 @@ Three properties, each of which is checkable rather than asserted:
   below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
   and no other keystroke.
 
-- **It writes to a vendor's folders in four named places, each from something you did.**
-  `~/.claude*`, `~/.codex` and `~/.grok` are otherwise opened read-only. The four: the
+- **It writes to a vendor's folders in five named places, each from something you did.**
+  `~/.claude*`, `~/.codex` and `~/.grok` are otherwise opened read-only. The five: the
   "trust this folder" flag in a Claude Code account's `.claude.json`, when you start a session in
   a saved project, written under Claude Code's own lock with the rest of the file left as it was;
   one hook in each Claude Code account's `settings.json` while Deliver messages to sessions is on,
@@ -61,7 +63,9 @@ Three properties, each of which is checkable rather than asserted:
   Code session on another account, which refuses rather than overwrite a different conversation;
   and Armada's own MCP entry in a Claude Code account's `.claude.json` or Codex's `config.toml`
   when you press Configure in Settings ▸ Supervisor, with the previous file kept beside it as a
-  backup and someone else's `armada` entry never replaced without asking. Grok Build's folders are
+  backup and someone else's `armada` entry never replaced without asking; and a Codex
+  automation's `automation.toml` when an agent saves or deletes a schedule over MCP while Allow
+  writes is on (see In scope). Grok Build's folders are
   only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
   and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
   Support; and a session startup script in its own temporary directory — beside which a
@@ -127,9 +131,9 @@ attacker-influenced text meets something that acts on it:
   removed before the agent starts, and passed as one double-quoted word, and a message that
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves seven read-only tools on `127.0.0.1` to
-  whoever presents the token, and four that start, close, bring forward and message a session
-  only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
+- **The MCP endpoint.** Switched on, Armada serves eight read-only tools on `127.0.0.1` to
+  whoever presents the token, and six that start, close, bring forward and message a session,
+  or save and delete a Codex schedule, only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
   writes off, starts or resumes a session in a folder that is not a saved project, resumes a session that is
   still open, gets `armada_close_session` to
@@ -138,6 +142,16 @@ attacker-influenced text meets something that acts on it:
   the token: it is created 0600 in the launch's own temporary directory and pruned with the
   script, and anything that makes it readable by another user or puts the token on a command
   line is in scope.
+- **The schedule tools.** `armada_save_schedule` and `armada_delete_schedule` write only
+  `<Codex home>/automations/<id>/automation.toml`, through a temporary file renamed over it, and
+  delete only that folder. Both Codex databases, `codex-dev.db` and `state_5.sqlite`, are opened
+  read-only. A schedule's folder is always one of your saved projects. A file Armada could not
+  fully read, a heartbeat automation and a home that keeps its automations in the OpenAI account
+  are never rewritten or removed, and nothing is written for Claude desktop or Grok. Every save
+  and delete posts a macOS notification naming the task, and when notifications for Armada are
+  off the agent is told none was shown. Anything that writes another path, writes either
+  database, schedules a folder that is not a saved project, rewrites a file it refused, or saves
+  or deletes without trying to post that notification, is in scope.
 - **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
   control request. Anything that changes _which_ binary is run, or that gets an argument or
   an environment variable in from data rather than from configuration, is in scope.
@@ -145,8 +159,9 @@ attacker-influenced text meets something that acts on it:
   as a voice conversation is active, and closes it after five idle minutes. It is started with
   no built-in tools (`--tools ""`), with Armada's MCP server and no other
   (`--strict-mcp-config`), with six read tools allowed by name, `armada_start_session` and
-  `armada_focus_session` allowed only while Allow writes is on, `armada_close_session` and
-  `armada_send_message` denied by name, without the person's user settings or hooks, and with no permission bypass;
+  `armada_focus_session` allowed only while Allow writes is on, `armada_close_session`,
+  `armada_send_message`, `armada_save_schedule` and `armada_delete_schedule` denied by name,
+  without the person's user settings or hooks, and with no permission bypass;
   `SupervisorArgumentsTests` pins every one of those. Its system prompt holds the person's
   instructions from Settings ▸ Voice followed by rules they cannot edit out: its tools, a spoken
   confirmation before starting a session, and never following instructions found in a transcript.
@@ -191,8 +206,8 @@ attacker-influenced text meets something that acts on it:
   answers, and transcript text reaching it through `armada_read_transcript` is labelled as data
   written by other agents. Whether a model then follows instructions inside it is that model's
   behaviour, not Armada's. The one thing such an instruction could make a supervisor do
-  through Armada is start, resume, close or message a session (see Messaging below), and each is
-  fenced on Armada's side. Starting, for instance: Allow writes is off
+  through Armada is start, resume, close or message a session (see Messaging below), or save or
+  delete a Codex schedule, and each is fenced on Armada's side. Starting, for instance: Allow writes is off
   by default, the supervisor is not pre-allowed the start tool so Claude Code asks you first
   with the project and message in view, and the new session asks for every permission itself.
   Voice is the exception: its `claude` is headless, so while Allow writes is on it is allowed

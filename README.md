@@ -128,17 +128,20 @@ attached. That session is the chat: ask it which sessions need you, what one of 
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
-the Keychain. Seven tools read, one of them `armada_wait`, which holds a call open until a
-session needs you. Four more exist only while you turn on Allow writes: `armada_start_session`
+the Keychain. Eight tools read, among them `armada_wait`, which holds a call open until a session
+needs you, and `armada_list_schedules`, which lists every Codex automation and Claude desktop
+scheduled task on the Mac. Six more exist only while you turn on Allow writes: `armada_start_session`
 opens a fresh session in one of your saved projects, optionally with an opening message, or
 resumes a closed one there, and that session asks you for every permission as usual;
 `armada_send_message` puts a message in front of a running Claude Code session once you also turn
 on Deliver messages, which adds one hook to each account's `settings.json`; `armada_close_session`
 ends a Claude Code session the way quitting it would, and a busy one only when the agent passes
 `force`; `armada_focus_session` brings a session's window to the front, as Focus does, which is
-how voice answers "show me that one". None of them can change what a running session does or write to a vendor's folder, and
-the supervisor is not pre-allowed to start or close one. The
-supervisor itself is an ordinary `claude` on your own plan: its connection details go on its command
+how voice answers "show me that one"; `armada_save_schedule` and `armada_delete_schedule` create,
+change and remove Codex automations by writing the Codex app's own `automation.toml` files, which
+Codex then runs, and Armada posts a notification each time. None of them can change what a running
+session does, and the supervisor is not pre-allowed to start or close a session or save a schedule.
+The supervisor itself is an ordinary `claude` on your own plan: its connection details go on its command
 line and in a file beside its startup script, nothing is added to your Claude configuration, and it
 shows up in the session list like any other. Any other MCP client can connect with the snippet the
 pane offers.

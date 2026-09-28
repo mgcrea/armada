@@ -126,7 +126,7 @@ transcripts, separate rate limits.
 | `SessionClosing` / `SessionClosePolicy` | Close Session in the details, the row menus and the popover: asks before closing a session that is mid-turn, sends it through `SessionCloserBridge` as a person, and holds the refusal for whichever pane is up; the policy is the one difference from an agent's close, no throttle, and `make unit` checks it |
 | `SessionFocuser` (package) / `SessionFocuserBridge` | `armada_focus_session`'s door: finds the session's host on the main actor, runs the rows' `FocusSession.focus`, and falls back to LaunchServices when Armada, not frontmost, has its activation declined; one focus per two seconds |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
-| `ArmadaMCP` (package) | the eleven tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, the transcript condenser; `make -C apps/apple test` |
+| `ArmadaMCP` (package) | the fourteen tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
@@ -742,6 +742,8 @@ app running and never restarted or opened:
   already matches the file's. A task Armada paused, whose row still says `ACTIVE` with a time
   that has since passed, is due the moment it is made active again, and runs once. A task the
   Codex app paused has a null `next_run_at` and gets a fresh one. Armada writes neither Codex
-  database, so it cannot clear the stale time.
+  database, so it cannot clear the stale time; the save answer and its notification say it may
+  run at once instead, and say the same of a new rule on an active task, whose stored time came
+  from the old rule (inferred from `AB`, not measured).
 - **Removing the folder removes the task.** The row stays, still `ACTIVE`, and cannot fire:
   with no file, `zB` never sees it. Armada treats its id as taken.
