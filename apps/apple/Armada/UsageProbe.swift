@@ -39,11 +39,15 @@ nonisolated enum UsageProbe {
   /// because what `claude` loads depends on it, and a cwd inside a repo would have it
   /// resolving that project's settings and `CLAUDE.md` for a question that has nothing
   /// to do with any project. `ContextProbe` is the caller that wants the opposite.
+  ///
+  /// **Isolated for the same reason.** The person's hooks and MCP servers have no say in
+  /// an account's limits, and on a 3-minute timer they were eleven processes and a
+  /// plugin's failed save every time — see `ClaudeControl.isolation`.
   static func run(folder: ClaudeConfigFolder) -> UsageSnapshot? {
     guard
       let payload = ClaudeControl.request(
         subtype: "get_usage", folder: folder,
-        cwd: FileManager.default.homeDirectoryForCurrentUser)
+        cwd: FileManager.default.homeDirectoryForCurrentUser, isolated: true)
     else { return nil }
     return snapshot(from: payload)
   }

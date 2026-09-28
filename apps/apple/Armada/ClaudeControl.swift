@@ -31,6 +31,24 @@ nonisolated enum ClaudeControl {
   /// How long a process that ignored `terminate()` has before it is killed outright.
   static let killGrace: TimeInterval = 2
 
+  /// What `isolated` adds: no settings files, so none of the person's hooks or plugins,
+  /// and no MCP servers.
+  ///
+  /// **A probe is a whole session start and end to everything the person installed.**
+  /// Measured 2026-09-28 on 2.1.283, a `get_usage` from the home directory under the
+  /// default folder started 11 child processes — the MCP servers — and ran every user
+  /// hook. The remember plugin's `SessionEnd` took each probe for a finished session and
+  /// forced a save of it: 417 a day, every one failing, because Armada's `PATH` has no
+  /// `claude` for the save to call. With these flags the answer was the same, no hook
+  /// ran, and nothing was started beside the probe.
+  ///
+  /// **Both halves are needed.** `--setting-sources ''` alone stopped the hooks and kept
+  /// all 11 servers: they are configured in `~/.claude.json`, not in a settings file.
+  /// The empty string is an argument of its own, which `Process` passes as one.
+  static let isolation = [
+    "--setting-sources", "", "--strict-mcp-config", "--mcp-config", #"{"mcpServers":{}}"#,
+  ]
+
   /// Run one control request and return its success payload, or nil.
   ///
   /// Nil on every failure — no binary, a timeout, a non-success response, a malformed
@@ -47,17 +65,22 @@ nonisolated enum ClaudeControl {
   ///     project settings and `CLAUDE.md` from it, so a probe asking what a session
   ///     loads must run where that session runs, and a probe asking about an account
   ///     must not.
+  ///   - isolated: start `claude` without the person's settings or MCP servers — see
+  ///     `isolation`. For a question about the account, which neither changes. A probe
+  ///     asking what a session loads must leave it off, because both are part of the
+  ///     answer.
   static func request(
-    subtype: String, extra: String = "", folder: ClaudeConfigFolder, cwd: URL
+    subtype: String, extra: String = "", folder: ClaudeConfigFolder, cwd: URL,
+    isolated: Bool = false
   ) -> [String: Any]? {
     guard let executable = executable() else { return nil }
 
     let process = Process()
     process.executableURL = executable
     // `--verbose` is required alongside stream-json output, not optional detail.
-    process.arguments = [
-      "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-    ]
+    process.arguments =
+      ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+      + (isolated ? isolation : [])
     process.environment = environment(for: folder)
     process.currentDirectoryURL = cwd
 

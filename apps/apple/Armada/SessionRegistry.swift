@@ -106,6 +106,39 @@ struct SessionRegistry: Decodable, Identifiable, Sendable, Hashable {
   var isArmadaProbe: Bool {
     ProcessAncestry.parent(of: pid) == getpid()
   }
+
+  /// Whether this is a headless `claude` some tool ran in the temporary directory — a
+  /// plugin's summarizer, not a session.
+  ///
+  /// **The remember plugin's `t-XX` rows.** Its hooks summarize a session by running
+  /// `claude -p --no-session-persistence` with the cwd set to Python's
+  /// `tempfile.gettempdir()`, so a registry appears for the few seconds it runs and no
+  /// transcript ever does. Measured 2026-09-28 on 2.1.283: `"kind": "interactive"`,
+  /// `"entrypoint": "sdk-cli"`, `"name": "t-fc"` — the `T` of `/var/folders/…/T`,
+  /// lowercased. Nothing in the file says `-p`, and `sdk-cli` is every Agent SDK app
+  /// (see `isArmadaProbe`), so the folder is the only signal.
+  ///
+  /// **The temporary directory itself, not anything under it.** `ProjectPath.isTemporary`
+  /// is a prefix test, and a session someone started in `/tmp/scratch` is still theirs.
+  /// Nobody opens a conversation in the per-user `T` folder on purpose.
+  var isTemporaryDirectorySpawn: Bool {
+    Self.temporaryDirectory.contains(ProjectPath.normalize(cwd))
+  }
+
+  /// The per-user temporary directory both ways it is spelled.
+  ///
+  /// The registry records the resolved `/private/var/folders/…/T`, while
+  /// `NSTemporaryDirectory` answers `/var/folders/…/T/`. `realpath` is what bridges them:
+  /// `URL.resolvingSymlinksInPath` leaves `/var` as it is (measured the same day).
+  nonisolated private static let temporaryDirectory: Set<String> = {
+    let spelled = NSTemporaryDirectory()
+    var spellings: Set<String> = [ProjectPath.normalize(spelled)]
+    if let resolved = realpath(spelled, nil) {
+      spellings.insert(ProjectPath.normalize(String(cString: resolved)))
+      free(resolved)
+    }
+    return spellings
+  }()
 }
 
 extension SessionRegistry {
@@ -132,6 +165,6 @@ extension SessionRegistry {
         else { return nil }
         return registry
       }
-      .filter { $0.isAlive && !$0.isArmadaProbe }
+      .filter { $0.isAlive && !$0.isArmadaProbe && !$0.isTemporaryDirectorySpawn }
   }
 }

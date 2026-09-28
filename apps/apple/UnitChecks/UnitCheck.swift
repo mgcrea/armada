@@ -1888,9 +1888,18 @@ struct UnitCheck {
       .ready(folderName: ".codex-claude-acme"))
 
     section("AddedHomes")
-    let suite = "armada.unit-check.\(UUID().uuidString)"
+    // A suite named by path, not by name: `removePersistentDomain` empties a named suite but
+    // cfprefsd leaves its plist in ~/Library/Preferences, one more file per run. A path puts
+    // the file in a folder this check deletes.
+    let suiteFolder = FileManager.default.temporaryDirectory.appending(
+      path: "armada-unit-defaults-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(at: suiteFolder, withIntermediateDirectories: true)
+    let suite = suiteFolder.appending(path: "defaults").path(percentEncoded: false)
     let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    defer {
+      defaults.removePersistentDomain(forName: suite)
+      try? FileManager.default.removeItem(at: suiteFolder)
+    }
     AddedHomes.add("/h/.codex-a", for: .codex, in: defaults)
     AddedHomes.add("/h/.codex-a", for: .codex, in: defaults)
     AddedHomes.add("/h/.codex-b", for: .codex, in: defaults)

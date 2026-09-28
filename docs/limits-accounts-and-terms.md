@@ -201,6 +201,10 @@ Four sources, in the order Armada now prefers them.
      spawned process writes `sessions/<pid>.json` (`"entrypoint": "sdk-cli"`) for as long as
      it runs, so without a filter it shows up in Armada's own session list as a ghost row.
      `SessionRegistry.isArmadaProbe` drops any registry whose process is Armada's child.
+   - **Isolated since 2026-09-28.** Run plainly, each probe started the person's 11 MCP
+     servers and ran their hooks, and one plugin's `SessionEnd` tried to save every probe as
+     a session, 417 times a day. `UsageProbe` now passes `ClaudeControl.isolation` (no
+     settings files, no MCP servers) and gets the same answer.
    - **~1.2s warm**, and one process per config folder. Too expensive for the 30s file
      poll; fine on a 3-minute timer and when the popover opens.
    - **Same shape as the cache.** The `rate_limits` object it answers with has the same

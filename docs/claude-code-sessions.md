@@ -88,6 +88,17 @@ One file per live session, named by PID:
   second or so it lives, then deletes it. The registry pid is the spawned process itself, so
   an app that probes has to drop registries whose parent is its own pid. The `sdk-cli`
   entrypoint is not enough on its own: Agent SDK apps write it too.
+- **So does a plugin's `claude -p`, and those rows are named `t-XX`.** The remember plugin
+  summarizes sessions with `claude -p --no-session-persistence --model haiku`, run with its cwd
+  set to the per-user temporary directory. Measured 2026-09-28 on 2.1.283, it writes
+  `"kind": "interactive"`, `"entrypoint": "sdk-cli"`, `"cwd": "/private/var/folders/…/T"` and a
+  derived `"name": "t-fc"`, and never a transcript. Nothing in the file marks it as `-p`, so
+  Armada drops registries whose cwd is exactly that directory
+  (`SessionRegistry.isTemporaryDirectorySpawn`).
+- **Every headless `claude` also runs the person's hooks and starts their MCP servers**,
+  unless it is told not to. `--setting-sources ''` keeps the hooks out, and
+  `--strict-mcp-config --mcp-config '{"mcpServers":{}}'` the servers, which live in
+  `~/.claude.json` rather than a settings file. See `ClaudeControl.isolation`.
 
 ## Transcripts
 
