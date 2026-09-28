@@ -60,10 +60,15 @@ nonisolated enum ClaudeDesktopSchedules {
   }
 
   /// Epoch milliseconds, or an ISO 8601 string: the app's code writes numbers, but a string costs
-  /// nothing to accept.
+  /// nothing to accept. JavaScript's `toISOString()` produces fractional seconds.
   private static func date(_ value: Any?) -> Date? {
     if let ms = value as? NSNumber { return Date(timeIntervalSince1970: ms.doubleValue / 1000) }
-    if let text = value as? String { return ISO8601DateFormatter().date(from: text) }
+    if let text = value as? String {
+      let withFractional = ISO8601DateFormatter()
+      withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      if let date = withFractional.date(from: text) { return date }
+      return ISO8601DateFormatter().date(from: text)
+    }
     return nil
   }
 }

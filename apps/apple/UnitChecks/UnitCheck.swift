@@ -2879,9 +2879,17 @@ struct UnitCheck {
       """)
     put("acct", "org2", #"{"scheduledTasks":[],"recordedSkips":{}}"#)
     put("acct", "org3", "not json")
+    put(
+      "acct", "org4",
+      """
+      {"scheduledTasks":[
+        {"id":"iso-frac","lastRunAt":"2026-09-28T07:00:00.500Z"},
+        {"id":"iso-whole","fireAt":"2026-09-28T10:00:00Z"}
+      ],"recordedSkips":{}}
+      """)
 
     let tasks = ClaudeDesktopSchedules.read(root: root)
-    check("two tasks from one file, none from the empty or broken ones", tasks.count == 2)
+    check("four tasks from two valid files, none from the empty or broken ones", tasks.count == 4)
     check(
       "a cron task",
       tasks.first
@@ -2890,10 +2898,14 @@ struct UnitCheck {
           lastRunAt: Date(timeIntervalSince1970: 1_790_000_000), enabled: true))
     check(
       "a one-time task, disabled",
-      tasks.last
+      tasks[1]
         == ClaudeDesktopSchedules.ScheduledTask(
           id: "once", account: "acct/org1", cronExpression: nil,
           fireAt: Date(timeIntervalSince1970: 1_790_086_400), lastRunAt: nil, enabled: false))
+    check(
+      "an ISO string with fractional seconds",
+      tasks[2].id == "iso-frac" && tasks[2].lastRunAt != nil)
+    check("an ISO string with whole seconds", tasks[3].id == "iso-whole" && tasks[3].fireAt != nil)
     check(
       "a missing root reads as nothing",
       ClaudeDesktopSchedules.read(root: root.appending(path: "none")).isEmpty)
