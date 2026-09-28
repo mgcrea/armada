@@ -51,6 +51,7 @@ struct UnitCheck {
     sessionBatch()
     newAccount()
     addedHomes()
+    codexAutomationFile()
     editorLaunch()
     claudeTrust()
     transcriptHandover()
@@ -2105,6 +2106,201 @@ struct UnitCheck {
   static func isRefused(_ check: NewAccount.Check) -> Bool {
     if case .refused = check { return true }
     return false
+  }
+
+  // MARK: - Codex automation files
+
+  /// The shape the Codex app's own writer (`dB` in ChatGPT.app's app.asar) produces, with the
+  /// person's prompt swapped for one that exercises every escape.
+  static let codexGolden = """
+    version = 1
+    id = "daily-cadence-market-intelligence"
+    kind = "cron"
+    name = "Daily cadence market intelligence"
+    prompt = "Line one\\nSay \\"hi\\"\\tC:\\\\path\\r\\nÉté 🌞"
+    status = "PAUSED"
+    rrule = "RRULE:FREQ=WEEKLY;BYHOUR=7;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA"
+    model = "gpt-5.5"
+    reasoning_effort = "medium"
+    execution_environment = "local"
+    target = { type = "project", project_id = "d2ef9214-8cf5-41bc-b2c9-31ce7a11ac6b" }
+    cwds = ["/Users/olivier/Projects/cadence/cadence-platform"]
+    created_at = 1786005649808
+    updated_at = 1789932688817
+
+    """
+
+  static func codexAutomationFile() {
+    section("Codex automation files")
+
+    guard case .automation(let parsed) = CodexAutomationFile.parse(codexGolden) else {
+      check("the golden file parses", false)
+      return
+    }
+    check("the prompt's escapes decode", parsed.prompt == "Line one\nSay \"hi\"\tC:\\path\r\nÉté 🌞")
+    check(
+      "the project target decodes",
+      parsed.target == .project("d2ef9214-8cf5-41bc-b2c9-31ce7a11ac6b"))
+    check("cwds decode", parsed.cwds == ["/Users/olivier/Projects/cadence/cadence-platform"])
+    check(
+      "timestamps decode",
+      parsed.createdAt == 1_786_005_649_808 && parsed.updatedAt == 1_789_932_688_817)
+    check("it writes back byte for byte", CodexAutomationFile.serialize(parsed) == codexGolden)
+
+    var projectless = parsed
+    projectless.target = .projectless
+    projectless.model = nil
+    projectless.reasoningEffort = nil
+    let written = CodexAutomationFile.serialize(projectless)
+    check(
+      "projectless is an inline table", written.contains("\ntarget = { type = \"projectless\" }\n"))
+    check(
+      "an absent model writes no line",
+      !written.contains("model =") && !written.contains("reasoning_effort ="))
+    check(
+      "optional keys round-trip",
+      {
+        var extra = parsed
+        extra.notificationPolicy = "failed_runs_only"
+        extra.pluginTemplateId = "tpl"
+        extra.localEnvironmentConfigPath = "/tmp/env.toml"
+        guard
+          case .automation(let back) = CodexAutomationFile.parse(
+            CodexAutomationFile.serialize(extra))
+        else { return false }
+        return back == extra
+      }())
+
+    let heartbeat = """
+      version = 1
+      id = "beat"
+      kind = "heartbeat"
+      name = "Beat"
+      prompt = "p"
+      status = "ACTIVE"
+      rrule = "RRULE:FREQ=MINUTELY;INTERVAL=30"
+      target_thread_id = "thread-1"
+      created_at = 1
+      updated_at = 2
+
+      """
+    if case .automation(let beat) = CodexAutomationFile.parse(heartbeat) {
+      check(
+        "a heartbeat parses with its thread",
+        beat.kind == "heartbeat" && beat.targetThreadId == "thread-1")
+      check(
+        "a heartbeat writes back byte for byte", CodexAutomationFile.serialize(beat) == heartbeat)
+    } else {
+      check("a heartbeat parses", false)
+    }
+
+    func handEdited(_ text: String) -> Bool {
+      if case .handEdited = CodexAutomationFile.parse(text) { return true }
+      return false
+    }
+    check("a comment is hand-edited", handEdited(codexGolden + "# note\n"))
+    check("an unknown key is hand-edited", handEdited(codexGolden + "color = \"red\"\n"))
+    check(
+      "a literal string is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(of: "model = \"gpt-5.5\"", with: "model = 'gpt-5.5'")))
+    check(
+      "a multi-line string is hand-edited",
+      handEdited(
+        codexGolden.replacingOccurrences(of: "model = \"gpt-5.5\"", with: "model = \"\"\"gpt\"\"\"")
+      ))
+    check(
+      "an unknown escape is hand-edited",
+      handEdited(codexGolden.replacingOccurrences(of: "\\tC:", with: "\\uC:")))
+    check("a duplicate key is hand-edited", handEdited(codexGolden + "name = \"again\"\n"))
+    check(
+      "version 2 is not an automation",
+      {
+        if case .notAutomation = CodexAutomationFile.parse(
+          codexGolden.replacingOccurrences(of: "version = 1", with: "version = 2"))
+        {
+          return true
+        }
+        return false
+      }())
+    check(
+      "a cron without cwds is not an automation",
+      {
+        let text =
+          codexGolden.split(separator: "\n").filter { !$0.hasPrefix("cwds") }
+          .joined(separator: "\n") + "\n"
+        if case .notAutomation = CodexAutomationFile.parse(text) { return true }
+        return false
+      }())
+
+    // The schedule check, one case per branch of Codex's `DB`/`EB`.
+    let accepted = [
+      "RRULE:FREQ=WEEKLY;BYHOUR=7;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA",
+      "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=30",
+      "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=18;BYMINUTE=0",
+      "RRULE:FREQ=HOURLY;BYMINUTE=0",
+      "RRULE:FREQ=HOURLY;INTERVAL=4",
+      "RRULE:FREQ=DAILY;COUNT=1;BYHOUR=8;BYMINUTE=0",
+    ]
+    for rule in accepted {
+      check("accepts \(rule)", CodexAutomationFile.scheduleRefusal(rule) == nil)
+    }
+    let refused = [
+      "RRULE:FREQ=MINUTELY;INTERVAL=5",
+      "RRULE:FREQ=MONTHLY;BYMONTHDAY=1",
+      "RRULE:FREQ=YEARLY",
+      "RRULE:FREQ=HOURLY;BYMINUTE=15",
+      "RRULE:FREQ=HOURLY;BYDAY=MO",
+      "RRULE:FREQ=DAILY;BYHOUR=25",
+      "RRULE:FREQ=DAILY;BYSETPOS=1",
+      "DTSTART:20260101T000000Z\nRRULE:FREQ=DAILY",
+      "every day at 7",
+      "",
+    ]
+    for rule in refused {
+      check("refuses \(rule.debugDescription)", CodexAutomationFile.scheduleRefusal(rule) != nil)
+    }
+    check(
+      "a refusal quotes the rule",
+      CodexAutomationFile.scheduleRefusal("RRULE:FREQ=YEARLY")?.contains("FREQ=YEARLY") == true)
+
+    // Review Focus 3: lowercase and a missing prefix are Codex's rule, spelled loosely.
+    check(
+      "lowercase and no prefix normalise",
+      CodexAutomationFile.normalizedRRule("freq=daily;byhour=7;byminute=0")
+        == "RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0")
+    check(
+      "a normalised rule is accepted",
+      CodexAutomationFile.scheduleRefusal("freq=daily;byhour=7;byminute=0") == nil)
+
+    check(
+      "every day of the week reads as daily",
+      CodexAutomationFile.summary(
+        "RRULE:FREQ=WEEKLY;BYHOUR=7;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA")
+        == "daily at 07:00")
+    check(
+      "named days are listed",
+      CodexAutomationFile.summary("RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=18;BYMINUTE=0")
+        == "weekly on Mon, Wed at 18:00")
+    check("hourly", CodexAutomationFile.summary("RRULE:FREQ=HOURLY;BYMINUTE=0") == "hourly")
+    check(
+      "every 4 hours",
+      CodexAutomationFile.summary("RRULE:FREQ=HOURLY;INTERVAL=4") == "every 4 hours")
+    check(
+      "once",
+      CodexAutomationFile.summary("RRULE:FREQ=DAILY;COUNT=1;BYHOUR=8;BYMINUTE=0") == "once at 08:00"
+    )
+    check(
+      "unparseable falls back to the rule", CodexAutomationFile.summary("nonsense") == "nonsense")
+
+    check(
+      "a slug",
+      CodexAutomationFile.slug("  Daily Cadence: market intel! ") == "daily-cadence-market-intel")
+    check("an empty slug becomes automation", CodexAutomationFile.slug("!!!") == "automation")
+    check(
+      "a taken id counts up",
+      CodexAutomationFile.uniqueID(for: "Probe", taken: ["probe", "probe-2"]) == "probe-3")
+    check("a free id is kept", CodexAutomationFile.uniqueID(for: "Probe", taken: []) == "probe")
   }
 
   // MARK: - EditorLaunch

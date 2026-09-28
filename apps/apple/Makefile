@@ -266,6 +266,7 @@ UNIT_SRC := \
 	Armada/SessionBatch.swift \
 	Armada/NewAccount.swift \
 	Armada/CodexHome.swift \
+	Armada/CodexAutomationFile.swift \
 	Armada/GrokHome.swift \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \

@@ -151,6 +151,10 @@ writer `dB`, the atomic save `fB`, the id maker `Xz`, the schedule check `EB`/`D
 
 It refuses `MINUTELY`, `SECONDLY`, `MONTHLY`, `YEARLY` and any rule that does not parse.
 
+Armada is stricter than Codex in a few places — it also refuses `UNTIL`, `WKST`, `BYSETPOS`,
+`BYMONTHDAY`, and `BYHOUR` on an hourly rule — so a rule it accepts is one Codex schedules as
+written.
+
 **Deleting** removes the automation's folder. Codex's own delete also removes the database
 row; Armada writes neither Codex database, so that row stays until Codex drops it. Codex lists
 and schedules from the files, so the task is gone from both at once.
