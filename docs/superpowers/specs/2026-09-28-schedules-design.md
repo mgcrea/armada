@@ -135,9 +135,12 @@ writer `dB`, the atomic save `fB`, the id maker `Xz`, the schedule check `EB`/`D
 - **New ids:** made from the name as `Xz` does: lowercase, each run of other characters
   becomes `-`, leading and trailing `-` trimmed. A folder that exists, or a leftover database
   row with that id, moves it to `-2`, `-3`.
-- **`target`:** `{ type = "project", project_id = "…" }` when the project's folder is a root in
-  `<home>/state_5.sqlite` `project_roots` (read-only), otherwise `{ type = "projectless" }`.
-  `cwds` is always `[<the project's folder>]`.
+- **`target`:** `{ type = "project", project_id = "…" }` — the project's folder when it is a
+  root in `<home>/state_5.sqlite` `project_roots` (read-only), else the id Codex itself writes
+  for a folder it has not opened as a project: `local-` followed by the first 32 hex characters
+  of `sha256(<the folder>)`. Verified read-only against the person's own automation files: 8 of
+  9 carry a `local-` id and it holds for all 8. `cwds` is always `[<the project's folder>]`.
+  `projectless` is kept only as the shape for reading a file that already carries it.
 - **Updates:** read the file, change only the fields given, keep `created_at`, set
   `updated_at` to now. Codex's own writer drops keys it does not know, so a file Armada could
   read fully has nothing further to keep.
@@ -157,7 +160,9 @@ written.
 
 **Deleting** removes the automation's folder. Codex's own delete also removes the database
 row; Armada writes neither Codex database, so that row stays until Codex drops it. Codex lists
-and schedules from the files, so the task is gone from both at once.
+and schedules from the files, so the task is gone from both at once. Armada refuses to delete a
+heartbeat — it belongs to one Codex thread, and is changed in the Codex app — and a file it
+could not fully read.
 
 **An account-owned home is refused.** Codex has a mode that keeps automations in the database
 under an `account_id` and writes no files. A home whose `codex-dev.db` has any
@@ -206,7 +211,7 @@ Each one is a sentence handed back as the tool's failure, as the close tool's ar
   holding quotes, backslashes, tabs and newlines.
 - **Schedule check:** accepts and refuses the same rules as Codex's code, one case per branch.
 - **Ids:** made from names; collisions with a folder and with a leftover database row.
-- **`target`:** a project root found versus the `projectless` fallback.
+- **`target`:** a project root found versus the `local-<hash>` fallback.
 - **Refusals:** an account-owned home; a hand-edited file (an extra key, a literal string, a
   comment).
 - **Claude reader:** a fixture with a cron task, a `fireAt` task, and an unreadable file.

@@ -855,7 +855,11 @@ Add `import SQLite3` below `import Foundation` in `UnitCheck.swift`, call `codex
     check("status defaults to active", made.status == "ACTIVE")
     // Review Focus 5: the trailing slash is gone before it is written or matched.
     check("cwds is the normalised folder", made.cwds == ["/work/armada"])
-    check("no project root falls back to projectless", made.target == .projectless)
+    // Ruling m5: Codex writes `local-<hash>` for a folder that is not a project root, not
+    // `projectless` — verified read-only against the person's own automation files.
+    check(
+      "no project root falls back to the local hash Codex itself writes",
+      made.target == .project(localProjectID("/work/armada")))
     check("both timestamps are now", made.createdAt == 1_790_000_000_000 && made.updatedAt == made.createdAt)
     let file = store.directory.appending(path: "daily-probe/automation.toml")
     check(
@@ -893,6 +897,9 @@ Add `import SQLite3` below `import Foundation` in `UnitCheck.swift`, call `codex
     twin.name = "Daily  probe!"
     if case .saved(let second, _) = store.save(twin, now: now) {
       check("a colliding name counts up", second.id == "daily-probe-2")
+    } else {
+      // Ruling m7: this branch used to fall through silently on a failure.
+      check("a colliding name saves", false)
     }
 
     func refused(_ result: SaveResult) -> String? {

@@ -391,8 +391,8 @@ nonisolated enum CodexAutomationFile {
     }
     var body = trimmed.uppercased()
     if body.hasPrefix("RRULE:") { body = String(body.dropFirst(6)) }
-    let rawParts = body.split(separator: ";")
-    guard !rawParts.isEmpty else { return nil }
+    let rawParts = body.split(separator: ";", omittingEmptySubsequences: false)
+    guard !rawParts.isEmpty, rawParts.allSatisfy({ !$0.isEmpty }) else { return nil }
     var seenKeys: Set<Substring> = []
     for part in rawParts {
       let pair = part.split(separator: "=")

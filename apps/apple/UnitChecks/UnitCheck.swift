@@ -1,6 +1,7 @@
 import CoreGraphics
 import CryptoKit
 import Foundation
+import SQLite3
 
 /// Unit checks for the parts of Armada that are pure functions of their input.
 ///
@@ -52,6 +53,7 @@ struct UnitCheck {
     newAccount()
     addedHomes()
     codexAutomationFile()
+    codexAutomations()
     editorLaunch()
     claudeTrust()
     transcriptHandover()
@@ -2450,6 +2452,16 @@ struct UnitCheck {
     check(
       "an embedded CRLF is refused",
       CodexAutomationFile.scheduleRefusal("DTSTART:20260101T000000Z\r\nRRULE:FREQ=DAILY") != nil)
+    // Task 2 (added after Task 1 review): a trailing `;`, or `;;`, is an empty part.
+    check(
+      "an empty rule part is not normalised",
+      CodexAutomationFile.normalizedRRule("FREQ=DAILY;;BYHOUR=7") == nil)
+    check(
+      "a trailing `;` is an empty rule part",
+      CodexAutomationFile.normalizedRRule("FREQ=DAILY;BYHOUR=7;") == nil)
+    check(
+      "so is a rule Codex refuses for it",
+      CodexAutomationFile.scheduleRefusal("RRULE:FREQ=DAILY;;BYHOUR=7") != nil)
     check(
       "a non-zero minute is kept on a daily rule",
       CodexAutomationFile.summary("RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=30") == "daily at 07:30")
@@ -2460,6 +2472,308 @@ struct UnitCheck {
     check(
       "no BYHOUR still says the minute",
       CodexAutomationFile.summary("RRULE:FREQ=DAILY;BYMINUTE=30") == "daily at minute 30")
+  }
+
+  // MARK: - Codex automations on disk
+
+  /// A throwaway Codex home: `automations/`, and optionally the two databases with only the
+  /// columns Armada reads.
+  static func codexHomeFixture(
+    runRows: [(String, String?, Int64?, Int64?)] = [], roots: [(String, String)] = []
+  )
+    -> CodexHome
+  {
+    let base = FileManager.default.temporaryDirectory.appending(
+      path: "armada-codex-\(UUID().uuidString)/.codex")
+    try? FileManager.default.createDirectory(
+      at: base.appending(path: "sqlite"), withIntermediateDirectories: true)
+    func exec(_ url: URL, _ sql: String) {
+      var db: OpaquePointer?
+      sqlite3_open(url.path, &db)
+      sqlite3_exec(db, sql, nil, nil, nil)
+      sqlite3_close(db)
+    }
+    if !runRows.isEmpty {
+      let url = base.appending(path: "sqlite/codex-dev.db")
+      exec(
+        url,
+        "CREATE TABLE automations (id TEXT, account_id TEXT, next_run_at INTEGER, last_run_at INTEGER)"
+      )
+      for (id, account, next, last) in runRows {
+        exec(
+          url,
+          "INSERT INTO automations VALUES ('\(id)', \(account.map { "'\($0)'" } ?? "NULL"), "
+            + "\(next.map(String.init) ?? "NULL"), \(last.map(String.init) ?? "NULL"))")
+      }
+    }
+    if !roots.isEmpty {
+      let url = base.appending(path: "state_5.sqlite")
+      exec(url, "CREATE TABLE project_roots (project_id TEXT, position INTEGER, path TEXT)")
+      for (id, path) in roots {
+        exec(url, "INSERT INTO project_roots VALUES ('\(id)', 0, '\(path)')")
+      }
+    }
+    return CodexHome(base: base)
+  }
+
+  static func codexAutomations() {
+    section("Codex automations on disk")
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+    let create = SaveInput(
+      id: nil, name: "Daily probe", prompt: "Say \"probe\".",
+      rrule: "freq=daily;byhour=7;byminute=0",
+      cwd: "/work/armada/", model: "gpt-5.5", reasoningEffort: "medium", status: nil)
+
+    /// Codex's own `local-<hash>` id, computed the same way `CodexAutomations` does, so a check
+    /// on it does not just restate the implementation.
+    func localProjectID(_ folder: String) -> String {
+      let digest = SHA256.hash(data: Data(folder.utf8))
+      return "local-" + digest.map { String(format: "%02x", $0) }.joined().prefix(32)
+    }
+
+    // Review Focus 4: no database at all.
+    let bare = codexHomeFixture()
+    let store = CodexAutomations(home: bare)
+    check("an empty home lists nothing", store.list().isEmpty)
+    check("no database means no run times", store.runTimes().isEmpty)
+    check("no database is not account-owned", !store.isAccountOwned())
+
+    guard case .saved(let made, let created) = store.save(create, now: now) else {
+      check("a create saves", false)
+      return
+    }
+    check("a create says so", created)
+    check("the id is the slug", made.id == "daily-probe")
+    check(
+      "the rule is stored in Codex's spelling", made.rrule == "RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=0"
+    )
+    check("status defaults to active", made.status == "ACTIVE")
+    // Review Focus 5: the trailing slash is gone before it is written or matched.
+    check("cwds is the normalised folder", made.cwds == ["/work/armada"])
+    // Ruling m5: no project root falls back to Codex's own `local-<hash>`, not `projectless`.
+    check(
+      "no project root falls back to the local hash Codex itself writes",
+      made.target == .project(localProjectID("/work/armada")))
+    check(
+      "both timestamps are now",
+      made.createdAt == 1_790_000_000_000 && made.updatedAt == made.createdAt)
+    let file = store.directory.appending(path: "daily-probe/automation.toml")
+    check(
+      "the file on disk is the serializer's output",
+      (try? String(contentsOf: file, encoding: .utf8)) == CodexAutomationFile.serialize(made))
+    check(
+      "no temporary file is left",
+      (try? FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path))
+        == ["automation.toml"])
+    check("it lists", store.list().map(\.id) == ["daily-probe"])
+
+    // Review Focus 2: the same save again changes nothing but updated_at.
+    let later = now.addingTimeInterval(60)
+    var again = create
+    again.id = "daily-probe"
+    if case .saved(let second, let createdAgain) = store.save(again, now: later) {
+      check("an update is not a create", !createdAgain)
+      check(
+        "an update keeps the id and created_at",
+        second.id == made.id && second.createdAt == made.createdAt)
+      check("an update moves updated_at", second.updatedAt == 1_790_000_060_000)
+      check("no second folder", store.list().count == 1)
+    } else {
+      check("an update saves", false)
+    }
+
+    var pause = SaveInput(id: "daily-probe")
+    pause.status = "paused"
+    if case .saved(let paused, _) = store.save(pause, now: later) {
+      check(
+        "an update keeps what it was not given",
+        paused.prompt == made.prompt && paused.rrule == made.rrule)
+      check("paused is Codex's PAUSED", paused.status == "PAUSED")
+    } else {
+      check("a pause saves", false)
+    }
+
+    var twin = create
+    twin.name = "Daily  probe!"
+    if case .saved(let second, _) = store.save(twin, now: now) {
+      check("a colliding name counts up", second.id == "daily-probe-2")
+    } else {
+      // Ruling m7: this branch used to fall through silently on a failure.
+      check("a colliding name saves", false)
+    }
+
+    func refused(_ result: SaveResult) -> String? {
+      if case .refused(let why) = result { return why }
+      return nil
+    }
+    var bad = create
+    bad.rrule = "RRULE:FREQ=MONTHLY"
+    check(
+      "a rule Codex refuses is refused",
+      refused(store.save(bad, now: now))?.contains("FREQ=MONTHLY") == true)
+    check("an unknown id is refused", refused(store.save(SaveInput(id: "nope"), now: now)) != nil)
+    check(
+      // Ruling m9: `remove` and `save` (and Task 5's bridge) share one sentence for this.
+      "an unknown id's refusal is the shared sentence",
+      refused(store.save(SaveInput(id: "nope"), now: now)) == CodexAutomations.unknownID("nope"))
+    var noCwd = create
+    noCwd.cwd = nil
+    check("a create without a folder is refused", refused(store.save(noCwd, now: now)) != nil)
+    var badStatus = create
+    badStatus.status = "later"
+    check(
+      "a status other than active or paused is refused",
+      refused(store.save(badStatus, now: now)) != nil)
+
+    // Task 2 (added after Task 1 review): a control character other than \t, \n, \r is refused,
+    // in either field, since Codex's own writer would leave it raw and produce invalid TOML.
+    var controlName = create
+    controlName.name = "Daily\u{0001}probe"
+    check(
+      "a control character in the name is refused",
+      refused(store.save(controlName, now: now))?.contains("name") == true)
+    var controlPrompt = create
+    controlPrompt.name = "Another probe"
+    controlPrompt.prompt = "Say \u{0007}hi."
+    check(
+      "a control character in the prompt is refused",
+      refused(store.save(controlPrompt, now: now))?.contains("prompt") == true)
+    var tabPrompt = create
+    tabPrompt.name = "Tabbed probe"
+    tabPrompt.prompt = "Say\thi.\nAgain\r\n"
+    check(
+      "tab, newline and CR are not control characters Armada refuses",
+      {
+        if case .saved = store.save(tabPrompt, now: now) { return true }
+        return false
+      }())
+
+    let handDir = store.directory.appending(path: "hand")
+    try? FileManager.default.createDirectory(at: handDir, withIntermediateDirectories: true)
+    try?
+      (codexGolden.replacingOccurrences(of: "daily-cadence-market-intelligence", with: "hand")
+      + "# mine\n")
+      .write(to: handDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    check(
+      "a hand-edited file is listed as such",
+      store.list().contains {
+        if case .handEdited = $0.parsed { return $0.id == "hand" } else { return false }
+      })
+    check(
+      "a hand-edited file is not rewritten",
+      refused(store.save(SaveInput(id: "hand"), now: now)) != nil)
+    check(
+      "a hand-edited file is not removed",
+      {
+        if case .refused = store.remove(id: "hand") { return true }
+        return false
+      }())
+
+    // Ruling m14: a heartbeat is refused too — it belongs to one Codex thread, changed only in
+    // the Codex app, not something Armada's save or remove touches.
+    let beat = CodexAutomation(
+      id: "beat", kind: "heartbeat", name: "Beat", prompt: "p", status: "ACTIVE",
+      rrule: "RRULE:FREQ=MINUTELY;INTERVAL=30", model: nil, reasoningEffort: nil,
+      notificationPolicy: nil, pluginTemplateId: nil, executionEnvironment: "local",
+      localEnvironmentConfigPath: nil, target: nil, cwds: [], targetThreadId: "thread-1",
+      createdAt: 1, updatedAt: 2)
+    let beatDir = store.directory.appending(path: "beat")
+    try? FileManager.default.createDirectory(at: beatDir, withIntermediateDirectories: true)
+    try? CodexAutomationFile.serialize(beat)
+      .write(to: beatDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    check(
+      "a heartbeat lists as an automation",
+      store.list().contains {
+        if case .automation(let a) = $0.parsed { return $0.id == "beat" && a.kind == "heartbeat" }
+        return false
+      })
+    check(
+      "save refuses a heartbeat",
+      refused(store.save(SaveInput(id: "beat"), now: now))?.contains("thread") == true)
+    check(
+      "remove refuses a heartbeat, tied to one Codex thread",
+      {
+        if case .refused(let why) = store.remove(id: "beat") { return why.contains("thread") }
+        return false
+      }())
+    check("a heartbeat is not removed", store.list().contains { $0.id == "beat" })
+
+    check(
+      "remove takes the folder",
+      {
+        if case .removed = store.remove(id: "daily-probe-2") { return true }
+        return false
+      }())
+    check("and it is gone", !store.list().contains { $0.id == "daily-probe-2" })
+    check(
+      "an unknown id is not removed",
+      {
+        if case .refused = store.remove(id: "nope") { return true }
+        return false
+      }())
+    check(
+      "a path is not an id",
+      {
+        if case .refused = store.remove(id: "../x") { return true }
+        return false
+      }())
+
+    // Ruling B2: a folder `list()` would itself skip (no automation.toml Codex would recognise)
+    // still blocks its name — `taken` is every entry in `directory`, not just the valid ones.
+    let blocked = CodexAutomations(home: codexHomeFixture())
+    let blockedDir = blocked.directory.appending(path: "daily-probe")
+    try? FileManager.default.createDirectory(at: blockedDir, withIntermediateDirectories: true)
+    let versionTwo = "version = 2\n"
+    try? versionTwo.write(
+      to: blockedDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    if case .saved(let takenSave, _) = blocked.save(create, now: now) {
+      check("a folder list() skips still blocks its name", takenSave.id == "daily-probe-2")
+    } else {
+      check("a save next to a blocked folder works", false)
+    }
+    check(
+      "the blocking file is untouched",
+      (try? String(contentsOf: blockedDir.appending(path: "automation.toml"), encoding: .utf8))
+        == versionTwo)
+
+    // Run state, leftover ids, project roots, account ownership.
+    let seeded = CodexAutomations(
+      home: codexHomeFixture(
+        runRows: [("old", nil, nil, 1_790_000_000_000), ("next", nil, 1_790_086_400_000, nil)],
+        roots: [("proj-1", "/work/cadence")]))
+    check(
+      "run times come from codex-dev.db",
+      seeded.runTimes()["old"]
+        == CodexAutomations.RunTimes(
+          lastRunAt: Date(timeIntervalSince1970: 1_790_000_000), nextRunAt: nil))
+    check("a project root resolves", seeded.projectID(forFolder: "/work/cadence/") == "proj-1")
+    var leftover = create
+    leftover.name = "old"
+    leftover.cwd = "/work/cadence"
+    if case .saved(let a, _) = seeded.save(leftover, now: now) {
+      check("a leftover database row's id is not reused", a.id == "old-2")
+      check("a project root becomes the target", a.target == .project("proj-1"))
+    } else {
+      check("a save next to leftovers works", false)
+    }
+
+    // Ruling m4: a root recorded on one side of the /var ↔ /private/var symlink still matches a
+    // folder given on the other side.
+    let projectDir = FileManager.default.temporaryDirectory
+      .appending(path: "armada-codex-project-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+    let plainPath = projectDir.path(percentEncoded: false)
+    let privatePath = plainPath.hasPrefix("/private/") ? plainPath : "/private" + plainPath
+    let symlinkStore = CodexAutomations(home: codexHomeFixture(roots: [("proj-sym", plainPath)]))
+    check(
+      "a root's plain spelling matches a folder given through /private",
+      symlinkStore.projectID(forFolder: privatePath) == "proj-sym")
+
+    let owned = CodexAutomations(home: codexHomeFixture(runRows: [("x", "acct-1", nil, nil)]))
+    check("an account_id row means account-owned", owned.isAccountOwned())
+    check(
+      "an account-owned home refuses a save",
+      refused(owned.save(create, now: now))?.contains("OpenAI account") == true)
   }
 
   // MARK: - EditorLaunch
