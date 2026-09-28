@@ -24,9 +24,6 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
       for listed in store.list() {
         switch listed.parsed {
         case .automation(let a):
-          // Measured: Codex does not update the run-times row when a file is paused, so a
-          // paused automation's `nextRunAt` from the database would be stale. Only an active
-          // file's next fire time is trustworthy.
           let run = runs[a.id]
           let heartbeat = a.kind == "heartbeat"
           out.append(
@@ -36,7 +33,10 @@ nonisolated struct ScheduleStoreBridge: ScheduleStore {
               status: a.apiStatus, rrule: a.rrule,
               summary: CodexAutomationFile.summary(a.rrule), cwd: a.cwds.first, model: a.model,
               reasoningEffort: a.reasoningEffort, lastRunAt: run?.lastRunAt,
-              nextRunAt: a.status == "ACTIVE" ? run?.nextRunAt : nil,
+              // Measured: Codex does not update the run-times row when a file is paused, so a
+              // paused automation's `nextRunAt` from the database would be stale. Only an
+              // active file's next fire time is trustworthy.
+              nextRunAt: a.apiStatus == "active" ? run?.nextRunAt : nil,
               prompt: a.prompt, editable: !owned && !heartbeat,
               readOnlyReason: owned
                 ? CodexAutomations.accountOwnedRefusal

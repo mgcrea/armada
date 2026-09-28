@@ -7,18 +7,21 @@ import Testing
 @Suite("schedule tools")
 struct ScheduleToolsTests {
 
-  private func table(_ store: FakeScheduleStore) -> ToolTable {
+  private func table(_ store: FakeScheduleStore, source: any FleetSource = FakeFleetSource())
+    -> ToolTable
+  {
     Tools.table(
-      source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
+      source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
       sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: store)
   }
 
   private func call(
     _ name: String, _ arguments: JSONValue = .object([:]),
-    store: FakeScheduleStore = FakeScheduleStore(),
+    store: FakeScheduleStore = FakeScheduleStore(), source: any FleetSource = FakeFleetSource(),
     allowWrites: Bool = true
   ) async -> ToolResult {
-    await table(store).call(name: name, arguments: arguments, allowWrites: allowWrites)
+    await table(store, source: source).call(
+      name: name, arguments: arguments, allowWrites: allowWrites)
   }
 
   @Test("The list is read-only and always listed; save and delete only behind the switch")
@@ -32,6 +35,7 @@ struct ScheduleToolsTests {
       t.listing(allowWrites: true).first { $0.name == "armada_save_schedule" })
     #expect(save.gate == .requiresWrites)
     #expect(save.annotations.destructiveHint == false)
+    #expect(save.annotations.idempotentHint == false)
     let delete = try #require(
       t.listing(allowWrites: true).first { $0.name == "armada_delete_schedule" })
     #expect(delete.annotations.destructiveHint == true)
@@ -45,14 +49,24 @@ struct ScheduleToolsTests {
     let rows = try #require(result.structuredContent?["schedules"]?.arrayValue)
     #expect(rows.count == 2)
     #expect(rows[0]["id"] == .string("daily-intel"))
+    #expect(rows[0]["accountId"] == .string("/Users/me/.codex"))
     #expect(rows[0]["summary"] == .string("daily at 07:00"))
     #expect(rows[0]["editable"] == .bool(true))
     let prompt = try #require(rows[0]["prompt"]?.stringValue)
     #expect(prompt.count == 101)
     #expect(prompt.hasSuffix("…"))
     #expect(rows[1]["editable"] == .bool(false))
+    #expect(rows[1]["prompt"] == nil)
     #expect(rows[1]["readOnlyReason"]?.stringValue?.contains("Claude app") == true)
     #expect(result.text.contains("2 schedules"))
+  }
+
+  @Test("An unlicensed Armada says it is watching nothing")
+  func listNotEntitled() async {
+    let store = FakeScheduleStore()
+    store.isEntitled = false
+    let result = await call("armada_list_schedules", store: store)
+    #expect(result.structuredContent?["watching"] == .bool(false))
   }
 
   @Test("Listing filters by vendor, and refuses an unknown one")
@@ -86,6 +100,21 @@ struct ScheduleToolsTests {
     #expect(store.saveRequests.isEmpty && store.deleteRequests.isEmpty)
   }
 
+  @Test("An unlicensed Armada saves and deletes nothing, even without `project`")
+  func notEntitled() async {
+    let store = FakeScheduleStore()
+    let source = FakeFleetSource()
+    source.projectsFixture = FakeFleetSource.projects(isEntitled: false)
+    let update = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "paused"], store: store,
+      source: source)
+    let delete = await call(
+      "armada_delete_schedule", ["id": "daily-intel"], store: store, source: source)
+    #expect(update.isError)
+    #expect(delete.isError)
+    #expect(store.saveRequests.isEmpty && store.deleteRequests.isEmpty)
+  }
+
   @Test("A create resolves the project and passes every field through")
   func create() async throws {
     let store = FakeScheduleStore()
@@ -103,6 +132,20 @@ struct ScheduleToolsTests {
     #expect(request.status == "paused")
     #expect(result.text.contains("Scheduled Daily intel"))
     #expect(result.structuredContent?["schedule"]?["created"] == .bool(true))
+  }
+
+  @Test("A paused save says Codex will not run it, not that it runs it")
+  func savePausedAnswer() async throws {
+    let store = FakeScheduleStore()
+    store.outcome = .saved(
+      ScheduleChange(
+        id: "daily-intel", name: "Daily intel", account: "Codex", summary: "daily at 07:00",
+        status: "paused", created: false))
+    let result = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "paused"], store: store)
+    #expect(!result.isError)
+    #expect(!result.text.contains("Codex runs it."))
+    #expect(result.text.contains("Codex will not run it until it is active."))
   }
 
   @Test("A create without its required fields is refused before the store")

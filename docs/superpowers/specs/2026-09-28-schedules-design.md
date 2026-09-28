@@ -42,9 +42,9 @@ Read, always listed. Every Codex automation in every Codex home, then every Clau
 task. Arguments: `vendor` (optional filter), `chars` (prompt length, the transcript tools'
 default and maximum).
 
-Each row: `vendor`, `account`, `id`, `name`, `status` (`active` or `paused`, or `unknown` for a
-row (`editable: false`) whose file Armada could not fully read), `rrule` or, for
-Claude, `cronExpression` or `fireAt`, `summary` (plain words: "daily at 07:00"), `cwd`,
+Each row: `vendor`, `accountId`, `account`, `id`, `name`, `status` (`active` or `paused`, or
+`unknown` for a row (`editable: false`) whose file Armada could not fully read), `rrule` or,
+for Claude, `cronExpression` or `fireAt`, `summary` (plain words: "daily at 07:00"), `cwd`,
 `model`, `reasoningEffort`, `lastRunAt`, `nextRunAt`, `prompt` (cut to `chars`), `editable`
 and, when `editable` is false, `readOnlyReason`.
 

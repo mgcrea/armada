@@ -125,7 +125,7 @@ public enum Tools {
     add(sendMessage: &table, source: source, sender: sender)
     add(focusSession: &table, source: source, focuser: focuser)
     add(saveSchedule: &table, source: source, store: schedules)
-    add(deleteSchedule: &table, store: schedules)
+    add(deleteSchedule: &table, source: source, store: schedules)
     return table
   }
 
@@ -1091,6 +1091,9 @@ public enum Tools {
         gate: .requiresWrites,
         annotations: .mutating(destructive: false, idempotent: false, openWorld: false))
     ) { arguments in
+      let projects = await source.projects()
+      guard projects.isEntitled else { return .failure(notEntitled) }
+
       func text(_ key: String) -> String? {
         arguments[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
       }
@@ -1112,8 +1115,6 @@ public enum Tools {
 
       var projectID: String?
       if arguments["project"] != nil {
-        let projects = await source.projects()
-        guard projects.isEntitled else { return .failure(notEntitled) }
         switch lookupProject(arguments["project"], in: projects) {
         case .refused(let refusal): return refusal
         case .found(let project): projectID = project.id
@@ -1130,15 +1131,21 @@ public enum Tools {
       case .refused(let message): return .failure(message)
       case .saved(let change), .deleted(let change):
         let verb = change.created ? "Scheduled" : "Updated"
+        let runs =
+          change.status == "active"
+          ? "Codex runs it."
+          : "Codex will not run it until it is active."
         return .answer(
           "\(verb) \(change.name) on \(change.account): \(change.summary), \(change.status). "
-            + "Codex runs it. A notification was posted.",
+            + "\(runs) A notification was posted.",
           ["schedule": changeValue(change)])
       }
     }
   }
 
-  private static func add(deleteSchedule table: inout ToolTable, store: any ScheduleStore) {
+  private static func add(
+    deleteSchedule table: inout ToolTable, source: any FleetSource, store: any ScheduleStore
+  ) {
     table.add(
       MCPTool(
         name: "armada_delete_schedule",
@@ -1158,10 +1165,14 @@ public enum Tools {
         gate: .requiresWrites,
         annotations: .mutating(destructive: true, idempotent: false, openWorld: false))
     ) { arguments in
-      guard let id = arguments["id"]?.stringValue?.trimmingCharacters(in: .whitespaces), !id.isEmpty
+      guard (await source.projects()).isEntitled else { return .failure(notEntitled) }
+
+      func text(_ key: String) -> String? {
+        arguments[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+      guard let id = text("id"), !id.isEmpty
       else { return .failure("Pass `id`, from armada_list_schedules.") }
-      let outcome = await store.delete(
-        DeleteScheduleRequest(id: id, account: arguments["account"]?.stringValue))
+      let outcome = await store.delete(DeleteScheduleRequest(id: id, account: text("account")))
       switch outcome {
       case .refused(let message): return .failure(message)
       case .saved(let change), .deleted(let change):
