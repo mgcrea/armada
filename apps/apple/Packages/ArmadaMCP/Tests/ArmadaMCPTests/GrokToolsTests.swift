@@ -53,7 +53,7 @@ struct GrokToolsTests {
   ) async -> ToolResult {
     await Tools.table(
       source: Self.source(), starter: FakeSessionStarter(), closer: closer, sender: sender,
-      focuser: FakeSessionFocuser()
+      focuser: FakeSessionFocuser(), schedules: FakeScheduleStore()
     ).call(name: name, arguments: arguments, allowWrites: true)
   }
 

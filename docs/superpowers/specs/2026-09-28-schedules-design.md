@@ -42,7 +42,8 @@ Read, always listed. Every Codex automation in every Codex home, then every Clau
 task. Arguments: `vendor` (optional filter), `chars` (prompt length, the transcript tools'
 default and maximum).
 
-Each row: `vendor`, `account`, `id`, `name`, `status` (`active` or `paused`), `rrule` or, for
+Each row: `vendor`, `account`, `id`, `name`, `status` (`active` or `paused`, or `unknown` for a
+row (`editable: false`) whose file Armada could not fully read), `rrule` or, for
 Claude, `cronExpression` or `fireAt`, `summary` (plain words: "daily at 07:00"), `cwd`,
 `model`, `reasoningEffort`, `lastRunAt`, `nextRunAt`, `prompt` (cut to `chars`), `editable`
 and, when `editable` is false, `readOnlyReason`.
@@ -179,8 +180,8 @@ list them but not change them."
   `taskId`), `cronExpression` or `fireAt`, `enabled` (`false` → paused, missing or `true` → active), and `lastRunAt`. Any other key is ignored. These
   names come from the app's code; no real task has been seen on this Mac yet.
 - **No prompt.** A task's prompt lives in a separate task file, and where the app keeps those
-  files was not pinned down, so v1 does not read them. The row carries `prompt: null` and
-  says so.
+  files was not pinned down, so v1 does not read them. The row carries no `prompt` key, and
+  the reason says why.
 - **Rows** are labelled by `<account>/<org>`. Armada opens no Claude credential, so it does not
   tie them to its Claude accounts in this version.
 - **Every row** is `editable: false`, with the reason above.

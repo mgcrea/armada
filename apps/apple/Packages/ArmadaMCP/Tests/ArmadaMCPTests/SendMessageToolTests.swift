@@ -13,7 +13,7 @@ struct SendMessageToolTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(), sender: sender,
-      focuser: FakeSessionFocuser()
+      focuser: FakeSessionFocuser(), schedules: FakeScheduleStore()
     ).call(name: "armada_send_message", arguments: arguments, allowWrites: allowWrites)
   }
 
@@ -21,7 +21,7 @@ struct SendMessageToolTests {
   func listing() throws {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     #expect(!table.listing(allowWrites: false).contains { $0.name == "armada_send_message" })
     let tool = try #require(
       table.listing(allowWrites: true).first { $0.name == "armada_send_message" })

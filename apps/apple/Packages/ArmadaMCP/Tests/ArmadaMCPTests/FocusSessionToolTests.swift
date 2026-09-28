@@ -13,7 +13,7 @@ struct FocusSessionToolTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: focuser
+      sender: FakeMessageSender(), focuser: focuser, schedules: FakeScheduleStore()
     ).call(
       name: "armada_focus_session", arguments: arguments, allowWrites: allowWrites)
   }
@@ -22,7 +22,7 @@ struct FocusSessionToolTests {
   func listing() throws {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     #expect(!table.listing(allowWrites: false).contains { $0.name == "armada_focus_session" })
     let tool = try #require(
       table.listing(allowWrites: true).first { $0.name == "armada_focus_session" })

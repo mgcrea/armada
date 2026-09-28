@@ -13,7 +13,7 @@ struct StartSessionToolTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: starter, closer: FakeSessionCloser(), sender: FakeMessageSender(),
-      focuser: FakeSessionFocuser()
+      focuser: FakeSessionFocuser(), schedules: FakeScheduleStore()
     ).call(
       name: "armada_start_session", arguments: arguments, allowWrites: allowWrites)
   }
@@ -22,7 +22,7 @@ struct StartSessionToolTests {
   func listing() throws {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     #expect(!table.listing(allowWrites: false).contains { $0.name == "armada_start_session" })
     let tool = try #require(
       table.listing(allowWrites: true).first { $0.name == "armada_start_session" })
@@ -205,7 +205,7 @@ struct StartSessionToolTests {
   func readToolNames() {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     #expect(Tools.readToolNames == table.listing(allowWrites: false).map(\.name))
   }
 }

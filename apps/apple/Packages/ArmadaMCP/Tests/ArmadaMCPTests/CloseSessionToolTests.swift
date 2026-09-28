@@ -13,7 +13,7 @@ struct CloseSessionToolTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: closer, sender: FakeMessageSender(),
-      focuser: FakeSessionFocuser()
+      focuser: FakeSessionFocuser(), schedules: FakeScheduleStore()
     ).call(
       name: "armada_close_session", arguments: arguments, allowWrites: allowWrites)
   }
@@ -22,7 +22,7 @@ struct CloseSessionToolTests {
   func listing() throws {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser())
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     #expect(!table.listing(allowWrites: false).contains { $0.name == "armada_close_session" })
     let tool = try #require(
       table.listing(allowWrites: true).first { $0.name == "armada_close_session" })

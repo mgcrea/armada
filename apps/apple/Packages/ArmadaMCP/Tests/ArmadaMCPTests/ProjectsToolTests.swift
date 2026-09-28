@@ -12,7 +12,7 @@ struct ProjectsToolTests {
   ) async -> ToolResult {
     await Tools.table(
       source: source, starter: FakeSessionStarter(), closer: FakeSessionCloser(),
-      sender: FakeMessageSender(), focuser: FakeSessionFocuser()
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore()
     )
     .call(
       name: "armada_get_projects", arguments: arguments, allowWrites: false)
