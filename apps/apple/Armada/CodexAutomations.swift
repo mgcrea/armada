@@ -77,6 +77,11 @@ nonisolated struct CodexAutomations: Sendable {
     "No Codex automation \"\(id)\". armada_list_schedules names them."
   }
 
+  /// The sentence for a heartbeat: `save` and `remove` both refuse one, word for word.
+  static func heartbeatRefusal(_ id: String) -> String {
+    "\(id) is a heartbeat, tied to one Codex thread; change it in the Codex app."
+  }
+
   private func fileURL(_ id: String) -> URL {
     directory.appending(path: id, directoryHint: .isDirectory).appending(path: "automation.toml")
   }
@@ -186,13 +191,13 @@ nonisolated struct CodexAutomations: Sendable {
 
   private func performSave(_ input: SaveInput, now: Date) -> SaveResult {
     if isAccountOwned() { return .refused(Self.accountOwnedRefusal) }
-    if let name = input.name, let refusal = Self.controlCharacterRefusal(field: "name", in: name) {
-      return .refused(refusal)
-    }
-    if let prompt = input.prompt,
-      let refusal = Self.controlCharacterRefusal(field: "prompt", in: prompt)
-    {
-      return .refused(refusal)
+    for (field, value) in [
+      ("name", input.name), ("prompt", input.prompt), ("cwd", input.cwd), ("model", input.model),
+      ("reasoningEffort", input.reasoningEffort),
+    ] {
+      if let value, let refusal = Self.controlCharacterRefusal(field: field, in: value) {
+        return .refused(refusal)
+      }
     }
     let stamp = Int64((now.timeIntervalSince1970 * 1000).rounded())
 
@@ -222,15 +227,18 @@ nonisolated struct CodexAutomations: Sendable {
       case .notAutomation: return .refused("\(id) is not an automation Codex would run.")
       }
       guard automation.kind == "cron" else {
-        return .refused(
-          "\(id) is a heartbeat, tied to one Codex thread; change it in the Codex app.")
+        return .refused(Self.heartbeatRefusal(id))
       }
       created = false
     } else {
       guard let name = input.name, let prompt = input.prompt, let rule, let cwd = input.cwd else {
         return .refused("A new schedule needs `name`, `prompt`, `rrule` and `project`.")
       }
-      let taken = directoryEntries().union(runTimes().keys)
+      // APFS is case-insensitive: `Hand` and `hand` are the same folder to the filesystem, so
+      // a case-sensitive `taken` would let `uniqueID` hand out an id that collides with one.
+      let taken =
+        Set(directoryEntries().map { $0.lowercased() })
+        .union(runTimes().keys.map { $0.lowercased() })
       let folder = ProjectPath.normalize(cwd)
       automation = CodexAutomation(
         id: CodexAutomationFile.uniqueID(for: name, taken: taken), kind: "cron", name: name,
@@ -258,20 +266,34 @@ nonisolated struct CodexAutomations: Sendable {
       automation.reasoningEffort = effort.isEmpty ? nil : effort
     }
 
-    if let failure = write(automation) { return .refused(failure) }
+    if let failure = write(automation, created: created) { return .refused(failure) }
     return .saved(automation, created: created)
   }
 
-  /// `fB`: a temporary file beside the real one, then a rename over it. The error, or nil.
-  private func write(_ automation: CodexAutomation) -> String? {
+  /// `fB`: a temporary file beside the real one, then a rename over it.
+  ///
+  /// **A create never replaces.** It only ever `moveItem`s the temporary file into place, and
+  /// refuses outright if the target is somehow already there — case-insensitively, most often:
+  /// APFS treats `Hand` and `hand` as the same folder, so a `taken` set that missed that (fixed
+  /// above, in `taken`'s lowercasing) could otherwise hand out an id that already has a file
+  /// Armada never wrote, and `replaceItemAt` would happily overwrite it.
+  ///
+  /// **A folder this call created is removed if the write then fails**, so a failed create never
+  /// leaves an empty `<id>/` behind to block that id for good.
+  private func write(_ automation: CodexAutomation, created: Bool) -> String? {
     let target = fileURL(automation.id)
     let folder = target.deletingLastPathComponent()
     let temporary = folder.appending(
       path: ".automation.toml.tmp-\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString)")
+    let targetExists = FileManager.default.fileExists(atPath: target.path(percentEncoded: false))
+    if created && targetExists {
+      return "\(automation.id) already has a file Armada did not write; refusing to replace it."
+    }
+    let folderExisted = FileManager.default.fileExists(atPath: folder.path(percentEncoded: false))
     do {
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
       try Data(CodexAutomationFile.serialize(automation).utf8).write(to: temporary)
-      if FileManager.default.fileExists(atPath: target.path(percentEncoded: false)) {
+      if targetExists {
         _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
       } else {
         try FileManager.default.moveItem(at: temporary, to: target)
@@ -279,6 +301,7 @@ nonisolated struct CodexAutomations: Sendable {
       return nil
     } catch {
       try? FileManager.default.removeItem(at: temporary)
+      if created && !folderExisted { try? FileManager.default.removeItem(at: folder) }
       return "Could not write \(target.path(percentEncoded: false)): \(error.localizedDescription)"
     }
   }
@@ -296,7 +319,7 @@ nonisolated struct CodexAutomations: Sendable {
       return .refused("\(id) was edited by hand, so Armada leaves it for you to remove.")
     }
     guard automation.kind == "cron" else {
-      return .refused("\(id) is a heartbeat, tied to one Codex thread; change it in the Codex app.")
+      return .refused(Self.heartbeatRefusal(id))
     }
     do {
       try FileManager.default.removeItem(at: listed.fileURL.deletingLastPathComponent())

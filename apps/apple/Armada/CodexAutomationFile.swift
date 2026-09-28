@@ -395,8 +395,12 @@ nonisolated enum CodexAutomationFile {
     guard !rawParts.isEmpty, rawParts.allSatisfy({ !$0.isEmpty }) else { return nil }
     var seenKeys: Set<Substring> = []
     for part in rawParts {
-      let pair = part.split(separator: "=")
-      guard pair.count == 2, seenKeys.insert(pair[0]).inserted else { return nil }
+      // `omittingEmptySubsequences: false`, so `FREQ==DAILY`, `=FREQ=DAILY` and `BYHOUR=7=` each
+      // split into three-or-more pieces (an empty one among them) instead of quietly losing the
+      // empty piece and reading as a plausible two-piece pair.
+      let pair = part.split(separator: "=", omittingEmptySubsequences: false)
+      guard pair.count == 2, !pair[0].isEmpty, !pair[1].isEmpty, seenKeys.insert(pair[0]).inserted
+      else { return nil }
     }
     return "RRULE:" + body
   }

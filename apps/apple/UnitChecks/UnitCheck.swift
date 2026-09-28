@@ -2462,6 +2462,17 @@ struct UnitCheck {
     check(
       "so is a rule Codex refuses for it",
       CodexAutomationFile.scheduleRefusal("RRULE:FREQ=DAILY;;BYHOUR=7") != nil)
+    // Fix round 1, issue 2: `split(separator: "=")` used to drop an empty key or value, so a
+    // doubled `=`, a leading `=`, or a trailing `=` on one part read as a plausible pair.
+    check(
+      "a doubled = is refused",
+      CodexAutomationFile.normalizedRRule("FREQ==DAILY;BYHOUR=7;BYMINUTE=0") == nil)
+    check(
+      "a leading = is refused",
+      CodexAutomationFile.normalizedRRule("=FREQ=DAILY;BYHOUR=7;BYMINUTE=0") == nil)
+    check(
+      "a trailing = on a part is refused",
+      CodexAutomationFile.normalizedRRule("FREQ=DAILY;BYHOUR=7=;BYMINUTE=0") == nil)
     check(
       "a non-zero minute is kept on a daily rule",
       CodexAutomationFile.summary("RRULE:FREQ=DAILY;BYHOUR=7;BYMINUTE=30") == "daily at 07:30")
@@ -2647,13 +2658,22 @@ struct UnitCheck {
         if case .saved = store.save(tabPrompt, now: now) { return true }
         return false
       }())
+    // Fix round 1: the same rule applies to `cwd`, `model` and `reasoningEffort`, not just
+    // `name` and `prompt`.
+    var controlEffort = create
+    controlEffort.name = "Yet another probe"
+    controlEffort.reasoningEffort = "medium\u{0001}"
+    check(
+      "a control character in reasoningEffort is refused",
+      refused(store.save(controlEffort, now: now))?.contains("reasoningEffort") == true)
 
     let handDir = store.directory.appending(path: "hand")
     try? FileManager.default.createDirectory(at: handDir, withIntermediateDirectories: true)
-    try?
-      (codexGolden.replacingOccurrences(of: "daily-cadence-market-intelligence", with: "hand")
-      + "# mine\n")
-      .write(to: handDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    let handBytes =
+      codexGolden.replacingOccurrences(of: "daily-cadence-market-intelligence", with: "hand")
+      + "# mine\n"
+    try? handBytes.write(
+      to: handDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
     check(
       "a hand-edited file is listed as such",
       store.list().contains {
@@ -2662,6 +2682,11 @@ struct UnitCheck {
     check(
       "a hand-edited file is not rewritten",
       refused(store.save(SaveInput(id: "hand"), now: now)) != nil)
+    check(
+      // Fix round 1: not just refused — its bytes must not have moved either.
+      "and its bytes are unchanged",
+      (try? String(contentsOf: handDir.appending(path: "automation.toml"), encoding: .utf8))
+        == handBytes)
     check(
       "a hand-edited file is not removed",
       {
@@ -2688,12 +2713,17 @@ struct UnitCheck {
         return false
       })
     check(
-      "save refuses a heartbeat",
-      refused(store.save(SaveInput(id: "beat"), now: now))?.contains("thread") == true)
+      // Fix round 1: `save` and `remove` now share one `heartbeatRefusal` constant.
+      "save refuses a heartbeat with the shared sentence",
+      refused(store.save(SaveInput(id: "beat"), now: now))
+        == CodexAutomations.heartbeatRefusal(
+          "beat"))
     check(
-      "remove refuses a heartbeat, tied to one Codex thread",
+      "remove refuses a heartbeat with the shared sentence",
       {
-        if case .refused(let why) = store.remove(id: "beat") { return why.contains("thread") }
+        if case .refused(let why) = store.remove(id: "beat") {
+          return why == CodexAutomations.heartbeatRefusal("beat")
+        }
         return false
       }())
     check("a heartbeat is not removed", store.list().contains { $0.id == "beat" })
@@ -2736,6 +2766,30 @@ struct UnitCheck {
       (try? String(contentsOf: blockedDir.appending(path: "automation.toml"), encoding: .utf8))
         == versionTwo)
 
+    // Fix round 1, issue 1: APFS is case-insensitive, so a folder spelled `Hand` blocks a create
+    // that would slug to `hand` — and if it somehow didn't, `write` must still never replace a
+    // file it did not itself just create.
+    let caseInsensitive = CodexAutomations(home: codexHomeFixture())
+    let handCollisionDir = caseInsensitive.directory.appending(path: "Hand")
+    try? FileManager.default.createDirectory(
+      at: handCollisionDir, withIntermediateDirectories: true)
+    let handCollisionBytes = "mine = 1\n"
+    try? handCollisionBytes.write(
+      to: handCollisionDir.appending(path: "automation.toml"), atomically: true, encoding: .utf8)
+    var handCreate = create
+    handCreate.name = "hand"
+    if case .saved(let handSaved, let handCreated) = caseInsensitive.save(handCreate, now: now) {
+      check("a create says so even next to a case-different folder", handCreated)
+      check("`hand` counts up past `Hand`", handSaved.id == "hand-2")
+    } else {
+      check("a save next to a case-different folder works", false)
+    }
+    check(
+      "Hand/automation.toml's bytes are unchanged",
+      (try? String(
+        contentsOf: handCollisionDir.appending(path: "automation.toml"), encoding: .utf8))
+        == handCollisionBytes)
+
     // Run state, leftover ids, project roots, account ownership.
     let seeded = CodexAutomations(
       home: codexHomeFixture(
@@ -2769,11 +2823,37 @@ struct UnitCheck {
       "a root's plain spelling matches a folder given through /private",
       symlinkStore.projectID(forFolder: privatePath) == "proj-sym")
 
+    // Fix round 1: the check above depends on this machine's TMPDIR happening to sit under
+    // `/var`. This one makes its own symlink, so it holds regardless of TMPDIR's spelling.
+    let realProjectDir = FileManager.default.temporaryDirectory
+      .appending(
+        path: "armada-codex-real-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(at: realProjectDir, withIntermediateDirectories: true)
+    let linkedProjectDir = FileManager.default.temporaryDirectory
+      .appending(
+        path: "armada-codex-link-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? FileManager.default.createSymbolicLink(
+      at: linkedProjectDir, withDestinationURL: realProjectDir)
+    let ownSymlinkStore = CodexAutomations(
+      home: codexHomeFixture(
+        roots: [("proj-own-symlink", realProjectDir.path(percentEncoded: false))]))
+    check(
+      "a folder reached through a symlink made for this check still finds its project root",
+      ownSymlinkStore.projectID(forFolder: linkedProjectDir.path(percentEncoded: false))
+        == "proj-own-symlink")
+
     let owned = CodexAutomations(home: codexHomeFixture(runRows: [("x", "acct-1", nil, nil)]))
     check("an account_id row means account-owned", owned.isAccountOwned())
     check(
       "an account-owned home refuses a save",
       refused(owned.save(create, now: now))?.contains("OpenAI account") == true)
+    check(
+      // Fix round 1: `remove` on an account-owned home was never checked.
+      "an account-owned home refuses a remove",
+      {
+        if case .refused(let why) = owned.remove(id: "x") { return why.contains("OpenAI account") }
+        return false
+      }())
   }
 
   // MARK: - EditorLaunch
