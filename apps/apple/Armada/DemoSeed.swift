@@ -1078,9 +1078,16 @@ import SwiftUI
         created.isReleasedWhenClosed = false
         created.setContentSize(hosting.view.fittingSize)
         created.center()
-        // `orderFrontRegardless` rather than `makeKeyAndOrderFront`: a borderless window
-        // cannot become key, and ordering is within the app — it takes no focus.
-        created.orderFrontRegardless()
+        // Not `makeKeyAndOrderFront`: a borderless window cannot become key. And
+        // `orderFrontRegardless` only in a focused run: it takes no focus, but it lifts
+        // the panel above every other app's windows although Armada is not active, so
+        // under `--no-activate` it landed on top of the reader's work. Plain `orderFront`
+        // puts it on screen behind them, where ScreenCaptureKit reads it just the same.
+        if ScreenshotMode.staysInBackground {
+          created.orderFront(nil)
+        } else {
+          created.orderFrontRegardless()
+        }
         window = created
       }
     }
