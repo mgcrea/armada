@@ -32,6 +32,13 @@ import { priceIdFor, verifySignature } from "./stripe";
 /** Long enough to swallow a Stripe redelivery, short enough to be useful. */
 const SEND_COOLDOWN_MS = 5 * 60 * 1000;
 
+/**
+ * How old an event claim with no `handled_at` must be before another delivery
+ * may take it over. Longer than any handler runs, short of Stripe's first few
+ * retries.
+ */
+const ABANDONED_CLAIM_MS = 5 * 60 * 1000;
+
 /** A resend body is an address. Anything larger is not one. */
 const MAX_BODY_BYTES = 4096;
 
@@ -593,24 +600,33 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   // The unique constraint on `stripe_session_id` stops a second licence, which
   // is not the same as stopping a second email: past the send cooldown, a
   // redelivery or a "Resend" from the dashboard would mail the key again.
+  //
+  // Or by taking over a claim that was abandoned: no `handled_at`, and older
+  // than any handler runs. That is a Worker killed between the insert and its
+  // answer, which could never give its claim back; Stripe's retries used to
+  // read as duplicates for days, and the payment could end with no licence.
+  // The takeover is the same single statement, so two retries racing for one
+  // stale claim still see exactly one `changes`.
+  const now = new Date();
+  const abandoned = new Date(now.getTime() - ABANDONED_CLAIM_MS).toISOString();
   const claimed = await env.DB.prepare(
     "INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)" +
-      " ON CONFLICT (id) DO NOTHING",
+      " ON CONFLICT (id) DO UPDATE SET received_at = excluded.received_at" +
+      " WHERE stripe_events.handled_at IS NULL AND stripe_events.received_at < ?",
   )
-    .bind(event.id, event.type, new Date().toISOString())
+    .bind(event.id, event.type, now.toISOString(), abandoned)
     .run();
   if ((claimed.meta.changes ?? 0) !== 1) return new Response("duplicate", { status: 200 });
 
   // Given back unless the event was actually handled. A 500 must stay
   // retryable: that is what turns a failed send into a second attempt rather
   // than a customer who paid and got nothing. A throw gives it back too, then
-  // carries on into the runtime's own 500.
+  // carries on into the runtime's own 500. A claim nobody gives back, because
+  // the Worker died holding it, is taken over once it is stale, above.
   //
-  // Two things this cannot give back, both rare enough to leave to the log. A
+  // One thing this cannot give back, rare enough to leave to the log: a
   // duplicate that arrives while the first delivery is still running answers
-  // 200 before that delivery's outcome is known. And a Worker killed mid-event
-  // leaves its claim behind, so the event answers "duplicate" until its row
-  // is deleted by hand.
+  // 200 before that delivery's outcome is known.
   let response: Response;
   try {
     response = await dispatch(event, env);
@@ -618,7 +634,15 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
     await releaseEvent(env, event.id);
     throw error;
   }
-  if (response.status >= 300) await releaseEvent(env, event.id);
+  if (response.status >= 300) {
+    await releaseEvent(env, event.id);
+  } else {
+    // What makes the claim permanent: a handled event is a duplicate forever,
+    // an unhandled one only until it looks abandoned.
+    await env.DB.prepare("UPDATE stripe_events SET handled_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), event.id)
+      .run();
+  }
   return response;
 };
 
