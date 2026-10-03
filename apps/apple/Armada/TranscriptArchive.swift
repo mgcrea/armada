@@ -138,10 +138,32 @@ nonisolated enum TranscriptArchive {
     return picked.appending(path: folderName, directoryHint: .isDirectory)
   }
 
-  static func readManifest(at root: URL) -> Manifest? {
+  /// A manifest that is there and cannot be read.
+  struct UnreadableManifest: LocalizedError {
+    let root: URL
+
+    var errorDescription: String? {
+      "\(manifestName) in \(root.lastPathComponent) could not be read, so Armada will not write "
+        + "over it. Fix or remove the file, then archive again."
+    }
+  }
+
+  /// The archive's manifest, or nil when there is none, which is what a new archive is.
+  ///
+  /// **Throws, rather than answering nil, for a manifest that is there and will not decode.**
+  /// It used to answer nil, and the pass then assigned a fresh manifest and wrote it over the
+  /// original: every account's folder re-mapped on somebody's archive, by a build that could
+  /// not read what a newer one wrote, and `prune` working from the new map. The file is left
+  /// exactly as it is, and the pass fails with a sentence the pane shows.
+  static func readManifest(at root: URL) throws -> Manifest? {
     let url = root.appending(path: manifestName, directoryHint: .notDirectory)
-    guard let data = try? Data(contentsOf: url) else { return nil }
-    return try? JSONDecoder().decode(Manifest.self, from: data)
+    guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+      return nil
+    }
+    guard let data = try? Data(contentsOf: url),
+      let manifest = try? JSONDecoder().decode(Manifest.self, from: data)
+    else { throw UnreadableManifest(root: root) }
+    return manifest
   }
 
   static func writeManifest(_ manifest: Manifest, at root: URL) throws {

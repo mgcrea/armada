@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// One reading of an account's windows, at the moment Claude Code took it.
 ///
@@ -49,6 +50,13 @@ final class UsageHistory {
 
   var totalSampleCount: Int { samples.values.reduce(0) { $0 + $1.count } }
 
+  /// Set when the file would not decode AND could not be moved aside, so the original is
+  /// still at `fileURL`. Writes stand down while it is, rather than replacing a month of
+  /// samples with the few recorded since launch. See `StoreFile`.
+  @ObservationIgnored private var unwritable = false
+
+  private static let logger = Logger(subsystem: "io.mgcrea.armada", category: "usage-history")
+
   private static let decoder: JSONDecoder = {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
@@ -65,10 +73,25 @@ final class UsageHistory {
     return encoder
   }()
 
+  /// Read the saved history.
+  ///
+  /// **A file this build cannot read is moved aside, never overwritten**, as `ProjectStore`
+  /// does with projects.json. Reading it as empty used to let the next sample write over it.
   func load() {
-    guard let url = fileURL, let data = try? Data(contentsOf: url),
-      let file = try? Self.decoder.decode(UsageHistoryFile.self, from: data)
-    else { return }
+    guard let url = fileURL else { return }
+    let file: UsageHistoryFile
+    switch StoreFile.load(url, decode: { try Self.decoder.decode(UsageHistoryFile.self, from: $0) })
+    {
+    case .absent:
+      return
+    case .decoded(let decoded):
+      file = decoded
+    case .setAside(let aside):
+      unwritable = aside == nil
+      let outcome = aside.map { "moved aside to \($0.lastPathComponent)" } ?? "left in place"
+      Self.logger.error("usage-history.json unreadable, \(outcome, privacy: .public)")
+      return
+    }
     let cutoff = Date.now.addingTimeInterval(-Self.retention)
     samples = file.accounts.mapValues { $0.filter { $0.t > cutoff }.sorted { $0.t < $1.t } }
       .filter { !$0.value.isEmpty }
@@ -123,7 +146,7 @@ final class UsageHistory {
   /// I/O on a file that grows all month and has no business being on the thread
   /// drawing the window. Same split as the transcript scan in `TranscriptTitle`.
   private func write() {
-    guard let url = fileURL,
+    guard !unwritable, let url = fileURL,
       let data = try? Self.encoder.encode(UsageHistoryFile(accounts: samples))
     else { return }
     let directory = url.deletingLastPathComponent()

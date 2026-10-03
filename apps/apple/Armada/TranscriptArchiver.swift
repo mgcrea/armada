@@ -325,7 +325,7 @@ actor ArchiveWorker {
   ) -> Result<TranscriptArchive.Report, Error> {
     do {
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-      let existing = TranscriptArchive.readManifest(at: root)
+      let existing = try TranscriptArchive.readManifest(at: root)
       if existing == nil { seen = [:] }
       var manifest = existing ?? TranscriptArchive.Manifest()
       let assigned = TranscriptArchive.assign(sources, in: manifest)

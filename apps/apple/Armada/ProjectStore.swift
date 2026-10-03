@@ -54,9 +54,7 @@ final class ProjectStore {
     do {
       set(try ProjectsFile.decode(data), persist: false)
     } catch {
-      let stamp = Int(Date.now.timeIntervalSince1970)
-      let aside = url.deletingLastPathComponent().appending(path: "\(Self.fileName).bak-\(stamp)")
-      try? FileManager.default.moveItem(at: url, to: aside)
+      StoreFile.moveAside(url)
       Self.logger.error(
         "projects.json unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
     }

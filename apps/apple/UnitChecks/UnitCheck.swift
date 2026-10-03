@@ -59,6 +59,7 @@ struct UnitCheck {
     claudeTrust()
     transcriptHandover()
     transcriptArchive()
+    storeFile()
     messageHook()
     mouseChord()
     modifierHold()
@@ -3831,6 +3832,86 @@ struct UnitCheck {
       !fileManager.fileExists(
         atPath: archiveRoot.appending(path: "claude/projects/-work-armada").path))
     expectEqual("forever means no cutoff", TranscriptArchive.cutoff(days: 0, now: Date()), nil)
+
+    // A manifest that is there and will not decode. It used to read as no manifest: a fresh
+    // one was assigned and written over it, re-mapping every account's folder on someone's
+    // archive, and prune then works from that map.
+    let manifestFile = archiveRoot.appending(path: TranscriptArchive.manifestName)
+    let newer = Data(#"{"format":2,"accounts":{"/u/.claude":{"vendor":"gemini"}}}"#.utf8)
+    try? newer.write(to: manifestFile)
+    do {
+      _ = try TranscriptArchive.readManifest(at: archiveRoot)
+      check("an unreadable manifest is refused, not read as none", false)
+    } catch {
+      check("an unreadable manifest is refused, not read as none", true)
+      check(
+        "naming the file and saying it will not be written over",
+        error.localizedDescription.contains(TranscriptArchive.manifestName)
+          && error.localizedDescription.contains("will not write over it"))
+    }
+    expectEqual("and is left exactly as it was", try? Data(contentsOf: manifestFile), newer)
+    try? fileManager.removeItem(at: manifestFile)
+    check(
+      "no manifest at all is none, which a new archive is",
+      (try? TranscriptArchive.readManifest(at: archiveRoot)) == .some(nil))
+  }
+
+  // MARK: - StoreFile
+
+  static func storeFile() {
+    section("StoreFile")
+    // A store that would not decode used to read as an empty one, and the next write put
+    // that empty store over the original: a month of usage history gone to a downgrade.
+    let fileManager = FileManager.default
+    let folder = fileManager.temporaryDirectory.appending(
+      path: "armada-storefile-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: folder) }
+    let file = folder.appending(path: "usage-history.json")
+    let decode = { (data: Data) in try JSONDecoder().decode([String].self, from: data) }
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    if case .absent = StoreFile.load(file, now: now, decode: decode) {
+      check("no file is absent, which is an empty store", true)
+    } else {
+      check("no file is absent, which is an empty store", false)
+    }
+
+    try? Data(#"["a","b"]"#.utf8).write(to: file)
+    if case .decoded(let rows) = StoreFile.load(file, now: now, decode: decode) {
+      expectEqual("a file that decodes is its rows", rows, ["a", "b"])
+    } else {
+      check("a file that decodes is its rows", false)
+    }
+
+    // A value this build's types do not accept, which is what a downgrade meeting a newer
+    // field looks like.
+    let broken = Data(#"["a", 2]"#.utf8)
+    try? broken.write(to: file)
+    switch StoreFile.load(file, now: now, decode: decode) {
+    case .setAside(let aside):
+      check("a file that does not decode is set aside, not read as empty", aside != nil)
+      expectEqual(
+        "under its own name and the time", aside?.lastPathComponent,
+        "usage-history.json.bak-1800000000")
+      expectEqual(
+        "with the original bytes", aside.flatMap { try? Data(contentsOf: $0) }, broken)
+      check(
+        "so nothing is left at the store's path to write over",
+        !fileManager.fileExists(atPath: file.path))
+    default:
+      check("a file that does not decode is set aside, not read as empty", false)
+    }
+
+    // The same second again, where the name is taken: the move fails, and the original has
+    // to stay put and be reported as such, so the store knows not to write.
+    try? broken.write(to: file)
+    if case .setAside(let aside) = StoreFile.load(file, now: now, decode: decode) {
+      check("a copy that cannot be moved aside is reported as still in place", aside == nil)
+      expectEqual("and is left exactly as it was", try? Data(contentsOf: file), broken)
+    } else {
+      check("a copy that cannot be moved aside is reported as still in place", false)
+    }
   }
 
   // MARK: - ClaudeTrust
