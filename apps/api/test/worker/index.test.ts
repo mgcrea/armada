@@ -26,6 +26,7 @@ const PULL_BOUND = 32;
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM licenses").run();
   await env.DB.prepare("DELETE FROM stripe_events").run();
+  await env.DB.prepare("DELETE FROM early_revocations").run();
 });
 
 afterEach(() => {
@@ -608,6 +609,44 @@ describe("refunds and disputes", () => {
     const won = await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
     expect(await won.text()).toBe("dispute won: restored 0");
     expect((await row(built.env))?.revoked_at).toBe(when);
+  });
+
+  // Fulfilment answers 500 until the key is mailed, and Stripe retries it for
+  // days; a buyer refunded inside that window used to get a working key from
+  // the retry, for money already returned, and nothing ever revoked it.
+  it("records a refund that arrives before the licence, and mails nothing later", async () => {
+    const built = testEnv();
+    const early = await webhook(
+      built.env,
+      chargeEvent("charge.refunded", { amount_refunded: 1499 }),
+    );
+    expect(early.status).toBe(200);
+    expect(await early.text()).toBe("refunded: recorded before the licence existed");
+
+    const late = await webhook(built.env, completed());
+    expect(late.status).toBe(200);
+    expect(await late.text()).toBe("revoked, not re-sent");
+    expect(built.sent).toHaveLength(0);
+    const licence = await row(built.env);
+    expect(licence?.revoked_at).not.toBeNull();
+    expect(licence?.revoked_reason).toBe("refunded");
+  });
+
+  // The same window, through the resend route: the licence is recorded, so
+  // the address is a customer's, but a revoked one is never sent.
+  it("does not resend a licence an early refund revoked", async () => {
+    const built = testEnv();
+    await webhook(built.env, chargeEvent("charge.refunded", { amount_refunded: 1499 }));
+    await webhook(built.env, completed());
+    await call(
+      new Request("https://api.test/license/resend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "buyer@example.com" }),
+      }),
+      built.env,
+    );
+    expect(built.sent).toHaveLength(0);
   });
 
   it("does not re-send a revoked licence", async () => {
