@@ -174,8 +174,9 @@ struct LicensePane: View {
     VStack(alignment: .leading, spacing: 8) {
       // A `TextEditor` rather than a single-line field: the key is 240 characters,
       // and a key pasted out of a mail client can arrive with the line breaks that
-      // client wrapped it at. `LicenseKey.check` trims, and a box that shows the
-      // whole thing is what lets somebody see they have pasted half of it.
+      // client wrapped it at. `LicenseKey.check` drops every whitespace character,
+      // and a box that shows the whole thing is what lets somebody see they have
+      // pasted half of it.
       TextEditor(text: $entry)
         .font(.system(.caption, design: .monospaced))
         .frame(height: 92)

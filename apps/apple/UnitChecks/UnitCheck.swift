@@ -4142,6 +4142,15 @@ struct UnitCheck {
       LicenseKey.check(good, major: 1, revoked: [], publicKey: trusted).license?.email,
       "someone@example.com")
     expectEqual("surrounding whitespace is forgiven", refusal("  \n\(good)\n"), nil as String?)
+    // ~240 characters with no spaces, which a mail client hard-wraps; the breaks
+    // come back with the paste, inside the payload and the signature.
+    let wrapped = stride(from: 0, to: good.count, by: 76).map { start -> String in
+      let from = good.index(good.startIndex, offsetBy: start)
+      let to = good.index(from, offsetBy: 76, limitedBy: good.endIndex) ?? good.endIndex
+      return String(good[from..<to])
+    }.joined(separator: "\r\n ")
+    expectEqual(
+      "a key wrapped across lines by a mail client is forgiven", refusal(wrapped), nil as String?)
     expectEqual("no key", refusal(nil), "no licence key")
     expectEqual("a blank key", refusal("  \n"), "no licence key")
     expectEqual("two parts", refusal("arm1.onlytwo"), "expected three dot-separated parts")
