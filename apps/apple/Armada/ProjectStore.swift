@@ -35,6 +35,10 @@ final class ProjectStore {
   /// matches nothing.
   @ObservationIgnored private var matchKeys: [String: [String]] = [:]
 
+  /// Set when projects.json would not decode AND could not be moved aside, so the original
+  /// is still at `fileURL`. Every save is refused while it is. See `StoreFile`.
+  @ObservationIgnored private var unreadable: StoreFile.Unreadable?
+
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private let writer = ProjectsFileWriter()
 
@@ -48,15 +52,21 @@ final class ProjectStore {
   ///
   /// **A file this build cannot read is moved aside, never overwritten.** Starting empty
   /// and saving would replace a newer build's list with nothing the first time someone
-  /// adds a project here.
+  /// adds a project here. When even the move fails, the list starts empty and nothing
+  /// added to it this session is saved.
   func load() {
-    guard let url = fileURL, let data = try? Data(contentsOf: url) else { return }
-    do {
-      set(try ProjectsFile.decode(data), persist: false)
-    } catch {
-      StoreFile.moveAside(url)
+    guard let url = fileURL else { return }
+    switch StoreFile.load(url, decode: ProjectsFile.decode) {
+    case .absent:
+      return
+    case .decoded(let decoded):
+      set(decoded, persist: false)
+    case .setAside(let aside):
       Self.logger.error(
-        "projects.json unreadable, moved aside: \(error.localizedDescription, privacy: .public)")
+        "projects.json unreadable, moved aside to \(aside.lastPathComponent, privacy: .public)")
+    case .unreadable(let unreadable):
+      self.unreadable = unreadable
+      Self.logger.error("\(unreadable.localizedDescription, privacy: .public)")
     }
   }
 
@@ -219,7 +229,15 @@ final class ProjectStore {
     generation += 1
     let generation = generation
     let writer = writer
-    Task { await writer.write(data, to: url, generation: generation) }
+    let unreadable = unreadable
+    Task {
+      do {
+        try await writer.write(data, to: url, generation: generation, blockedBy: unreadable)
+      } catch {
+        Self.logger.error(
+          "projects.json not saved: \(error.localizedDescription, privacy: .public)")
+      }
+    }
   }
 
   private static func keys(for path: String) -> [String] {
@@ -250,12 +268,12 @@ struct ProjectSuggestion: Identifiable {
 private actor ProjectsFileWriter {
   private var written = 0
 
-  func write(_ data: Data, to url: URL, generation: Int) {
+  func write(
+    _ data: Data, to url: URL, generation: Int, blockedBy unreadable: StoreFile.Unreadable?
+  ) throws {
     guard generation > written else { return }
     written = generation
-    try? FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try? data.write(to: url, options: .atomic)
+    try StoreFile.write(data, to: url, blockedBy: unreadable)
   }
 }
 

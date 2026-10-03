@@ -529,6 +529,11 @@ actor UsageIndexer {
 
   /// **Moved aside, never deleted.** The archive holds history no transcript on disk still
   /// has, so a database this build cannot read is kept for a later one that can.
+  ///
+  /// **A move that fails throws, rather than reopening what is still there.** It used to be
+  /// `try?`, and a failed move reopened the same file: a newer build's database, which the
+  /// migration then stamped with this build's schema and the pass wrote into. Thrown, `open`
+  /// returns nil and the ledger stands down for the pass. See `StoreFile`.
   private func reopenAside(reason: String) throws -> UsageDatabase {
     let stamp = Int(Date().timeIntervalSince1970)
     let fileManager = FileManager.default
@@ -536,7 +541,7 @@ actor UsageIndexer {
       let source = URL(filePath: url.path(percentEncoded: false) + suffix)
       guard fileManager.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
       let target = URL(filePath: url.path(percentEncoded: false) + ".bak-\(stamp)" + suffix)
-      try? fileManager.moveItem(at: source, to: target)
+      try fileManager.moveItem(at: source, to: target)
     }
     Self.logger.error("index database moved aside: \(reason, privacy: .public)")
     return try UsageDatabase(url: url)

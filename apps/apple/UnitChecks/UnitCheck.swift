@@ -3890,28 +3890,56 @@ struct UnitCheck {
     try? broken.write(to: file)
     switch StoreFile.load(file, now: now, decode: decode) {
     case .setAside(let aside):
-      check("a file that does not decode is set aside, not read as empty", aside != nil)
       expectEqual(
-        "under its own name and the time", aside?.lastPathComponent,
-        "usage-history.json.bak-1800000000")
-      expectEqual(
-        "with the original bytes", aside.flatMap { try? Data(contentsOf: $0) }, broken)
+        "a file that does not decode is set aside, under its own name and the time",
+        aside.lastPathComponent, "usage-history.json.bak-1800000000")
+      expectEqual("with the original bytes", try? Data(contentsOf: aside), broken)
       check(
         "so nothing is left at the store's path to write over",
         !fileManager.fileExists(atPath: file.path))
+      check(
+        "and the store writes as it would on a fresh install",
+        (try? StoreFile.write(Data("[]".utf8), to: file, blockedBy: nil)) != nil
+          && (try? Data(contentsOf: file)) == Data("[]".utf8))
     default:
       check("a file that does not decode is set aside, not read as empty", false)
     }
 
     // The same second again, where the name is taken: the move fails, and the original has
-    // to stay put and be reported as such, so the store knows not to write.
+    // to stay put and be reported as such. ProjectStore used to drop that answer and start
+    // empty, and the first project added after it saved over the original.
     try? broken.write(to: file)
-    if case .setAside(let aside) = StoreFile.load(file, now: now, decode: decode) {
-      check("a copy that cannot be moved aside is reported as still in place", aside == nil)
+    switch StoreFile.load(file, now: now, decode: decode) {
+    case .unreadable(let unreadable):
+      expectEqual("a copy that cannot be moved aside is left in place", unreadable.file, file)
       expectEqual("and is left exactly as it was", try? Data(contentsOf: file), broken)
-    } else {
+      do {
+        try StoreFile.write(Data("[]".utf8), to: file, blockedBy: unreadable)
+        check("and a save after it is refused", false)
+      } catch {
+        check(
+          "and a save after it is refused, with a sentence naming the file",
+          error.localizedDescription.contains("usage-history.json")
+            && error.localizedDescription.contains("will not write over it"))
+      }
+      expectEqual("so the original survives the save", try? Data(contentsOf: file), broken)
+    default:
       check("a copy that cannot be moved aside is reported as still in place", false)
     }
+
+    // A folder the move cannot write into, which is the permissions half of the same failure.
+    let locked = folder.appending(path: "locked", directoryHint: .isDirectory)
+    let lockedFile = locked.appending(path: "projects.json")
+    try? fileManager.createDirectory(at: locked, withIntermediateDirectories: true)
+    try? broken.write(to: lockedFile)
+    try? fileManager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+    defer { try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+    if case .unreadable = StoreFile.load(lockedFile, now: now, decode: decode) {
+      check("a folder that will not take the move leaves the store unreadable", true)
+    } else {
+      check("a folder that will not take the move leaves the store unreadable", false)
+    }
+    expectEqual("and the original where it was", try? Data(contentsOf: lockedFile), broken)
   }
 
   // MARK: - ClaudeTrust
