@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    # A release is a signed `app-v<version>` tag. Nothing else ships.
+    # A release is a signed `app-v<version>` tag. Nothing else ships. The glob
+    # also matches a pre-release such as app-v1.3.0-beta.1, which release-app
+    # refuses in "Resolve version from tag".
     tags: ["app-v*.*.*"]
   pull_request:
     branches: [main]
@@ -296,8 +298,13 @@ jobs:
         id: version
         run: |
           version="${GITHUB_REF_NAME#app-v}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+].+)?$'; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not carry a semver version"
+          # A plain release only. The release below is published with
+          # make_latest, and the site's /appcast.xml is a 302 to
+          # releases/latest, so an app-v1.3.0-beta.1 tag would offer the beta to
+          # every installed copy through Sparkle. There is no beta channel;
+          # refuse here, before anything is signed.
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not a plain x.y.z release; a pre-release would reach every user through the appcast"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
