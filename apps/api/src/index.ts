@@ -271,7 +271,11 @@ const fulfil = async (event: StripeEvent, env: Env): Promise<Response> => {
     return unprocessable(`session: ${explain(parsed.error)}`, event);
   }
   const session = parsed.data;
-  if (session.payment_status !== "paid") {
+  // `no_payment_required` is a 100%-off promotion code: nothing to pay, and
+  // still a sale. It used to fall in with "not paid yet" and be dropped with a
+  // 200, so the code's holder got no key and nothing said why.
+  if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+    console.log(`fulfil: ${session.id} is ${session.payment_status}, nothing minted yet`);
     return new Response("not paid yet", { status: 200 });
   }
   const email = session.customer_details?.email?.trim().toLowerCase();

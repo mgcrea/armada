@@ -305,6 +305,19 @@ describe("the webhook", () => {
     expect(built.sent).toHaveLength(1);
   });
 
+  // A 100%-off promotion code: nothing to pay, and still a sale.
+  it("mints and mails a key for a session that needed no payment", async () => {
+    const built = testEnv();
+    const response = await webhook(
+      built.env,
+      completed({ payment_status: "no_payment_required", amount_total: 0 }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("ok");
+    expect(await count(built.env)).toBe(1);
+    expect(built.sent).toHaveLength(1);
+  });
+
   it("does nothing for a session that is not paid", async () => {
     const built = testEnv();
     const response = await webhook(built.env, completed({ payment_status: "unpaid" }));
