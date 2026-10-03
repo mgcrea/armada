@@ -378,6 +378,10 @@ jobs:
           AC_ISSUER_ID: ${{ secrets.AC_ISSUER_ID }}
           AC_KEY_P8_BASE64: ${{ secrets.AC_KEY_P8_BASE64 }}
         run: |
+          # Gone when this step ends, on every exit path: nothing after
+          # notarization needs it, and the cleanup at the end of the job runs
+          # only after third-party code has had its turn.
+          trap 'rm -f "$RUNNER_TEMP/ac.p8"' EXIT
           printf '%s' "$AC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/ac.p8"
           export AC_KEY_PATH="$RUNNER_TEMP/ac.p8"
           # CFBundleVersion is the commit count, not github.run_number, so a re-run
@@ -388,6 +392,16 @@ jobs:
           echo "CFBundleVersion=$build (from $(git rev-parse --short HEAD))"
           make build-release \
             XCARGS="MARKETING_VERSION=${{ steps.version.outputs.version }} CURRENT_PROJECT_VERSION=$build"
+
+      # Signing and notarization are done. What follows downloads and runs
+      # Sparkle's tools (`make appcast`) and hands the tree to the attestation
+      # and release actions, and none of that should run while the Developer ID identity is
+      # one `security` call away. Nothing after this needs the keychain: the
+      # verification below reads the system's trust, not this keychain, and in
+      # CI sign_update signs from SPARKLE_ED_PRIVATE_KEY through --ed-key-file.
+      - name: Drop the signing keychain 🔒
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
       # Every claim the download page makes, checked against the artifact that is
       # about to be uploaded rather than against the tree it was built from.
@@ -452,6 +466,8 @@ jobs:
             apps/apple/.build/Armada.zip.sha256
             apps/apple/.build/appcast.xml
 
+      # A backstop. The keychain and ac.p8 are already gone by the steps that
+      # drop them; this catches a run cancelled between them.
       - name: Clean up secrets 🧹
         if: always()
         run: |
