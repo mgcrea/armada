@@ -26,6 +26,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { testDatabaseConfigured } from "./lib/revocations.mjs";
+
 // `fileURLToPath`, not `.pathname`: the latter leaves a checkout under a path
 // with a space percent-encoded, and every path built from it then misses.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -92,34 +94,54 @@ const resultsOf = (raw) => {
   throw new Error("no D1 result document in wrangler's output");
 };
 
-const query = "SELECT id FROM licenses WHERE revoked_at IS NOT NULL ORDER BY id";
-let rows;
-try {
-  const raw = execFileSync(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "execute",
-      "armada-licenses",
-      local ? "--local" : "--remote",
-      "--json",
-      "--command",
-      query,
-    ],
-    { cwd: API, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  );
-  rows = resultsOf(raw);
-} catch (error) {
-  console.error(`FATAL: could not read D1: ${String(error?.message ?? error)}`);
-  process.exit(2);
-}
+// `rows` of one D1 database, or exit 2 naming it. `extra` selects the
+// wrangler environment the binding lives in.
+const read = (database, query, extra = []) => {
+  try {
+    const raw = execFileSync(
+      "pnpm",
+      [
+        "exec",
+        "wrangler",
+        "d1",
+        "execute",
+        database,
+        ...extra,
+        local ? "--local" : "--remote",
+        "--json",
+        "--command",
+        query,
+      ],
+      { cwd: API, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return resultsOf(raw);
+  } catch (error) {
+    console.error(`FATAL: could not read ${database}: ${String(error?.message ?? error)}`);
+    process.exit(2);
+  }
+};
 
-const ids = rows
-  .map((row) => row.id)
-  .filter(Boolean)
-  .toSorted();
+const revoked = read(
+  "armada-licenses",
+  "SELECT id FROM licenses WHERE revoked_at IS NOT NULL ORDER BY id",
+);
+
+// Every licence the test environment ever minted, revoked or not. It signs
+// with the production key, so that a test purchase proves the shipped app
+// accepts it, which makes each of those keys a real one, from a checkout
+// anybody holding a test-mode link can complete with card 4242. Revoking all
+// of them leaves the rehearsal working in the build under test and in no
+// released one. Read only once wrangler.jsonc gives the database an id: before
+// that it does not exist, and once it does, failing to read it is fatal like
+// any other read here.
+const wrangler = readFileSync(join(API, "wrangler.jsonc"), "utf8");
+const rehearsed = testDatabaseConfigured(wrangler)
+  ? read("armada-licenses-test", "SELECT id FROM licenses ORDER BY id", ["--env", "test"])
+  : [];
+
+const ids = [
+  ...new Set([...revoked, ...rehearsed].map((row) => row.id).filter(Boolean)),
+].toSorted();
 
 // The hand-written doc comment is kept and the declaration regenerated. The
 // declaration is matched with or without `nonisolated`: a split on a bare
