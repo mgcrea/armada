@@ -83,12 +83,18 @@
         { "name": "THANKS_LIMIT", "namespace_id": "4002", "simple": { "limit": 20, "period": 60 } }
       ],
       // The one environment where an empty EXPECTED_PRICE_ID means unguarded
-      // rather than closed. A test-mode Payment Link sells a test-mode price,
-      // which is a different id from the live one, and pinning the wrong one
-      // here would make the rehearsal refuse the very thing it exists to
-      // rehearse. Pin the test-mode price once it exists: the sandbox is shared
-      // by every app too, and unguarded this mints real arm1 keys (recorded
-      // with livemode = 0) for the other apps' test purchases.
+      // rather than closed. Empty because there is nothing to pin yet: Armada
+      // has no test-mode Payment Link, so no test-mode price id exists, and the
+      // live one above would make the rehearsal refuse the very thing it
+      // exists to rehearse.
+      //
+      // PIN IT BEFORE THE FIRST `wrangler deploy --env test`. The sandbox is
+      // shared by every app, so unguarded this Worker mints real arm1 keys
+      // (recorded with livemode = 0, but signed with the production key) for
+      // the other apps' test purchases. Create the test-mode link with
+      // `price_id` in its metadata, paste its price id here, then `pnpm types`
+      // (the generated Env pins this literal). .test.vars.example lists it as a
+      // step.
       "vars": {
         "CURRENT_MAJOR": "1",
         "ENVIRONMENT": "test",
