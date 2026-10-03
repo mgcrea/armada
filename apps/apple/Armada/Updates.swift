@@ -64,9 +64,11 @@ final class UpdateController: NSObject {
   /// them off.
   func checkNow() {
     start()
+    // No updater means no callback will ever clear the spinner.
+    guard let controller else { return }
     isChecking = true
     lastCheck = Date()
-    controller?.updater.checkForUpdates()
+    controller.updater.checkForUpdates()
   }
 
   func setAutomatic(_ on: Bool) {
@@ -107,6 +109,17 @@ extension UpdateController: SPUUpdaterDelegate {
     _ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
     untilInvokingBlock installHandler: @escaping () -> Void
   ) -> Bool { false }
+
+  /// Every check ends here, found or not, failed or not. The user-driver
+  /// callbacks below only fire when there is something to show, so a check
+  /// that failed, or was ignored because one was already running, left Check
+  /// Now disabled on its spinner until the app quit.
+  nonisolated func updater(
+    _ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+    error: (any Error)?
+  ) {
+    Task { @MainActor in UpdateController.shared.isChecking = false }
+  }
 }
 
 extension UpdateController: SPUStandardUserDriverDelegate {
