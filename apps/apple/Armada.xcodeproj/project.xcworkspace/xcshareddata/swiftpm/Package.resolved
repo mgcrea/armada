@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-mcp-kit.git",
       "state" : {
-        "revision" : "72c2cb2751e8ff912f0c81afa50b8c67e3b53865",
-        "version" : "1.1.0"
+        "revision" : "34a80c36960294638e8cdcf7fe39ce170a83d5d6",
+        "version" : "1.1.2"
       }
     },
     {
