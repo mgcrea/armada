@@ -12,9 +12,10 @@
 // job would put a network dependency in the path of shipping, so an outage at
 // Cloudflare would become an outage in releases — and it would buy nothing,
 // since a revocation cannot take effect before the next build either way. CI
-// runs `--check` in the App job to confirm the committed file is current,
-// and skips even that when it has no credentials, so forks and pull requests are
-// unaffected.
+// runs `--check` in its own Revocations job to confirm the committed file is
+// current, and skips even that when it has no credentials, so forks and pull
+// requests are unaffected. A release tag is the exception: there a missing
+// token fails, because release-app needs that job.
 //
 //   node scripts/generate-revocations.mjs            # rewrite the Swift file
 //   node scripts/generate-revocations.mjs --check    # fail if it is stale
@@ -46,7 +47,17 @@ const local = args.includes("--local");
 // change nothing — after a refund, silently leaving the refunded key working
 // while looking like it had been handled. Let wrangler's own auth decide, and
 // let it fail loudly when there is none.
+//
+// A release tag is not a pull request. release-app needs the job that runs
+// this, so a skip there (a secret renamed, rotated, or moved where the job
+// cannot read it) would pass a notarized build carrying whatever list happens
+// to be committed, refunded keys included. On a tag the missing token is the
+// failure.
 if (check && !local && !process.env.CLOUDFLARE_API_TOKEN) {
+  if (process.env.GITHUB_REF?.startsWith("refs/tags/")) {
+    console.error("FATAL: no CLOUDFLARE_API_TOKEN on a release tag, cannot confirm against D1");
+    process.exit(1);
+  }
   console.log("skipped: no CLOUDFLARE_API_TOKEN, cannot confirm against D1");
   process.exit(0);
 }

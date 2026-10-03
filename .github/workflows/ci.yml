@@ -110,6 +110,49 @@ jobs:
       - name: Build and check the feedback form 📦
         run: pnpm -C apps/website run feedback:check
 
+  # The one gate `scripts/generate-revocations.mjs` has always claimed to have
+  # and never had: its header said CI runs `--check`, and no step did.
+  #
+  # What it prevents: a licence is refunded, `revoked_at` is set in D1, the
+  # manual `make revocations` is forgotten, and the next notarized release
+  # bakes in a stale list, leaving the refunded key working. Build-time
+  # revocation is the design's only enforcement point, so nothing else
+  # catches it.
+  #
+  # Its own job, on ubuntu, and the only verify job with `environment:`.
+  # CLOUDFLARE_API_TOKEN is a secret of the `production` environment, not of
+  # the repository, so a job that names no environment reads it as empty and
+  # the check would skip on every run, tags included. Not on pull requests:
+  # this compares the committed file with D1, which a pull request's code
+  # cannot change, and leaving them out keeps the token away from a branch's
+  # dependencies. The token is on the step, not the job, so `pnpm install`
+  # runs without it.
+  #
+  # The script skips itself, passing, when there is no token. On a release tag
+  # it fails instead, since release-app needs this job.
+  revocations:
+    name: Revocations
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    environment: production
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          check-latest: true
+          cache: pnpm
+      - name: Install 📦
+        run: pnpm install --frozen-lockfile
+      - name: Revocations drift 🔍
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/generate-revocations.mjs --check
+
   app:
     name: App
     runs-on: macos-latest
@@ -222,8 +265,9 @@ jobs:
     name: Release Armada.app
     runs-on: macos-latest
     # `node` as well as `app`, as bastion's is `[manifest, app]`: the lint, script
-    # and licence Worker gates moved out of `app` and still gate a release.
-    needs: [node, app]
+    # and licence Worker gates moved out of `app` and still gate a release. And
+    # `revocations`, so a stale list of refunded keys never ships.
+    needs: [node, app, revocations]
     if: startsWith(github.ref, 'refs/tags/app-v')
     permissions:
       contents: write
