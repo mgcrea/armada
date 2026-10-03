@@ -649,6 +649,43 @@ describe("refunds and disputes", () => {
     expect(built.sent).toHaveLength(0);
   });
 
+  // The early note has to go too, or a licence fulfilled after the dispute
+  // was won would still be recorded revoked.
+  it("restores a licence revoked by an early dispute once the dispute is won", async () => {
+    const built = testEnv();
+    await webhook(built.env, disputeEvent("charge.dispute.created"));
+    await webhook(built.env, completed());
+    expect((await row(built.env))?.revoked_reason).toBe("disputed");
+    expect(built.sent).toHaveLength(0);
+
+    const won = await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
+    expect(await won.text()).toBe("dispute won: restored 1");
+    expect((await row(built.env))?.revoked_at).toBeNull();
+  });
+
+  it("forgets an early dispute that was won before the licence existed", async () => {
+    const built = testEnv();
+    await webhook(built.env, disputeEvent("charge.dispute.created"));
+    await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
+    const late = await webhook(built.env, completed());
+    expect(await late.text()).toBe("ok");
+    expect((await row(built.env))?.revoked_at).toBeNull();
+    expect(built.sent).toHaveLength(1);
+  });
+
+  // An inquiry (`warning_needs_response`) is the bank asking a question, not
+  // a chargeback, and it closes as `warning_closed` rather than `won`, so
+  // revoking on it left a paying customer revoked for good.
+  it("leaves a licence alone on an inquiry", async () => {
+    const built = await fulfilled();
+    const response = await webhook(
+      built.env,
+      disputeEvent("charge.dispute.created", { status: "warning_needs_response" }),
+    );
+    expect(await response.text()).toBe("inquiry (warning_needs_response): licence left alone");
+    expect((await row(built.env))?.revoked_at).toBeNull();
+  });
+
   it("does not re-send a revoked licence", async () => {
     const built = await fulfilled();
     expect(built.sent).toHaveLength(1);

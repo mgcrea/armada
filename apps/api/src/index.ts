@@ -467,6 +467,13 @@ const refunded = async (event: StripeEvent, env: Env): Promise<Response> => {
 const disputed = async (event: StripeEvent, env: Env): Promise<Response> => {
   const parsed = dispute.safeParse(event.data.object);
   if (!parsed.success) return unprocessable(`dispute: ${explain(parsed.error)}`, event);
+  // An inquiry is the bank asking a question, not a chargeback. It arrives as
+  // `charge.dispute.created` with a `warning_` status and closes as
+  // `warning_closed`, never `won`, so revoking on it left a paying customer
+  // revoked for good. If it escalates, Stripe sends a real dispute.
+  if (parsed.data.status?.startsWith("warning_")) {
+    return new Response(`inquiry (${parsed.data.status}): licence left alone`, { status: 200 });
+  }
   return revoke(env, parsed.data.payment_intent, "disputed");
 };
 
@@ -497,6 +504,14 @@ const disputeClosed = async (event: StripeEvent, env: Env): Promise<Response> =>
   const result = await env.DB.prepare(
     "UPDATE licenses SET revoked_at = NULL, revoked_reason = NULL" +
       " WHERE payment_intent = ? AND revoked_reason = 'disputed'",
+  )
+    .bind(paymentIntent)
+    .run();
+  // And the note a dispute that came before the licence left, or a licence
+  // fulfilled after this would still be recorded revoked. Same guard: a
+  // refund's note stays.
+  await env.DB.prepare(
+    "DELETE FROM early_revocations WHERE payment_intent = ? AND reason = 'disputed'",
   )
     .bind(paymentIntent)
     .run();
