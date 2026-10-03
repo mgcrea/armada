@@ -860,6 +860,30 @@ describe("missing and malformed secrets", () => {
     });
   }
 
+  // `Number(...) || 1` minted these as a fractional or unexpected major, and
+  // the app decodes `major` as an Int: "payload is not a licence". A var
+  // rather than a secret, refused the same way, so the sale is fulfilled by
+  // Stripe's retry once wrangler.jsonc is fixed. Cast, because the generated
+  // Env types the var as the literal "1", which is exactly the assumption
+  // under test.
+  const majors: [string, string][] = [
+    ["a fractional major", "1.5"],
+    ["a major with junk after it", "2 beta"],
+    ["a zero major", "0"],
+  ];
+  for (const [label, value] of majors) {
+    it(`answers 500 naming CURRENT_MAJOR when it is ${label}`, async () => {
+      const built = testEnv({ CURRENT_MAJOR: value } as unknown as Partial<Env>);
+      const response = await webhook(built.env, completed());
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe(
+        "not configured: CURRENT_MAJOR is not a whole number of 1 or more",
+      );
+      expect(await count(built.env)).toBe(0);
+      expect(await events(built.env)).toBe(0);
+    });
+  }
+
   it("still revokes without a signing key, which a refund never needs", async () => {
     const built = await fulfilled();
     const keyless = { ...built.env, LICENSE_SIGNING_KEY: "" };
@@ -906,6 +930,17 @@ describe("delayed payment methods", () => {
     });
     expect(failed.status).toBe(200);
     expect(await count(built.env)).toBe(0);
+  });
+
+  // Named, so the log line can be traced to a buyer in the Stripe dashboard.
+  it("names the session in the log when an async payment fails", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const built = testEnv();
+    await webhook(built.env, {
+      ...completed(),
+      type: "checkout.session.async_payment_failed",
+    });
+    expect(errors.mock.calls.flat().join("\n")).toContain(SESSION);
   });
 });
 

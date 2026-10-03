@@ -130,7 +130,8 @@ const unprocessable = (what: string, event?: StripeEvent): Response => {
  * the secret is set. Every app's checkouts reach this Worker, so theirs are
  * retried too, and answer "not this product" when they come back. Only
  * presence is checked here; a key that is set but will not import is found by
- * `mint`, the first thing to read it, and answered the same way.
+ * `mint`, the first thing to read it, and answered the same way. A
+ * CURRENT_MAJOR the app could not read is refused through `misconfigured` too.
  */
 const fulfilmentRefusal = (env: Env, event: StripeEvent): Response | null => {
   if (env.ENVIRONMENT !== "test" && !env.EXPECTED_PRICE_ID) {
@@ -138,6 +139,16 @@ const fulfilmentRefusal = (env: Env, event: StripeEvent): Response | null => {
     return new Response("fulfilment not configured: EXPECTED_PRICE_ID is empty", { status: 200 });
   }
   if (!env.LICENSE_SIGNING_KEY) return misconfigured("LICENSE_SIGNING_KEY is not set");
+  // A var rather than a secret, refused the same way for the same reason:
+  // `fulfil` read it with `Number(...) || 1`, which minted "1.5" as a major
+  // the app, decoding it as an Int, refuses as "payload is not a licence", and
+  // quietly turned "2 beta" or "0" into 1. Unset is fine; that is the 1 every
+  // key so far was minted with. Widened, because the generated Env pins the
+  // literal in wrangler.jsonc, which is exactly the assumption being checked.
+  const major: string | undefined = env.CURRENT_MAJOR;
+  if (major && !/^[1-9][0-9]*$/.test(major.trim())) {
+    return misconfigured("CURRENT_MAJOR is not a whole number of 1 or more");
+  }
   return null;
 };
 
@@ -331,6 +342,7 @@ const fulfil = async (event: StripeEvent, env: Env): Promise<Response> => {
       return new Response("not this product", { status: 200 });
     }
 
+    // Already known to be a whole number of 1 or more, or unset.
     const major = Number(env.CURRENT_MAJOR) || 1;
     let minted: Minted;
     try {
@@ -658,9 +670,15 @@ const dispatch = async (event: StripeEvent, env: Env): Promise<Response> => {
     // dashboard, not in this repo, so it is handled before anyone flips it.
     case "checkout.session.async_payment_succeeded":
       return fulfil(event, env);
-    case "checkout.session.async_payment_failed":
-      console.error(`webhook: async payment failed, event ${event.id}`);
+    case "checkout.session.async_payment_failed": {
+      // Named, so the line can be traced to a buyer in the Stripe dashboard:
+      // the event id alone says which delivery, not whose payment.
+      const id = (event.data.object as { id?: unknown } | null)?.id;
+      console.error(
+        `webhook: async payment failed for session ${String(id ?? "(no id)")}, event ${event.id}`,
+      );
       return new Response("async payment failed", { status: 200 });
+    }
     case "charge.refunded":
       return refunded(event, env);
     case "charge.dispute.created":
