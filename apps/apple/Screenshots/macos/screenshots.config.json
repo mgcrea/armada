@@ -116,6 +116,7 @@
       "stage": "account",
       "duration": 20,
       "poster": 6,
+      "hook": "Too many coding agents to keep track of?",
       "outputs": {
         "preview": false,
         "promo": [
@@ -133,17 +134,11 @@
         {
           "at": 0,
           "screen": "menubar",
-          "caption": "Too many coding agents to keep track of?",
-          "zoom": {
-            "rect": [1100, 480, 200, 200],
-            "scale": 1.8
-          }
+          "focus": { "rect": [533, 134, 1333, 891], "fill": 1 }
         },
         {
           "at": 3.2,
-          "zoom": {
-            "scale": 1
-          }
+          "focus": "home"
         },
         {
           "at": 4,
@@ -152,16 +147,15 @@
         },
         {
           "at": 4.8,
-          "zoom": {
-            "rect": [500, 882, 916, 78],
-            "scale": 1.6
-          }
+          "focus": { "rect": [208, 420, 1500, 1002], "fill": 1 }
+        },
+        {
+          "at": 5.2,
+          "pop": { "rect": [500, 882, 916, 78], "until": 8.0 }
         },
         {
           "at": 8.4,
-          "zoom": {
-            "scale": 1
-          }
+          "focus": "home"
         },
         {
           "at": 9,
@@ -170,10 +164,7 @@
         },
         {
           "at": 10.5,
-          "zoom": {
-            "rect": [1115, 1150, 200, 200],
-            "scale": 1.8
-          }
+          "focus": { "rect": [548, 804, 1333, 891], "fill": 1 }
         },
         {
           "at": 15.5,
@@ -182,11 +173,12 @@
       ]
     },
     {
-      "//": "The same three lines, filmed: `appshot record` launches the account stage and DemoCues performs each cue. checkout-session and acme-usage are DemoCues.Target names (zoom rects are in the take's stage pixels, 2400x1604: the window at 2x); armada.wait puts that session on a permission prompt. Captions, zooms and the card change with `compose video` alone; a cue's name, args or time, or the duration growing, needs a new take.",
+      "//": "The same three lines, filmed: `appshot record` launches the account stage and DemoCues performs each cue. checkout-session and acme-usage are DemoCues.Target names (focus rects are in the take's stage pixels, 2400x1604: the window at 2x); armada.wait puts that session on a permission prompt. Captions, focus, pops and the card change with `compose video` alone; a cue's name, args or time, or the duration growing, needs a new take.",
       "id": "promo-live",
       "stage": "account",
       "duration": 20,
       "poster": 6,
+      "hook": "Too many coding agents to keep track of?",
       "outputs": {
         "preview": false,
         "promo": [[1200, 1200], [1920, 1080]],
@@ -198,7 +190,6 @@
         "icon": "card-icon.png"
       },
       "beats": [
-        { "at": 0, "caption": "Too many coding agents to keep track of?" },
         { "at": 1.8, "cue": "pointer.move", "args": { "target": "checkout-session" } },
         { "at": 2.6, "cue": "armada.wait", "args": { "target": "checkout-session" } },
         {
@@ -207,8 +198,9 @@
           "cue": "pointer.click",
           "args": { "target": "checkout-session" }
         },
-        { "at": 4.6, "zoom": { "rect": [1328, 460, 200, 200], "scale": 1.28 } },
-        { "at": 8.4, "zoom": { "scale": 1 } },
+        { "at": 4.6, "focus": { "rect": [491, 0, 1875, 1253], "fill": 1 } },
+        { "at": 5.0, "pop": { "target": "checkout-session", "until": 8.0 } },
+        { "at": 8.4, "focus": "home" },
         {
           "at": 9,
           "caption": "Know where every plan limit will land",
@@ -216,7 +208,7 @@
           "args": { "to": "usage" }
         },
         { "at": 10, "cue": "pointer.move", "args": { "target": "acme-usage" } },
-        { "at": 10.6, "zoom": { "rect": [1115, 1200, 200, 200], "scale": 1.8 } },
+        { "at": 10.6, "focus": { "rect": [548, 854, 1333, 891], "fill": 1 } },
         { "at": 15.5, "endCard": true }
       ]
     }
