@@ -217,6 +217,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before anything can be delivered, so a click on a banner from before a relaunch
     // still has a delegate to land on. Posts nothing until a scope is chosen.
     PromptCacheNotifier.shared.start()
+    // Holds nothing unless a rung is chosen in Settings. See `KeepAwake`.
+    KeepAwakeController.shared.start()
     SessionHostLookup.observeHostTermination()
     MouseTap.shared.sync()
     // The Accessibility grant can arrive long after launch — somebody allows it in

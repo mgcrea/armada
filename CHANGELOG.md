@@ -19,6 +19,10 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 - **A Schedules pane.** The sidebar lists every schedule on the Mac, Codex automations by
   home and the Claude app's tasks, with when each runs next, its prompt and its folder.
   Read-only: schedules are changed by asking Claude Code.
+- **Keep the Mac awake while agents work.** A new setting in General holds off idle sleep
+  while any Claude Code, Codex or Grok Build session is working, and lets it go when the last
+  one stops, optionally keeping the display on too. Off by default; closing the lid still
+  sleeps the Mac.
 
 ## [1.9.0] - 2026-09-28
 

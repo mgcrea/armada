@@ -249,6 +249,7 @@ UNIT_SRC := \
 	Armada/GrokFiles.swift \
 	Armada/PanelVisibility.swift \
 	Armada/MenuBarHalo.swift \
+	Armada/KeepAwake.swift \
 	Armada/SessionOrder.swift \
 	Armada/Changelog.swift \
 	Armada/ScreenshotMode.swift \

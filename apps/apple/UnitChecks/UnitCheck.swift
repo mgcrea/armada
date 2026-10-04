@@ -39,6 +39,7 @@ struct UnitCheck {
     codexRollout()
     grokFiles()
     panelVisibility()
+    keepAwake()
     licenseKey()
     projects()
     usageLedger()
@@ -1216,6 +1217,35 @@ struct UnitCheck {
           claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
           grokAwaitingInput: 1)
     )
+  }
+
+  static func keepAwake() {
+    section("KeepAwake")
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+    func working(
+      claude: Int = 0, toolCalls: [Date?] = [], codex: Int = 0, grok: Int = 0
+    ) -> Bool {
+      KeepAwake.isWorking(
+        claudeWriting: claude, claudeToolCalls: toolCalls, codexWorking: codex,
+        grokWorking: grok, now: now)
+    }
+    check("nothing working holds nothing", !working())
+    check("a writing Claude session holds", working(claude: 1))
+    check("a working Codex session holds", working(codex: 1))
+    check("a working Grok session holds", working(grok: 1))
+    check("a tool call from five minutes ago holds", working(toolCalls: [now - 5 * 60]))
+    check(
+      "a tool call past the cap does not",
+      !working(toolCalls: [now - KeepAwake.toolCallCap - 1]))
+    check("an undated tool call does not", !working(toolCalls: [nil]))
+    check(
+      "one fresh tool call among stale ones holds",
+      working(toolCalls: [nil, now - 2 * KeepAwake.toolCallCap, now - 60]))
+    check("off takes no assertion", KeepAwake.off.options == nil)
+    check("system is caffeinate -i", KeepAwake.system.options == .idleSystemSleepDisabled)
+    check(
+      "display adds caffeinate -d",
+      KeepAwake.display.options == [.idleSystemSleepDisabled, .idleDisplaySleepDisabled])
   }
 
   static func grokFiles() {

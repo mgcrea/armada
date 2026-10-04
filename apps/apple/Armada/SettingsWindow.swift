@@ -158,6 +158,7 @@ struct GeneralPane: View {
   @State private var loginError: String?
   @State private var trust = AccessibilityTrust.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
+  @AppStorage(KeepAwake.defaultsKey) private var keepAwake = KeepAwake.off
   @AppStorage(TranscriptStyle.defaultsKey)
   private var transcriptStyle = TranscriptStyle.fallback.stored
   @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
@@ -228,6 +229,22 @@ struct GeneralPane: View {
         // record. The sails fill on their own and are not part of this choice.
         Text(
           "The sails fill whenever a session is working. The halo is separate, and the wider you set it the more it guesses: Armada cannot tell a tool that is running from one waiting for your approval, and a Codex or Grok session that is merely open counts as waiting on you. To keep one limit's figure beside the icon, star it in Usage or above an account's sessions."
+        )
+      }
+
+      Section {
+        Picker("Keep the Mac awake", selection: $keepAwake) {
+          ForEach(KeepAwake.allCases, id: \.self) { option in
+            Text(option.label).tag(option)
+          }
+        }
+        .onChange(of: keepAwake) { KeepAwakeController.shared.evaluate() }
+      } footer: {
+        // Names the two limits people will test it against — the lid, and the
+        // prompt nobody answers — because both are deliberate and neither is
+        // visible from the setting.
+        Text(
+          "Like caffeinate, but only while a Claude Code, Codex or Grok Build session is working. A session waiting on you does not count, and neither does a tool that has been running for over an hour. Closing the lid still sleeps the Mac."
         )
       }
 
