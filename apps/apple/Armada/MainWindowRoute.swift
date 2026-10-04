@@ -58,6 +58,16 @@ final class MainWindowRoute {
       token &+= 1
       AppDelegate.shared?.showMain()
     }
+
+    /// Select `session` in a window that is already up, for a recorded take's click.
+    ///
+    /// No `showMain()`: the window is on screen, and ordering it forward would put it
+    /// over the app the person recording is working in. See `DemoCues`.
+    func selectForDemo(_ item: SidebarItem, session: String) {
+      target = item
+      self.session = session
+      token &+= 1
+    }
   #endif
 
   /// Show the Projects pane with the project `id` selected. The row parked for that pane is

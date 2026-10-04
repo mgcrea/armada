@@ -276,7 +276,7 @@ struct MainWindowView: View {
   /// An account that has gone away falls back rather than showing an empty pane;
   /// the overview always resolves, because it does not depend on a folder existing.
   private var resolved: SidebarItem? {
-    switch SidebarItem(stored: storedAccount) {
+    switch SidebarItem(stored: stored) {
     case .usage: .usage
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
@@ -290,6 +290,15 @@ struct MainWindowView: View {
       accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }
         ?? grok.all.first.map { .grok($0.id) }
     }
+  }
+
+  /// The stored selection, or the one a recorded take's `stage` cue moved to. The stored
+  /// one cannot move during a take: `DemoSeed` pins it in the argument domain.
+  private var stored: String {
+    #if DEBUG
+      if let item = DemoCues.shared.sidebar { return item.stored }
+    #endif
+    return storedAccount
   }
 
   /// Reading resolves to a real row; writing drops the `nil` that `List`

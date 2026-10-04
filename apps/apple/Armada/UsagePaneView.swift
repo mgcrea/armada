@@ -120,6 +120,7 @@ struct AccountUsageCard: View {
     }
     .padding(16)
     .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
+    .demoTarget(DemoTargetKey.usage(account.id))
   }
 }
 

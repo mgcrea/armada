@@ -160,6 +160,7 @@ import SwiftUI
       holdOffAppNap()
       seedStores()
       observeWindows()
+      DemoCues.shared.start()
     }
 
     /// The one window this launch opens.
@@ -365,6 +366,10 @@ import SwiftUI
 
       static let billingSessionID = "7c1e4a52-9b0d-4f3e-8a61-2d5c9e0b7f14"
       static let billingTitle = "Migrate billing webhooks to Stripe v2 events"
+      /// The storefront session, running a tool on the stage and the one a recorded take
+      /// flips to waiting (`DemoCues`, `armada.wait`).
+      static let checkoutSessionID = "3f9b2d71-0c4e-4a8b-9e25-6d1a7c3b5e08"
+      static let checkoutWaitingFor = "permission to run: pnpm playwright test --project=webkit"
       static let codexWorkingID = "0199a3f2-6c1d-7e40-b8a5-4d2f91c0e6a7"
       static let projectBillingID = "B1A7C0DE-0000-4000-8000-000000000001"
       /// The History plate's pick: today's storefront session, the ledger's
@@ -566,7 +571,7 @@ import SwiftUI
           compaction: Compaction(
             trigger: "auto", preTokens: 161_200, postTokens: 38_900, at: ago(minutes: 71))),
         session(
-          id: "3f9b2d71-0c4e-4a8b-9e25-6d1a7c3b5e08", cwd: Fixture.storefront, pid: 48877,
+          id: Fixture.checkoutSessionID, cwd: Fixture.storefront, pid: 48877,
           started: ago(minutes: 38), status: "busy", title: "Fix flaky checkout e2e test on Safari",
           context: 64_300, contextAt: ago(minutes: 1.5), state: .runningTool),
         session(
@@ -606,17 +611,9 @@ import SwiftUI
       waitingFor: String? = nil, title: String, context total: Int, contextAt: Date,
       state: SessionState, ttl: PromptCacheTTL? = .oneHour, compaction: Compaction? = nil
     ) -> Session {
-      var fields: [String: Any] = [
-        "pid": pid, "sessionId": id, "cwd": cwd, "startedAt": millis(started),
-        "version": "2.1.270", "entrypoint": "cli", "status": status,
-        "statusUpdatedAt": millis(contextAt),
-      ]
-      if let waitingFor { fields["waitingFor"] = waitingFor }
-      // Decoded rather than built, because `SessionRegistry` is a `Decodable` mirror
-      // of Claude Code's own file and has no other initializer. A fixture that does
-      // not decode is a fixture out of step with the format, and should be loud.
-      let data = try! JSONSerialization.data(withJSONObject: fields)
-      let registry = try! JSONDecoder().decode(SessionRegistry.self, from: data)
+      let registry = registry(
+        id: id, cwd: cwd, pid: pid, started: millis(started), status: status,
+        waitingFor: waitingFor, updated: millis(contextAt))
 
       let session = Session(registry: registry)
       session.title = title
@@ -637,6 +634,35 @@ import SwiftUI
         session.transcript = transcriptURL
       }
       return session
+    }
+
+    @MainActor private static func registry(
+      id: String, cwd: String, pid: Int32, started: Int?, status: String, waitingFor: String?,
+      updated: Int?
+    ) -> SessionRegistry {
+      var fields: [String: Any] = [
+        "pid": pid, "sessionId": id, "cwd": cwd, "version": "2.1.270", "entrypoint": "cli",
+        "status": status,
+      ]
+      if let started { fields["startedAt"] = started }
+      if let updated { fields["statusUpdatedAt"] = updated }
+      if let waitingFor { fields["waitingFor"] = waitingFor }
+      // Decoded rather than built, because `SessionRegistry` is a `Decodable` mirror
+      // of Claude Code's own file and has no other initializer. A fixture that does
+      // not decode is a fixture out of step with the format, and should be loud.
+      let data = try! JSONSerialization.data(withJSONObject: fields)
+      return try! JSONDecoder().decode(SessionRegistry.self, from: data)
+    }
+
+    /// Stop `session` on a permission prompt, as Claude Code's registry would report it.
+    /// A recorded take's `armada.wait` cue; the session keeps its place in the list,
+    /// because `statusUpdatedAt` is the fixture's and not the moment of the cue.
+    @MainActor static func wait(_ session: Session, for reason: String) {
+      let old = session.registry
+      session.registry = registry(
+        id: old.sessionId, cwd: old.cwd, pid: old.pid, started: old.startedAt, status: "waiting",
+        waitingFor: reason, updated: old.statusUpdatedAt)
+      session.state = .waiting
     }
 
     // MARK: - Codex
@@ -1128,6 +1154,9 @@ import SwiftUI
         case .usage, .account, .projects, .codex: .main
         }
       guard source == expected else { return }
+      // A recorded take's t = 0, which `appshot record` reads from the event file rather
+      // than a ready file: it passes no `-ScreenshotReadyFile`. A no-op off a take.
+      DemoCues.shared.ready()
       guard let path = argument(Key.readyFile) else { return }
       // One runloop turn after the body, so the frame this reports has been
       // committed rather than merely queued.

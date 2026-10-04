@@ -36,6 +36,7 @@ struct SessionRow: View {
       SessionRowFigures(session: session, now: now)
     }
     .padding(.vertical, 2)
+    .demoTarget(DemoTargetKey.session(session.id))
   }
 
   /// Wall-clock age of the session, as `2h 14m` / `14m` / `43s`.
