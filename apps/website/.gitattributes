@@ -16,3 +16,7 @@
 # are relative to its own directory. Hoisting it up would silently stop matching, and
 # the next refresh would commit these as ordinary blobs.
 public/*.png filter=lfs diff=lfs merge=lfs -text
+# The release cards, one per version with a summary, from `pnpm cards`. Named on
+# their own line because `public/*.png` does not reach into a subdirectory, and a
+# card committed past it is an ordinary blob added to every clone for good.
+public/changelog/*.png filter=lfs diff=lfs merge=lfs -text

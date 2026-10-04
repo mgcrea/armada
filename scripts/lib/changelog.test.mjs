@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { RELEASE_CARD, wrapLines } from "../../apps/website/scripts/social-card.mjs";
 import {
   HIDDEN_SECTIONS,
   parse,
@@ -397,6 +398,18 @@ Lead prose with no bold title is prose, not a summary.
       assert.ok(
         title.length <= SUMMARY_TITLE_MAX,
         `${release.version}: the title is ${title.length} characters, over ${SUMMARY_TITLE_MAX}`,
+      );
+      // The card's own wrap, not just a character count: a short title of wide
+      // capitals can still need a third line, which the card refuses at
+      // `make changelog`, on release day, after everything else is green.
+      const lines = wrapLines(
+        title,
+        RELEASE_CARD.TITLE,
+        RELEASE_CARD.WIDTH - 2 * RELEASE_CARD.MARGIN,
+      );
+      assert.ok(
+        lines.length <= 2,
+        `${release.version}: the title needs ${lines.length} lines on the card`,
       );
       const post = postText(release.summary);
       assert.ok(

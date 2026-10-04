@@ -163,20 +163,33 @@ audit-release: ## Assert the signed Release app cannot reach the network
 # same reason as the icon: the source is at the root, the output is in apps/apple.
 # `changelog-check` is the CI gate — a stale Changelog.swift fails there rather
 # than shipping notes that describe a different build.
+#
+# It also renders the website's release cards, apps/website/public/changelog/
+# <version>.png, one per release whose section opens with a summary. Those are
+# baked on a Mac for the font, the reason og-image.png is, so the check only
+# proves each card was rendered from the SVG its release would compose today.
+# That needs no font and no sharp, so it runs wherever changelog-check does.
+#
+# Release-day order matters: this runs AFTER the new section is retitled, dated
+# and given its summary, and the result is committed with it. A card rendered
+# before the date is final carries the wrong date, and the check fails the tag.
 
-changelog: ## Regenerate Changelog.swift from CHANGELOG.md
+changelog: ## Regenerate Changelog.swift and the site's release cards from CHANGELOG.md
 	@node scripts/generate-changelog.mjs
+	@pnpm -s -C apps/website cards
 
-changelog-check: ## Fail if Changelog.swift is stale against CHANGELOG.md
+changelog-check: ## Fail if Changelog.swift or a release card is stale against CHANGELOG.md
 	@node scripts/generate-changelog.mjs --check
+	@pnpm -s -C apps/website cards --check
 
 .PHONY: changelog changelog-check
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 #
 # Every suite, in the three runtimes they need: node:test for scripts/ (the
-# CHANGELOG parse the appcast, the release body and the What's New pane share,
-# the licence key format, and the Sparkle signature check `appcast` runs), vitest
+# CHANGELOG parse the appcast, the release body, the What's New pane and the
+# website share, the licence key format, and the Sparkle signature check
+# `appcast` runs) and for the website's release card composer, vitest
 # inside the Workers runtime for the licence Worker, and Swift twice over: the
 # app's pure files compiled beside a check driver (`unit`), and SwiftPM for the
 # ArmadaMCP package (`test`). Root-level because two of the four are not
