@@ -60,3 +60,6 @@ dist/
 apps/apple/Screenshots/*/source/
 apps/apple/Screenshots/*/appstore/
 apps/apple/Screenshots/*/diff/
+
+# appshot video masters and renders: build artifacts, rebuilt by `appshot compose video`.
+apps/apple/Screenshots/macos/videos/
