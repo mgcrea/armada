@@ -418,7 +418,7 @@ APP_PATH = $(APP_BUNDLE)
 
 .PHONY: screenshots screenshots-capture screenshots-check screenshots-update \
         screenshots-seal screenshots-selftest screenshots-appstore screenshots-website \
-        screenshots-compose screenshots-doctor screenshots-clean
+        screenshots-compose screenshots-doctor screenshots-clean site-video
 
 ## Needs Screen Recording permission for the TERMINAL that runs it; nothing is granted
 ## to Armada. --wait queues behind another project's capture on this Mac rather than
@@ -479,6 +479,35 @@ screenshots-website: ## Emit bare app captures into apps/website/src/assets/scre
 		--config "$(SCREENSHOTS_CONFIG)" --source "$(SOURCE_DIR)" --out "$(WEBSITE_SCREENSHOTS_DIR)"
 
 screenshots-compose: screenshots-appstore screenshots-website ## Recompose both sets (no re-capture)
+
+# ── Videos ────────────────────────────────────────────────────────────────────
+#
+# `videos[]` in the config. Masters and renders are git-ignored build artifacts
+# under $(VIDEOS_DIR).
+VIDEOS_DIR = $(MAC_DIR)/videos
+
+# The website's loop goes to public/, not src/assets: astro:assets does nothing for
+# video. So `make screenshots` neither wipes nor refreshes it, and it goes stale
+# silently: run `make site-video` after every capture run.
+SITE_VIDEO_DIR = $(abspath ../website)/public/video
+
+## The website's tour loop: the `tour` entry in videos[], rendered from the same
+## captures as the plates, so it goes stale exactly when they do and is rebuilt by the
+## same hand. No re-capture and no app launch. appshot writes ~10 Mbps with a silent
+## stereo track because App Store previews want both; a muted loop on a page wants
+## neither, so ffmpeg takes it down to a size the page can carry and drops the audio.
+## +faststart puts the index first so it starts playing before the download ends. The
+## poster is the frame at the entry's `poster` (1.5 s).
+site-video: ## Render the website's tour loop into apps/website/public/video
+	appshot compose video --config "$(SCREENSHOTS_CONFIG)" --from-stills "$(SOURCE_DIR)" \
+		--out "$(VIDEOS_DIR)" --videos tour --appearances $(APPEARANCES)
+	@mkdir -p "$(SITE_VIDEO_DIR)"
+	ffmpeg -loglevel error -y -i "$(VIDEOS_DIR)/promo/tour~dark~1920x1080.mp4" -an \
+		-c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -movflags +faststart \
+		"$(SITE_VIDEO_DIR)/tour.mp4"
+	ffmpeg -loglevel error -y -ss 1.5 -i "$(VIDEOS_DIR)/promo/tour~dark~1920x1080.mp4" \
+		-frames:v 1 -q:v 3 "$(SITE_VIDEO_DIR)/tour.jpg"
+	@ls -l "$(SITE_VIDEO_DIR)"
 
 screenshots-doctor: ## Check what fails silently: font, Screen Recording, config
 	appshot doctor --config "$(SCREENSHOTS_CONFIG)"

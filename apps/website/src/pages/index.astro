@@ -12,6 +12,7 @@ import Problem from "../components/Problem.astro";
 import Rules from "../components/Rules.astro";
 import SiblingApps from "../components/SiblingApps.astro";
 import Supervisor from "../components/Supervisor.astro";
+import Tour from "../components/Tour.astro";
 import Vendors from "../components/Vendors.astro";
 import Window from "../components/Window.astro";
 import {
@@ -92,6 +93,11 @@ const schema = {
   <main id="main" tabindex="-1">
     <Hero />
     <Marquee />
+    {/* Directly under the hero, whose project strip closes it: the real window,
+        moving, before anything else is said about it. The hero's fleet card and
+        desktop are drawings; this is the first thing on the page that is not.
+        Twenty seconds, and it carries its own captions. */}
+    <Tour />
     <Window />
     <Gallery />
     <Problem />

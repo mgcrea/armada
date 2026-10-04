@@ -1,0 +1,66 @@
+---
+/**
+ * The app, moving, directly under the hero.
+ *
+ * The hero's fleet card and its desktop are drawings; this is the first thing on the
+ * page that is the real window. `make site-video` (apps/apple/Makefile, "Videos")
+ * renders it from the `tour` entry in apps/apple/Screenshots/macos/screenshots.config.json,
+ * out of the same captures `Window`, `Limits` and `Gallery` show still, and writes it
+ * to public/video. From public/ and not astro:assets, which does nothing for video, so
+ * `make screenshots` neither wipes nor refreshes it: it goes stale exactly when they
+ * do, and a capture run wants a `make site-video` after it. The captions are burned in,
+ * so a claim renamed on this page is still on screen in the old words until someone
+ * re-renders.
+ *
+ * `preload="none"` and no `autoplay`: the script below plays it only while it is on
+ * screen, and not at all under reduced motion, where it stays on its poster with the
+ * controls showing. The controls are the no-JS fallback too. Muted because it has no
+ * sound to lose.
+ *
+ * Same column as the hero's desktop and the main window capture below it, and the
+ * desktop's border and shadow, so the window in it reads at the scale they do.
+ */
+---
+
+{/* Top padding only. The hero ends flush on the project strip, so nothing above
+    makes the gap; `Window` below brings its own top. */}
+<section class="pt-[96px]">
+  <figure class="wrap reveal m-0 flex flex-col gap-3">
+    <video
+      data-tour
+      src="/video/tour.mp4"
+      poster="/video/tour.jpg"
+      width="1920"
+      height="1080"
+      muted
+      loop
+      playsinline
+      controls
+      preload="none"
+      aria-label="A twenty-second loop of Armada's window: the Usage pane's forecast for one account's week, an account's sessions with the one waiting on you picked out, a session's context window by category, and a Codex home in the same sidebar as the Claude accounts."
+      class="block h-auto w-full rounded-[16px] border border-rule-2 bg-bg-2 shadow-[0_24px_60px_-34px_rgba(0,0,0,.9)]"
+    >
+    </video>
+    <figcaption class="font-mono text-[11px] text-fg-muted">
+      Twenty seconds of the app in demo mode · accounts, sessions and figures are examples ·
+      every pane is shown still further down
+    </figcaption>
+  </figure>
+</section>
+
+<script>
+  // Plays the tour only while it is on screen. Reduced motion, or no
+  // IntersectionObserver, leaves it as it rendered: paused, with controls.
+  const tour = document.querySelector<HTMLVideoElement>("video[data-tour]");
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (tour && !still && "IntersectionObserver" in window) {
+    tour.controls = false;
+    new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) void tour.play().catch(() => (tour.controls = true));
+        else tour.pause();
+      },
+      { threshold: 0.4 },
+    ).observe(tour);
+  }
+</script>

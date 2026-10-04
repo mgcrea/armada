@@ -52,7 +52,8 @@
         ]
       },
       "title": "#F4F2EF",
-      "subtitle": "#9B9A96"
+      "subtitle": "#9B9A96",
+      "accent": "#F6A177"
     }
   },
   "//screens": "Order here IS the order of the framed set: it stamps the 01-, 02- prefix. Captures stay unnumbered, so reordering never renames an image. `id` is <id>~dark.png in source/ and the -ScreenshotStage value `DemoSeed.Stage` parses. No caption quotes a fixture count: `five sessions` is a fact about DemoSeed, and it goes stale the first time someone adds a row.",
@@ -181,7 +182,10 @@
       "hook": "Too many coding agents to keep track of?",
       "outputs": {
         "preview": false,
-        "promo": [[1200, 1200], [1920, 1080]],
+        "promo": [
+          [1200, 1200],
+          [1920, 1080]
+        ],
         "website": false
       },
       "card": {
@@ -210,6 +214,47 @@
         { "at": 10, "cue": "pointer.move", "args": { "target": "acme-usage" } },
         { "at": 10.6, "focus": { "rect": [548, 854, 1333, 891], "fill": 1 } },
         { "at": 15.5, "endCard": true }
+      ]
+    },
+    {
+      "//": "The website's loop, built by `make site-video` into apps/website/public/video and played under the hero. No hook and no card: the hero has just said both. It ends back on its first screen with focus home, so the loop does not jump. From stills, the same captures as the plates, so it goes stale exactly when they do. Not recorded yet: a take has to start and end on the same screen, which with today's cues means launching on usage and cutting to account, and that `stage` cue builds the account pane cold and acks 266-349ms late against the 250ms limit (two takes, 2026-10-04). Starting on account cannot loop: the click leaves a different session selected. Rects are capture pixels, 2400x1604. The waiting session on the account plate is the api row at the top, the blue dot: the storefront row's orange ring is running a tool, not waiting.",
+      "id": "tour",
+      "stage": "usage",
+      "duration": 20,
+      "poster": 1.5,
+      "outputs": {
+        "preview": false,
+        "promo": [[1920, 1080]],
+        "website": false
+      },
+      "motion": "kinetic",
+      "beats": [
+        { "at": 0, "screen": "usage", "caption": "Know where every plan limit *will land*" },
+        { "at": 1.9, "focus": { "rect": [520, 1040, 1840, 564] } },
+        { "at": 2.5, "pop": { "rect": [540, 1296, 1800, 126], "until": 4.2 } },
+        {
+          "at": 4.6,
+          "screen": "account",
+          "caption": "See which session is *waiting on you*",
+          "focus": "home"
+        },
+        { "at": 5.6, "focus": { "rect": [480, 100, 960, 880] } },
+        { "at": 6.0, "pop": { "rect": [500, 244, 918, 84], "until": 8.4 } },
+        {
+          "at": 9,
+          "caption": "How full *every context* is",
+          "focus": { "rect": [1482, 1026, 876, 578] }
+        },
+        {
+          "at": 12.6,
+          "screen": "codex",
+          "caption": "Codex too, *in the same window*",
+          "until": 17.6,
+          "focus": "home"
+        },
+        { "at": 13.4, "focus": { "rect": [0, 90, 1440, 820], "fill": 1 } },
+        { "at": 14.2, "spotlight": { "rect": [20, 648, 440, 110], "until": 16.8 } },
+        { "at": 18.2, "screen": "usage", "focus": "home" }
       ]
     }
   ]
