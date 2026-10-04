@@ -36,7 +36,8 @@ const columns: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: "Download", href: DOWNLOAD.href },
       { label: `Buy · ${PRICING.price}`, href: PRICING.buy },
-      { label: "Release notes", href: DOWNLOAD.releases },
+      /** The site's own changelog, which links on to the GitHub releases. */
+      { label: "Changelog", href: "/changelog/" },
       { label: "Checksum", href: DOWNLOAD.checksum },
       /** Only once there is something public to point at; see REPO_PUBLIC. */
       ...(REPO_PUBLIC ? [{ label: "Source ↗", href: REPO_URL }] : []),

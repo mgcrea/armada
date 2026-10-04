@@ -1,9 +1,11 @@
 // CHANGELOG.md, parsed once.
 //
-// Three things read this file and they must not disagree about it: the Sparkle
+// Four things read this file and they must not disagree about it: the Sparkle
 // appcast, which renders one section as HTML at release time; the GitHub release
-// body, which renders the same section as markdown; and the app's What's New
-// pane, which is generated from the most recent sections at build time. Two
+// body, which renders the same section as markdown; the app's What's New pane,
+// which is generated from the most recent sections at build time; and the
+// website's /changelog/ pages, which render every released section with the
+// appcast's HTML and lead with its summary (`Summary` below). Two
 // parsers over one hand-written file drift the first time somebody writes a
 // bullet in a shape neither anticipated, and the failure is silent in both
 // directions — the appcast keeps rendering while the pane quietly drops a

@@ -27,10 +27,13 @@ const links = [
       </a>
 
       {/* The shipping version, beside the wordmark: an identifying detail, not a
-          call to action. `hidden` is safe here: this is a plain anchor, not a
+          call to action. It links to that version's page in the changelog:
+          somebody reading the number wants to know what it brought, and the page
+          links on to the build. src/data/changelog.ts fails the build if there is
+          no page for it. `hidden` is safe here: this is a plain anchor, not a
           Button. */}
       <a
-        href={DOWNLOAD.releases}
+        href={`/changelog/${APP_VERSION}/`}
         class="hidden rounded-full border border-rule px-2 py-[3px] font-mono text-[10.5px] leading-none font-medium text-fg-muted transition-colors hover:border-accent hover:text-accent-hi sm:block"
       >
         {APP_VERSION}
