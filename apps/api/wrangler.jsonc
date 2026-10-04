@@ -65,6 +65,13 @@
   "env": {
     "test": {
       "name": "armada-api-test",
+      // Empty, and it has to be said. Wrangler inherits the top-level `routes`
+      // into a named environment, so without it the first `wrangler deploy
+      // --env test` takes the api.armada.mgcrea.io custom domain away from the
+      // live Worker, and live webhooks land on the rehearsal, signed for a
+      // secret it does not hold. bastion's first test deploy did exactly that
+      // on 2026-10-04.
+      "routes": [],
       // No `database_id` yet, because the database does not exist: on
       // 2026-09-14 `wrangler d1 list` on this account had no
       // armada-licenses-test. Create it with `wrangler d1 create
