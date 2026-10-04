@@ -92,12 +92,26 @@ The release job passes `MARKETING_VERSION` from the tag on the xcodebuild comman
 copies. They are checked anyway: Xcode reads them when it builds on its own, and before the
 first tag so does `make build`.
 
+The new section also opens with its **summary**: one paragraph, `**Title.** Description.`, right
+under the `## [X.Y.Z]` heading and above the first `###`. It is the headline of the release's page
+on the site, its og:title and og:description, the title on its social card, the post the page's
+"Share this release" box offers, and the first paragraph of the update dialog and the GitHub
+release body. Write it for somebody who has never opened the app, from the section's own entries.
+`pnpm test:scripts` holds it to a title of at most 64 characters that fits the card in two lines,
+and to 256 characters of post in all, X's 280 less the link; every release from 1.9.0 on owes one.
+
 Then regenerate what is derived from them:
 
 ```bash
-make changelog      # Changelog.swift, the What's New pane's data
+make changelog      # Changelog.swift, the What's New pane's data, and the release's social card
 make revocations    # Revocations.swift from the Worker's D1: refunded keys stop at this build
 ```
+
+`make changelog` renders `apps/website/public/changelog/X.Y.Z.png` and records the hash of the SVG
+it came from in `apps/website/src/data/release-cards.json`. Run it after the heading is dated and
+the summary written, on a Mac: the card is set in SF Pro, and the date is on it. Commit both files;
+the PNG is an LFS object, as the site's other PNGs are. `make changelog-check` fails on a card that
+has fallen behind its title or date, without needing the font.
 
 **`make revocations` is not optional.** The app is not allowed to ask anything at runtime, so a
 refund or a lost chargeback since the last release is honoured only by a build that re-ran it.
@@ -116,7 +130,9 @@ node scripts/changelog-notes.mjs "$v" CHANGELOG.md >/dev/null && echo appcast-no
 node scripts/changelog-notes.mjs --markdown "$v" CHANGELOG.md                     # the release body
 ```
 
-`changelog-notes.mjs` is what `make appcast` and the release body both run in CI. It exits
+`make changelog-check` covers the release card too, and the site build fails if `APP_VERSION` has
+no CHANGELOG section for the nav's version badge to open. `changelog-notes.mjs` is what
+`make appcast` and the release body both run in CI. It exits
 non-zero on a missing section, and on a section with nothing in it once `### Internal` is left
 out, which would otherwise stop the release after notarization rather than before it.
 
