@@ -22,6 +22,10 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ## [1.9.0] - 2026-09-28
 
+**Move sessions between Claude accounts, ended ones too.** Select several to move at once, or
+open an account's History and continue an ended session on another. Usage moved to the sidebar,
+and a stopped session counts down to when its prompt cache expires.
+
 ### Added
 
 - **Move several sessions to another account at once.** Select more than one session in an

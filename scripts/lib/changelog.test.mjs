@@ -6,7 +6,17 @@ import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { HIDDEN_SECTIONS, parse, renderHTML, renderMarkdown, visibleGroups } from "./changelog.mjs";
+import {
+  HIDDEN_SECTIONS,
+  parse,
+  plain,
+  postText,
+  renderHTML,
+  renderMarkdown,
+  SUMMARY_POST_MAX,
+  SUMMARY_TITLE_MAX,
+  visibleGroups,
+} from "./changelog.mjs";
 
 /**
  * The failures these guard against are silent in both directions.
@@ -291,5 +301,108 @@ describe("changelog-notes.mjs", () => {
     assert.equal(notes("--markdown", "9.9.9").status, 1);
     assert.equal(notes("0.9.0").status, 1);
     assert.equal(notes("--markdown", "0.9.0").status, 1);
+  });
+});
+
+/** Whether a version is 1.9.0 or later: the first release written with a summary. */
+const fromSummaries = (version) => {
+  const [major, minor] = version.split(".").map(Number);
+  return major > 1 || (major === 1 && minor >= 9);
+};
+
+describe("summaries", () => {
+  const SOURCE = `# Changelog
+
+## [2.0.0] - 2026-10-03
+
+**One line for the card.** Two sentences for the post, wrapped
+across lines the way the file wraps everything. With \`code\` and a [link](https://example.com).
+
+A second paragraph, which is lead prose but not the summary.
+
+### Fixed
+
+- **A fix.** Body.
+
+## [1.8.0] - 2026-09-01
+
+Lead prose with no bold title is prose, not a summary.
+
+### Fixed
+
+- **A fix.** Body.
+`;
+  const [withSummary, withoutSummary] = parse(SOURCE);
+
+  it("joins the release's wrapped lead lines into paragraphs", () => {
+    assert.equal(withSummary.lead.length, 2);
+    assert.match(withSummary.lead[0], /post, wrapped across lines/);
+  });
+
+  it("takes the first lead paragraph's bold title as the summary", () => {
+    assert.deepEqual(withSummary.summary, {
+      title: "One line for the card.",
+      description:
+        "Two sentences for the post, wrapped across lines the way the file wraps everything. " +
+        "With `code` and a [link](https://example.com).",
+    });
+  });
+
+  it("has no summary where the lead has no bold title", () => {
+    assert.equal(withoutSummary.summary, null);
+  });
+
+  it("renders a wrapped lead as one paragraph in the appcast, not one per line", () => {
+    const html = renderHTML(withSummary);
+    assert.equal((html.match(/<p>/g) ?? []).length, 2 + 1);
+    assert.match(html, /^<p><strong>One line for the card\.<\/strong> Two sentences/);
+  });
+
+  it("keeps the summary its own paragraph in the release body", () => {
+    // `renderMarkdown` joined the lead with a space when it was one entry per
+    // line. One entry per paragraph, the same join would run the summary and
+    // the prose after it together.
+    const [summary, second] = renderMarkdown(withSummary).split("\n\n");
+    assert.match(summary, /^\*\*One line for the card\.\*\* Two sentences/);
+    assert.equal(second, "A second paragraph, which is lead prose but not the summary.");
+  });
+
+  it("strips markdown for the post", () => {
+    assert.equal(
+      plain("**Bold** with `code`, a [link](https://x.y) and *emphasis*."),
+      "Bold with code, a link and emphasis.",
+    );
+    assert.equal(
+      postText(withSummary.summary),
+      "One line for the card. Two sentences for the post, wrapped across lines the way the file " +
+        "wraps everything. With code and a link.",
+    );
+  });
+
+  /*
+   * The website's page for each version, its card and the post all come from
+   * these, and each has a limit nothing else checks: the card lays the title
+   * out in at most two lines, and the post has to fit beside its link on X.
+   * 1.9.0 is the first release written with one, and every release after it
+   * owes one. `[Unreleased]` does not: its summary is written on release day,
+   * with the heading.
+   */
+  it("every release from 1.9.0 on has a summary that fits the card and the post", () => {
+    const real = parse(readFileSync(join(root, "CHANGELOG.md"), "utf8"));
+    const owing = real.filter((r) => !r.unreleased && fromSummaries(r.version));
+    assert.ok(owing.length > 0, "no release from 1.9.0 on; is the version filter right?");
+    for (const release of owing) {
+      assert.ok(release.summary, `${release.version} has no **Title.** lead paragraph`);
+      const title = plain(release.summary.title);
+      assert.ok(
+        title.length <= SUMMARY_TITLE_MAX,
+        `${release.version}: the title is ${title.length} characters, over ${SUMMARY_TITLE_MAX}`,
+      );
+      const post = postText(release.summary);
+      assert.ok(
+        post.length <= SUMMARY_POST_MAX,
+        `${release.version}: the post is ${post.length} characters, over ${SUMMARY_POST_MAX}`,
+      );
+    }
   });
 });
