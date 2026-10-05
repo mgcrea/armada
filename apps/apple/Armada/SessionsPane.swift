@@ -303,6 +303,7 @@ struct SessionDetail: View {
         // what stays here is why Focus cannot reach the window, where there is room to say it.
         FocusNote(host: host, didLookUp: didLookUpHost)
         ForkButton(availability: .claude(session, in: account))
+        MoveSessionButton(session: session, account: account)
         HandoverButton(availability: .claude(session, in: account))
         CloseSessionButton(session: session, account: account)
       }

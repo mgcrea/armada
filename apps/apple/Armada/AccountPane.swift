@@ -260,6 +260,8 @@ struct AccountPaneView: View {
                     target.agent, in: target.project, start: target.start)
                 }
               }
+              // Move before Continue on, the order the several-row menu has them in.
+              MoveContextItems(session: session, account: account)
               HandoverContextItems(
                 targets: HandoverAvailability.claude(session, in: account).targets)
               Divider()

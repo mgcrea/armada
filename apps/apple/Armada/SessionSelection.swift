@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Moving, continuing or closing the sessions selected in an account's list, several at once.
+/// Moving, continuing or closing the sessions selected in an account's list, several at once,
+/// and moving one: a single row's Move goes through here too, so that one session and eight
+/// are copied, closed and reported by the same code.
 ///
 /// **What it is for: an account that has run out.** Its sessions have to go to the next one,
 /// usually most of them, often across several projects. One at a time that is a copy, a launch
@@ -224,7 +226,9 @@ private struct SessionBatchAlerts: ViewModifier {
 
   private func title(for pending: SessionBatchActions.Pending?) -> String {
     guard let pending else { return "" }
-    let sessions = SessionBatch.sessions(pending.sessionIDs.count)
+    let sessions =
+      pending.sessionIDs.count == 1
+      ? "This Session" : SessionBatch.sessions(pending.sessionIDs.count)
     switch pending.kind {
     case .close: return "Close \(sessions)?"
     case .move: return "Move \(sessions) to \(pending.destinationName ?? "the other account")?"
@@ -233,12 +237,14 @@ private struct SessionBatchAlerts: ViewModifier {
 
   private func allLabel(for pending: SessionBatchActions.Pending) -> String {
     let verb = pending.kind == .close ? "Close" : "Move"
-    return "\(verb) All \(pending.sessionIDs.count)"
+    return pending.sessionIDs.count == 1 ? verb : "\(verb) All \(pending.sessionIDs.count)"
   }
 
   private func message(for pending: SessionBatchActions.Pending) -> String {
     let working =
-      pending.busy == 1 ? "One of them is working" : "\(pending.busy) of them are working"
+      pending.sessionIDs.count == 1
+      ? "It is working"
+      : pending.busy == 1 ? "One of them is working" : "\(pending.busy) of them are working"
     switch pending.kind {
     case .close:
       return
@@ -427,6 +433,84 @@ struct SessionBatchContextItems: View {
     Divider()
     Button("Close \(sessions.count) \(SessionBatch.noun(sessions.count))") {
       batch.close(sessions, in: account)
+    }
+  }
+}
+
+/// "Move to <account>", or a menu of accounts when there are several, for one session: the
+/// batch's Move with a single row in it, beside the details' Continue on.
+///
+/// Nothing when the session cannot be handed over at all. `HandoverButton`, right below it,
+/// already says why, and saying it twice would be noise.
+struct MoveSessionButton: View {
+  let session: Session
+  let account: Account
+
+  @State private var closing = SessionClosing.shared
+  /// Watched here, so the caption changes when Settings flips it.
+  @AppStorage(HandoverTarget.copyOnlyDefaultsKey) private var copiesOnly = false
+
+  var body: some View {
+    let destinations = SessionBatchActions.destinations(from: account)
+    let movable = !SessionBatchActions.movable([session], in: account).isEmpty
+    if !destinations.isEmpty, movable {
+      let isClosing = closing.inFlight.contains(session.id)
+      if destinations.count == 1, let destination = destinations.first {
+        Button {
+          SessionBatchActions.shared.move([session], in: account, to: destination)
+        } label: {
+          Label("Move to \(destination.displayName)", systemImage: "arrow.right")
+        }
+        .disabled(isClosing)
+      } else {
+        Menu {
+          ForEach(destinations) { destination in
+            Button(destination.displayName) {
+              SessionBatchActions.shared.move([session], in: account, to: destination)
+            }
+          }
+        } label: {
+          Label("Move to Another Account", systemImage: "arrow.right")
+        }
+        .fixedSize()
+        .disabled(isClosing)
+      }
+      Text(caption(to: destinations.count == 1 ? destinations[0].displayName : nil))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private func caption(to destination: String?) -> String {
+    let there = destination ?? "the account you pick"
+    return copiesOnly
+      ? "Armada copies this conversation to \(there) and closes it here, and starts nothing. Open it from Claude Code's past conversations in a window on \(there), where it keeps its session id. Earlier turns stay counted against this account."
+      : "Armada copies this conversation to \(there), opens it there in a terminal and then closes it here. The copy gets a new session id. Earlier turns stay counted against this account."
+  }
+}
+
+/// The single-row context menu's Move: inline for one other account, a submenu for several,
+/// as `HandoverContextItems` does for Continue on.
+struct MoveContextItems: View {
+  let session: Session
+  let account: Account
+
+  var body: some View {
+    let destinations = SessionBatchActions.destinations(from: account)
+    if !destinations.isEmpty, !SessionBatchActions.movable([session], in: account).isEmpty {
+      if destinations.count == 1, let destination = destinations.first {
+        Button("Move to \(destination.displayName)") {
+          SessionBatchActions.shared.move([session], in: account, to: destination)
+        }
+      } else {
+        Menu("Move to Another Account") {
+          ForEach(destinations) { destination in
+            Button(destination.displayName) {
+              SessionBatchActions.shared.move([session], in: account, to: destination)
+            }
+          }
+        }
+      }
     }
   }
 }
