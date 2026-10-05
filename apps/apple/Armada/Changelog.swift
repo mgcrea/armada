@@ -212,7 +212,72 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_9_0, v1_8_0, v1_7_0, v1_6_0, v1_5_0]
+  static let releases: [Release] = [v1_10_0, v1_9_0, v1_8_0, v1_7_0, v1_6_0]
+
+  // swift-format-ignore
+  private static let v1_10_0: Release = Release(
+    version: "1.10.0",
+    date: "2026-10-05",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Manage Codex schedules from Claude Code.",
+            body: [
+              "With Allow writes on, Claude Code can list every scheduled task on the Mac, and create, change or remove Codex automations, through Armada's MCP server. Codex still runs them, and Armada posts a notification every time one changes. Claude desktop's own scheduled tasks are listed too, read-only.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A Schedules pane.",
+            body: [
+              "The sidebar lists every schedule on the Mac, Codex automations by home and the Claude app's tasks, with when each runs next, its prompt and its folder. Read-only: schedules are changed by asking Claude Code.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Keep the Mac awake while agents work.",
+            body: [
+              "A new setting in General holds off idle sleep while any Claude Code, Codex or Grok Build session is working, and lets it go when the last one stops, optionally keeping the display on too. Off by default; closing the lid still sleeps the Mac.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Move one session to another account.",
+            body: [
+              "A session's right-click menu and its details offer Move beside Continue on, as a selection of several already did. The conversation is copied to the other account and opened there, and the session is closed here only once the copy is in place.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 4,
+            headline: "A file Armada cannot read is no longer saved over.",
+            body: [
+              "When the saved projects, the usage history or an archive's manifest would not load, Armada started empty and its next save replaced the original. It now moves the file aside as `<name>.bak-<seconds>`, or stops saving to it when even that fails, and an archive pass that finds its manifest unreadable says so and leaves it alone.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "Check Now no longer stays greyed out.",
+            body: [
+              "An update check that failed, or one started while another was running, left the button disabled until Armada quit.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "A licence key a mail client broke across lines is accepted.",
+            body: [
+              "Pasting a key copied from the purchase email used to be refused as malformed.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "Connecting an MCP client keeps a symlinked config.",
+            body: [
+              "A client whose config file is a symlink, such as one kept in a dotfiles repository, used to have the link replaced with a plain file.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_9_0: Release = Release(
@@ -407,54 +472,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_5_0: Release = Release(
-    version: "1.5.0",
-    date: "2026-09-21",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Continue a Claude Code session on another account.",
-            body: [
-              "A session stopped at one account's limit had no way onto the other. \"Continue on\" followed by the account's name, next to Fork Session in a session's details, in its right-click menu and in the menu bar popover, copies the conversation to that account and opens it there in a terminal. With more than two accounts it is a menu of them, and with one account it is not shown at all. The session you started from keeps running, untouched: the copy gets a session id of its own and arrives under the other account as a separate row. Earlier turns stay counted against the account that spent them. This is the one write Armada makes into Claude Code's own folders. It copies that session's transcript and nothing else, and it refuses rather than overwrite a different conversation already there. Claude Code sessions only, and only one that has been prompted at least once.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Manage Codex schedules from Claude Code.",
-            body: [
-              "With Allow writes on, Claude Code can list every scheduled task on the Mac, and create, change or remove Codex automations, through Armada's MCP server. Codex still runs them, and Armada posts a notification every time one changes. Claude desktop's own scheduled tasks are listed too, read-only.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A Schedules pane.",
-            body: [
-              "The sidebar lists every schedule on the Mac, Codex automations by home and the Claude app's tasks, with when each runs next, its prompt and its folder. Read-only: schedules are changed by asking Claude Code.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

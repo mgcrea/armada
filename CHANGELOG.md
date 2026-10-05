@@ -5,10 +5,14 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.9.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.10.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.10.0] - 2026-10-05
+
+**Schedules, and a Mac that stays awake for your agents.** Claude Code can manage Codex
+schedules through Armada, and a new pane lists every schedule on the Mac. A setting keeps the Mac
+awake while agents work, and one session can move to another account.
 
 ### Added
 
@@ -23,6 +27,24 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   while any Claude Code, Codex or Grok Build session is working, and lets it go when the last
   one stops, optionally keeping the display on too. Off by default; closing the lid still
   sleeps the Mac.
+- **Move one session to another account.** A session's right-click menu and its details offer
+  Move beside Continue on, as a selection of several already did. The conversation is copied to
+  the other account and opened there, and the session is closed here only once the copy is in
+  place.
+
+### Fixed
+
+- **A file Armada cannot read is no longer saved over.** When the saved projects, the usage
+  history or an archive's manifest would not load, Armada started empty and its next save
+  replaced the original. It now moves the file aside as `<name>.bak-<seconds>`, or stops saving
+  to it when even that fails, and an archive pass that finds its manifest unreadable says so and
+  leaves it alone.
+- **Check Now no longer stays greyed out.** An update check that failed, or one started while
+  another was running, left the button disabled until Armada quit.
+- **A licence key a mail client broke across lines is accepted.** Pasting a key copied from the
+  purchase email used to be refused as malformed.
+- **Connecting an MCP client keeps a symlinked config.** A client whose config file is a symlink,
+  such as one kept in a dotfiles repository, used to have the link replaced with a plain file.
 
 ## [1.9.0] - 2026-09-28
 
