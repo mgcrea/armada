@@ -264,6 +264,9 @@ struct MainWindowView: View {
         .help("Add a Claude Code, Codex or Grok Build account")
         .disabled(!monitor.current.isEntitled)
       }
+      // The supervisor's MCP server and its light. Trailing, after whatever the pane adds: it
+      // is about the window's agents, not the pane's, and is there for every pane.
+      ToolbarItem(placement: .primaryAction) { MCPToolbarItem() }
     }
   }
 

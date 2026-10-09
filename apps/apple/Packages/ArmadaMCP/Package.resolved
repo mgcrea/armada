@@ -1,13 +1,13 @@
 {
-  "originHash" : "ff01b6dd990f4849b1b37987a630641440fca0398f17ec77dd1779fc777064f4",
+  "originHash" : "fbb659de8c3f081f0db5f803390a138c75f7a00727102445414cf1af9d43b859",
   "pins" : [
     {
       "identity" : "swift-mcp-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-mcp-kit.git",
       "state" : {
-        "revision" : "2889dc4391ff5caf2c3bb8cc8d3ae48f97430f24",
-        "version" : "1.3.0"
+        "revision" : "78f47d90eb1e60128dff34ee586054b167bbcbe7",
+        "version" : "1.4.0"
       }
     }
   ],

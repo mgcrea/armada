@@ -40,6 +40,9 @@ final class MCPServerController {
 
   private(set) var state: LoopbackListener.State = .stopped
   private(set) var tokenError: String?
+  /// What the listener running now has heard, for the toolbar's light. Started afresh with each
+  /// listener, so a warning about an old token outlives neither a restart nor a port.
+  private(set) var activity = MCPActivity()
 
   /// Per bundle identifier, so the Debug build and the installed one each keep their own
   /// Keychain item. One shared item would put a Keychain consent prompt in front of whichever
@@ -127,7 +130,14 @@ final class MCPServerController {
       allowWrites: { MCPServerController.allowsWrites },
       // One line per request into the unified log. Never the arguments: `AuditEntry` cannot
       // carry them, which is the point of it being a type rather than a closure over the frame.
-      audit: { entry in MCPLog.request(entry) })
+      audit: { [weak self] entry in
+        MCPLog.request(entry)
+        // On the connection's thread: the light is the main actor's.
+        guard let kind = MCPActivity.Kind(entry.outcome) else { return }
+        let date = Date.now
+        Task { @MainActor in self?.activity.record(kind, at: date) }
+      })
+    activity = MCPActivity()
     listener.start(port: port)
     self.listener = listener
     boundPort = port

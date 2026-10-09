@@ -140,20 +140,14 @@ struct SupervisorPane: View {
     }
   }
 
-  @ViewBuilder private var status: some View {
-    switch controller.state {
-    case .running(let boundPort):
-      // `String(boundPort)`, not the `Int`: interpolated into a `LocalizedStringKey`, an `Int`
-      // gets the locale's grouping separator, and 8790 becomes a port nobody can copy.
-      Label("Listening on 127.0.0.1:\(String(boundPort))", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.green)
-    case .stopped:
-      Label("Not running", systemImage: "circle")
-        .foregroundStyle(.secondary)
-    case .failed(let message):
-      Label(message, systemImage: "exclamationmark.triangle.fill")
-        .foregroundStyle(.red)
-    }
+  /// The kit's label, the toolbar popover's: the address, the last request, and a warning when
+  /// a client still holds a token Regenerate replaced.
+  private var status: some View {
+    MCPStatusLabel(
+      status: MCPStatus(
+        isAvailable: true, isEnabled: true, state: controller.state,
+        activity: controller.activity, now: .now),
+      activity: controller.activity)
   }
 
   // MARK: - Supervisor session
