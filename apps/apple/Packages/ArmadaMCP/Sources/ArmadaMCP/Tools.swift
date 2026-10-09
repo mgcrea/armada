@@ -96,6 +96,13 @@ public enum Tools {
     "armada_get_projects", "armada_read_transcript", "armada_wait", "armada_list_schedules",
   ]
 
+  /// The tools behind the write gate, by name, in listing order: what Bastion holds back while
+  /// its own write switch is off. A test keeps this equal to the gated set in the table.
+  public static let writeTools = [
+    "armada_start_session", "armada_close_session", "armada_send_message",
+    "armada_focus_session", "armada_save_schedule", "armada_delete_schedule",
+  ]
+
   /// How long `armada_wait` sleeps between snapshots. A parameter so tests can shorten it.
   public static let defaultWaitPoll: Duration = .seconds(1)
   public static let defaultWaitSeconds = 120

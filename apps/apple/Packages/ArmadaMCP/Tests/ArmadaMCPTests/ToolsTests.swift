@@ -46,6 +46,16 @@ struct ToolsTests {
       ])
   }
 
+  @Test("The write tools handed to Bastion are exactly the gated ones, in listing order")
+  func writeTools() {
+    let table = Tools.table(
+      source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
+      sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
+    let gated = table.listing(allowWrites: true).filter { $0.gate == .requiresWrites }
+    #expect(gated.map(\.name) == Tools.writeTools)
+    #expect(Set(Tools.writeTools).isDisjoint(with: Tools.readToolNames))
+  }
+
   @Test("Every tool description stays inside its context budget")
   func descriptionBudget() {
     let table = Tools.table(
