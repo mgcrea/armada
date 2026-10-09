@@ -1,5 +1,8 @@
 import AppKit
+import ArmadaMCP
 import MCPKitLoopback
+import MCPKitUI
+import MCPKitWiring
 import SwiftUI
 
 /// Settings ▸ Supervisor: the MCP server, and a Claude Code session started with it attached.
@@ -230,6 +233,18 @@ struct SupervisorPane: View {
             .buttonStyle(.borderless)
           Button("Regenerate", action: controller.regenerateToken)
             .buttonStyle(.borderless)
+        }
+      }
+      // Only while the listener is up, so what Bastion is handed answers; and never in a capture,
+      // where whether Bastion is installed on this Mac must not change the plate.
+      if controller.runningPort != nil, !ScreenshotMode.isEnabled, let server = wiring.server {
+        BastionRow {
+          // Read again on the press, so a token regenerated since this drew is the one sent.
+          BastionLink(
+            MCPClientWiring.shared.server ?? server, displayName: "Armada",
+            summary:
+              "Every Claude Code, Codex and Grok Build session on this Mac: what needs you, what each one is doing, and how much plan is left.",
+            writeTools: Tools.writeTools)
         }
       }
       DisclosureGroup("Set up another client by hand", isExpanded: $showsSnippet) {

@@ -22,7 +22,7 @@ let package = Package(
     .library(name: "ArmadaMCP", targets: ["ArmadaMCP"])
   ],
   dependencies: [
-    .package(url: "https://github.com/mgcrea/swift-mcp-kit.git", .upToNextMinor(from: "1.1.0"))
+    .package(url: "https://github.com/mgcrea/swift-mcp-kit.git", .upToNextMinor(from: "1.3.0"))
   ],
   targets: [
     .target(
