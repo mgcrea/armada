@@ -18,7 +18,9 @@ struct MCPToolbarItem: View {
 
   var body: some View {
     MCPToolbarButton(
-      isAvailable: monitor.current.isEntitled, isEnabled: isEnabled, state: controller.state,
+      // Off in a capture, whatever this Mac's switch says, so the plate does not depend on it.
+      isAvailable: monitor.current.isEntitled,
+      isEnabled: ScreenshotMode.isEnabled ? .constant(false) : isEnabled, state: controller.state,
       activity: controller.activity,
       // Settings carries the whole list of what a write may do; this is its gist.
       access: Text(

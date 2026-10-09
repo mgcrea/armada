@@ -393,6 +393,10 @@ struct StatusMenu: View {
         }
       }
 
+      // The supervisor's MCP server, while it is switched on. Its own divider, so nothing is
+      // drawn when it is off.
+      MCPPanelRow(now: now)
+
       Divider()
 
       // One row, as Bastion and Cupertino have it, and the same rule decides
