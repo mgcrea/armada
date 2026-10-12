@@ -296,14 +296,7 @@ struct GrokOverview: View {
       let week = account.usage?.window(.sevenDay)
       OverviewUsageSection(
         accountID: account.id,
-        rows: week.map {
-          [
-            WindowRowModel(
-              id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: $0,
-              length: .sevenDay, isBinding: false,
-              menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay))
-          ]
-        } ?? [],
+        rows: week.map { [account.weeklyRow($0)] } ?? [],
         week: week, fetchedAt: account.usage?.observedAt, now: now,
         empty: account.usage.map {
           "\($0.utilization)% of the \($0.period ?? "current") allowance used"

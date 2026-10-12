@@ -197,11 +197,8 @@ struct GrokUsageCard: View {
       if let usage = account.usage {
         if let window = usage.window(.sevenDay) {
           WindowRow(
-            row: WindowRowModel(
-              id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: window,
-              length: .sevenDay, isBinding: false,
-              menuBarLimit: MenuBarLimit(accountID: account.id, length: .sevenDay)),
-            profile: profile, fetchedAt: usage.observedAt, now: now)
+            row: account.weeklyRow(window), profile: profile, fetchedAt: usage.observedAt,
+            now: now)
           WeeklyChart(
             accountID: account.id, window: window, profile: profile, fetchedAt: usage.observedAt,
             now: now)
@@ -293,6 +290,17 @@ extension CodexAccount {
           menuBarLimit: MenuBarLimit(accountID: id, length: .sevenDay))
       },
     ].compactMap { $0 }
+  }
+}
+
+extension GrokAccount {
+  /// Grok Build's one window, for weekly plans: a monthly allowance has no
+  /// `UsageWindowLength` to pace against and is shown as a plain figure instead.
+  func weeklyRow(_ window: UsageWindow) -> WindowRowModel {
+    WindowRowModel(
+      id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: window,
+      length: .sevenDay, isBinding: false,
+      menuBarLimit: MenuBarLimit(accountID: id, length: .sevenDay))
   }
 }
 
