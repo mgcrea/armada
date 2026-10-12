@@ -43,7 +43,6 @@ nonisolated struct CodexScan: Sendable {
 /// What a background scan needs to know about a session the watcher already holds.
 nonisolated struct CodexKnownSession: Sendable {
   let size: UInt64
-  let meta: CodexSessionMeta
   let hasTitle: Bool
 }
 
@@ -89,6 +88,8 @@ final class CodexWatcher {
   private var stream: FSEventStreamRef?
   private var timer: DispatchSourceTimer?
   private var isScanning = false
+  /// Bumped by `stop()`, so a scan already running when it was called is not applied.
+  private var generation = 0
   private var wantsAnotherScan = false
   /// See `scan`, where this decides whether the title index is worth re-reading.
   private var titleIndexStamp: Date?
@@ -147,8 +148,9 @@ final class CodexWatcher {
   /// stream's context holds this watcher unretained.
   ///
   /// A scan already running off the main actor holds the watcher strongly and will
-  /// still land in `apply`; clearing `wantsAnotherScan` is what stops it chaining
-  /// another one behind it on a watcher nothing is showing any more.
+  /// still land in `apply`. Bumping `generation` is what makes `apply` drop it rather
+  /// than rebuild sessions and record their usage on a watcher nothing is showing any
+  /// more, and clearing `wantsAnotherScan` is what stops it chaining another behind it.
   func stop() {
     if let stream {
       FSEventStreamStop(stream)
@@ -159,6 +161,7 @@ final class CodexWatcher {
     timer?.cancel()
     timer = nil
     wantsAnotherScan = false
+    generation += 1
     titleIndexStamp = nil
     byId = [:]
     sessions = []
@@ -179,13 +182,14 @@ final class CodexWatcher {
 
     let home = self.home
     let known = byId.mapValues {
-      CodexKnownSession(size: $0.tailScannedSize, meta: $0.meta, hasTitle: $0.title != nil)
+      CodexKnownSession(size: $0.tailScannedSize, hasTitle: $0.title != nil)
     }
     let titleIndexStamp = self.titleIndexStamp
+    let generation = self.generation
 
     Task.detached(priority: .utility) {
       let scan = CodexWatcher.scan(home: home, known: known, titleIndexStamp: titleIndexStamp)
-      await MainActor.run { self.apply(scan) }
+      await MainActor.run { self.apply(scan, generation: generation) }
     }
   }
 
@@ -229,7 +233,9 @@ final class CodexWatcher {
 
         let cached = known[sessionId]
         let unchanged = cached?.size == size
-        let meta = unchanged ? nil : CodexRollout.meta(at: url) ?? cached?.meta
+        // The meta is the rollout's first line, which never changes, and a session already
+        // held keeps the copy it was built with: only a new one needs it read.
+        let meta = cached == nil ? CodexRollout.meta(at: url) : nil
         let tail = unchanged ? nil : CodexRollout.tail(at: url)
         if isNewest { newestRollout = (url, modified, tail != nil) }
 
@@ -285,7 +291,10 @@ final class CodexWatcher {
       titleIndexStamp: needsTitles ? indexModified : titleIndexStamp)
   }
 
-  private func apply(_ scan: CodexScan) {
+  private func apply(_ scan: CodexScan, generation: Int) {
+    // A scan started before `stop()` lands on a watcher nothing shows any more, and what
+    // it read would still be recorded as activity and usage.
+    guard generation == self.generation else { return scanFinished() }
     var next: [String: CodexSession] = [:]
     // A tail is only read from a rollout that changed, so this is "something was written".
     if scan.entries.contains(where: { $0.tail != nil }) { UsageIndex.shared.noteActivity() }
@@ -343,7 +352,12 @@ final class CodexWatcher {
     }
     titleIndexStamp = scan.titleIndexStamp
     didScan = true
+    scanFinished()
+  }
 
+  /// The end of a scan, whether or not it was applied: the next one may start, and one
+  /// asked for meanwhile does.
+  private func scanFinished() {
     isScanning = false
     if wantsAnotherScan {
       wantsAnotherScan = false

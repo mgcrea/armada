@@ -66,6 +66,8 @@ final class GrokWatcher {
   private var stream: FSEventStreamRef?
   private var timer: DispatchSourceTimer?
   private var isScanning = false
+  /// Bumped by `stop()`, so a scan already running when it was called is not applied.
+  private var generation = 0
   private var wantsAnotherScan = false
 
   private let queue = DispatchQueue(label: "io.mgcrea.armada.grok")
@@ -118,6 +120,7 @@ final class GrokWatcher {
     timer?.cancel()
     timer = nil
     wantsAnotherScan = false
+    generation += 1
     byId = [:]
     sessions = []
   }
@@ -135,9 +138,10 @@ final class GrokWatcher {
     let known = byId.mapValues {
       GrokKnownSession(size: $0.scannedSize, summaryModified: $0.summaryModified)
     }
+    let generation = self.generation
     Task.detached(priority: .utility) {
       let entries = GrokWatcher.scan(home: home, known: known)
-      await MainActor.run { self.apply(entries) }
+      await MainActor.run { self.apply(entries, generation: generation) }
     }
   }
 
@@ -213,7 +217,10 @@ final class GrokWatcher {
     return GrokFiles.updatesTail(chunk, droppingFirstLine: start > 0)
   }
 
-  private func apply(_ entries: [GrokScanEntry]) {
+  private func apply(_ entries: [GrokScanEntry], generation: Int) {
+    // A scan started before `stop()` lands on a watcher nothing shows any more, and what
+    // it read would still be recorded as activity and usage.
+    guard generation == self.generation else { return scanFinished() }
     var next: [String: GrokSession] = [:]
     if entries.contains(where: { $0.tail != nil }) { UsageIndex.shared.noteActivity() }
     let now = Date.now
@@ -250,6 +257,12 @@ final class GrokWatcher {
         > ($1.lastEventAt ?? $1.summary.updatedAt ?? .distantPast, $1.id)
     }
     didScan = true
+    scanFinished()
+  }
+
+  /// The end of a scan, whether or not it was applied: the next one may start, and one
+  /// asked for meanwhile does.
+  private func scanFinished() {
     isScanning = false
     if wantsAnotherScan {
       wantsAnotherScan = false
