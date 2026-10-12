@@ -41,7 +41,7 @@ nonisolated enum UsageWindowLength: Sendable, Hashable {
 ///
 /// The value of that is also the risk: the arithmetic is happy to produce a
 /// confident number from a reading that cannot support one. `init` returns nil in
-/// the four cases below rather than letting the caller decide, because a forecast
+/// the cases below rather than letting the caller decide, because a forecast
 /// that is merely *shown less prominently* is still a forecast someone will act on.
 nonisolated struct UsageForecast: Sendable, Hashable {
   /// The share of the window's expected effort that had elapsed at `asOf`, 0…1.
@@ -153,6 +153,11 @@ nonisolated struct UsageForecast: Sendable, Hashable {
 
     let expected = profile.consumed(from: start, to: asOf, calendar: calendar) / total
     let used = Double(window.utilization) / 100
+    // A window already spent has nothing left to project: the arithmetic would put its
+    // exhaustion at the reading itself, "at this rate, 100% 3 minutes ago". The first
+    // live reading after a refusal says 100 with no `rejectedAt`, so the callers' guard
+    // on that cannot catch it; this one does, refused or not.
+    guard used < 1 else { return nil }
     // The floor is also what keeps this off a zero `expected`: a reading in the first
     // second of a window, or on a day weighted to nothing.
     let projected = expected >= Self.minimumElapsed ? used / expected : nil

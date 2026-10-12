@@ -831,6 +831,16 @@ struct UnitCheck {
     check(
       "one just inside that",
       fiveHour(50, asOf: "2026-09-14T12:00:00Z", now: "2026-09-14T12:29:00Z") != nil)
+    check(
+      "a spent window has nothing left to forecast",
+      fiveHour(100, asOf: "2026-09-14T12:30:00Z", now: "2026-09-14T12:31:00Z") == nil)
+    check(
+      "nor one past its limit",
+      fiveHour(104, asOf: "2026-09-14T12:30:00Z", now: "2026-09-14T12:30:00Z") == nil)
+    check(
+      "a point short still runs out after the reading, not before it",
+      fiveHour(99, asOf: "2026-09-14T12:30:00Z", now: "2026-09-14T12:30:00Z")?
+        .exhaustsAt.map { $0 > date("2026-09-14T12:30:00Z") } == true)
     let early = fiveHour(5, asOf: "2026-09-14T10:20:00Z", now: "2026-09-14T10:20:00Z")
     check(
       "under a tenth of the window elapsed still has a pace",
