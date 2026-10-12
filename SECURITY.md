@@ -48,7 +48,8 @@ Three properties, each of which is checkable rather than asserted:
   a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
-  shortcut to the end of the question. Speech is recognised on this Mac, by Parakeet v3 when the
+  shortcut to the end of the question, and, with Keep listening on, from a spoken reply's first
+  sentence to the end of its answer. Speech is recognised on this Mac, by Parakeet v3 when the
   model is there and by Apple's dictation until then; the audio is never stored or sent, and replies are spoken on this Mac, by the system synthesizer or by Kokoro once downloaded. The question itself goes to Anthropic
   as text, through a `claude` Armada runs on the account you choose: see "The voice `claude`"
   below. The shortcut is registered with `RegisterEventHotKey`, which delivers that one chord
@@ -169,10 +170,12 @@ attacker-influenced text meets something that acts on it:
   another server or a way to write, that puts data rather than the spoken question into its
   arguments or stdin, or that signals a process Armada did not start, is in scope.
 - **The microphone.** Voice captures audio only between a shortcut press and the end of that
-  question, converts it to text on this Mac with Parakeet v3 through FluidAudio, or with
-  `DictationTranscriber` until Parakeet is installed, and keeps nothing.
-  Anything that leaves the microphone open outside a question, stores or sends audio, or starts
-  listening without the shortcut, is in scope.
+  question, and with Keep listening on, from a spoken reply's first sentence to the end of its
+  answer, with voice processing taking the reply out of what it hears. It turns that audio into
+  text on this Mac with Parakeet v3 through FluidAudio, or with `DictationTranscriber` until
+  Parakeet is installed, and keeps nothing.
+  Anything that leaves the microphone open outside those, stores or sends audio, or starts
+  listening other than from the shortcut or a spoken reply, is in scope.
 - **The speech models and their downloads.** `ParakeetRecognizer` loads Parakeet from
   FluidAudio's shared folder, `~/Library/Application Support/FluidAudio/Models`, and
   `KokoroSynthesizer` loads Kokoro from `~/.cache/fluidaudio/Models`, only once every file it would

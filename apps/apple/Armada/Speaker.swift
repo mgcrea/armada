@@ -1,17 +1,26 @@
 import AVFoundation
 import ArmadaSpeech
 import ArmadaSupervisor
+import Synchronization
 
 /// Reads the supervisor's reply aloud, a sentence at a time, on this Mac.
 ///
-/// Two voices, chosen per sentence from `voiceIdentifier` (a `VoiceChoice`): a system voice through
-/// `AVSpeechSynthesizer`, or Kokoro through `KokoroSynthesizer` once it is downloaded and loaded.
-/// Nothing is sent anywhere to be spoken either way. `stop()` is immediate, because a press to cut
-/// an answer off that let the sentence finish would not feel like it worked.
+/// Two voices, chosen per sentence from `voiceIdentifier` (a `VoiceChoice`): a system voice, or
+/// Kokoro through `KokoroSynthesizer` once it is downloaded and loaded. Nothing is sent anywhere
+/// to be spoken either way. `stop()` is immediate, because a press to cut an answer off that let
+/// the sentence finish would not feel like it worked.
 ///
-/// **Kokoro never makes an answer wait.** A sentence goes to the system voice while Kokoro is still
-/// loading, and whenever Kokoro fails on it. Sentences keep their order across both voices: each
-/// is synthesized as soon as it arrives, and plays once the one before it has finished.
+/// **Both voices play through `VoiceAudio`**, the engine the microphone shares, so a reply that
+/// may be talked over is cancelled out of the microphone listening for that. The system voice is
+/// rendered with `AVSpeechSynthesizer.write` rather than spoken, which is what puts it in that
+/// engine. Measured on 2026-10-12: a warm sentence renders in 0.13–0.26 s, 15 to 30 times faster
+/// than it plays, and the first one of a process takes 0.8 s.
+///
+/// **Rendering runs ahead and never makes an answer wait.** Each sentence is rendered as soon as
+/// it arrives and plays once the one before it has finished. Kokoro is tried first when chosen
+/// and loaded, and the system voice renders a sentence Kokoro could not. A sentence nothing could
+/// render or play is spoken by `AVSpeechSynthesizer` directly, the way every reply was before,
+/// and cannot be cancelled out of the microphone.
 @MainActor
 final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   /// Everything queued has been spoken. Not called for a queue that `stop()` cleared.
@@ -20,37 +29,36 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
   /// The language replies are asked for. A fixed one is what a system voice falls back to, so an
   /// English answer is never read by the default voice of a French Mac.
   var replyLanguage: ReplyLanguage = .question
-  /// From 0 to 1, relative to the Mac's output volume. Kokoro follows a change straight away; a
-  /// system voice takes it from the next sentence, because an utterance keeps the volume it began with.
+  /// From 0 to 1, relative to the Mac's output volume, for both voices and straight away.
   var volume: Float = 1 {
-    didSet { player.volume = volume }
+    didSet { audio.volume = volume }
   }
 
+  private let audio: VoiceAudio
+  /// Speaks a sentence that could not be rendered, the last resort.
   private let synthesizer = AVSpeechSynthesizer()
+  /// Renders system-voice sentences into buffers, one at a time.
+  private let renderer = AVSpeechSynthesizer()
   /// The utterance being spoken and the sentence waiting on it. A stopped utterance's late cancel
   /// callback finds nothing and is ignored.
   private var live: [ObjectIdentifier: (AVSpeechUtterance, CheckedContinuation<Void, Never>)] = [:]
 
-  private let engine = AVAudioEngine()
-  private let player = AVAudioPlayerNode()
-  private let format = AVAudioFormat(
-    standardFormatWithSampleRate: KokoroSynthesizer.sampleRate, channels: 1)!
-  /// The Kokoro buffer playing and the sentence waiting on it, tagged so a late completion from a
-  /// stopped buffer never ends the next one.
-  private var playing: (token: Int, continuation: CheckedContinuation<Void, Never>)?
-  private var playToken = 0
-
   /// The last sentence queued, which the next one waits for.
   private var tail: Task<Void, Never>?
-  private var rendering: [Task<[Float]?, Never>] = []
+  /// The last system-voice render queued, which the next one waits for: the renderer takes one
+  /// utterance at a time.
+  private var renderTail: Task<Rendered?, Never>?
+  private var rendering: [Task<Rendered?, Never>] = []
   private var pending = 0
   /// Bumped by `stop()`, so sentences queued before it drop out wherever they are.
   private var generation = 0
 
-  override init() {
+  /// `audio` is shared with `VoiceCapture`.
+  init(audio: VoiceAudio) {
+    self.audio = audio
     super.init()
     synthesizer.delegate = self
-    player.volume = volume
+    audio.volume = volume
   }
 
   func speak(_ text: String) {
@@ -58,23 +66,14 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     let language = replyLanguage
     let generation = generation
     let previous = tail
-    var rendered: Task<[Float]?, Never>?
-    if case .kokoro(let voice) = choice, SpeechModelStore.voice.isLoaded {
-      let task = Task.detached {
-        try? await KokoroSynthesizer.shared.samples(for: text, voice: voice) {
-          PhonemeSplit.pieces($0)
-        }
-      }
-      rendering.append(task)
-      rendered = task
-    }
+    let rendered = render(text, choice: choice, language: language)
     pending += 1
     tail = Task { [weak self] in
       await previous?.value
-      let samples = await rendered?.value
+      let audio = await rendered.value
       guard let self, generation == self.generation else { return }
       var played = false
-      if let samples, !samples.isEmpty { played = await play(samples) }
+      if let buffer = audio?.buffer() { played = await play(buffer) }
       if !played, generation == self.generation {
         await say(text, choice: choice, language: language)
       }
@@ -86,14 +85,16 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     generation += 1
     pending = 0
     tail = nil
+    renderTail = nil
     for task in rendering { task.cancel() }
     rendering.removeAll()
+    renderer.stopSpeaking(at: .immediate)
     let waiting = live.values.map(\.1)
     live.removeAll()
     synthesizer.stopSpeaking(at: .immediate)
     for continuation in waiting { continuation.resume() }
-    stopEngine()
-    endPlaying(token: playToken)
+    audio.stopPlaying()
+    if audio.mode == .speaking { audio.close() }
   }
 
   /// Voices for `language`, a language code, or for the system language when it is nil, best
@@ -135,12 +136,60 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     pending -= 1
     guard pending == 0 else { return }
     tail = nil
+    renderTail = nil
     rendering.removeAll()
-    stopEngine()
+    // A reply that may be answered keeps the engine: its microphone is the answer's.
+    if audio.mode == .speaking { audio.close() }
     onFinished?()
   }
 
-  // MARK: - System voice
+  // MARK: - Rendering
+
+  /// `text` as audio, started now: Kokoro's when it is the choice and loaded, the system voice's
+  /// otherwise or when Kokoro fails on it. Nil when neither could.
+  private func render(_ text: String, choice: VoiceChoice, language: ReplyLanguage)
+    -> Task<Rendered?, Never>
+  {
+    var kokoro: Task<[Float]?, Never>?
+    if case .kokoro(let voice) = choice, SpeechModelStore.voice.isLoaded {
+      kokoro = Task.detached {
+        try? await KokoroSynthesizer.shared.samples(for: text, voice: voice) {
+          PhonemeSplit.pieces($0)
+        }
+      }
+    }
+    let previous = renderTail
+    let utterance = AVSpeechUtterance(string: text)
+    utterance.voice = Self.voice(for: choice, language: language)
+    let renderer = renderer
+    let task = Task { () -> Rendered? in
+      if let samples = await kokoro?.value, !samples.isEmpty {
+        return Rendered(samples: samples, sampleRate: KokoroSynthesizer.sampleRate)
+      }
+      // One utterance at a time through the renderer, in order.
+      _ = await previous?.value
+      guard !Task.isCancelled else { return nil }
+      return await SystemVoice.render(utterance, with: renderer)
+    }
+    renderTail = task
+    rendering.append(task)
+    return task
+  }
+
+  /// Play `buffer` to the end through the shared engine, or return false when it could not, so
+  /// the sentence can be spoken directly instead. A question being listened for has the engine,
+  /// and is never torn down for a reply.
+  private func play(_ buffer: AVAudioPCMBuffer) async -> Bool {
+    guard audio.mode != .listening else { return false }
+    do {
+      try audio.open(.speaking)
+    } catch {
+      return false
+    }
+    return await audio.play(buffer)
+  }
+
+  // MARK: - Speaking directly
 
   private func say(_ text: String, choice: VoiceChoice, language: ReplyLanguage) async {
     let utterance = AVSpeechUtterance(string: text)
@@ -169,80 +218,113 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate {
     let id = ObjectIdentifier(utterance)
     DispatchQueue.main.async { MainActor.assumeIsolated { self.ended(id) } }
   }
+}
 
-  // MARK: - Kokoro
+/// A system voice rendered into one buffer instead of spoken.
+///
+/// Nonisolated so the callback `write` calls on its own queue is never inferred to belong to the
+/// main actor and trapped there.
+nonisolated private enum SystemVoice {
+  /// The whole of `utterance` as mono samples in the voice's own format, or nil when the voice
+  /// rendered nothing, or the task was cancelled before it finished.
+  static func render(_ utterance: AVSpeechUtterance, with synthesizer: AVSpeechSynthesizer)
+    async -> Rendered?
+  {
+    let collected = Collected()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        collected.wait(continuation)
+        synthesizer.write(utterance) { buffer in
+          guard let pcm = buffer as? AVAudioPCMBuffer else { return }
+          if pcm.frameLength == 0 {
+            collected.finish()
+          } else {
+            collected.append(pcm)
+          }
+        }
+      }
+    } onCancel: {
+      // A stopped synthesizer is not promised to send the empty buffer that ends a render.
+      collected.finish(cancelled: true)
+    }
+    return collected.rendered()
+  }
 
-  /// Play `samples` to the end, or return false when the audio engine would not start, so the
-  /// sentence can go to the system voice instead.
-  private func play(_ samples: [Float]) async -> Bool {
+  /// What `write` has handed over so far, and the render waiting on the rest. `write` calls back
+  /// on its own queue and cancellation arrives on any thread, hence the lock.
+  private final class Collected: Sendable {
+    private struct State: @unchecked Sendable {
+      var samples: [Float] = []
+      var sampleRate: Double = 0
+      var cancelled = false
+      var continuation: CheckedContinuation<Void, Never>?
+      var finished = false
+    }
+
+    private let state = Mutex(State())
+
+    func wait(_ continuation: CheckedContinuation<Void, Never>) {
+      let resumeNow = state.withLock { state in
+        guard !state.finished else { return true }
+        state.continuation = continuation
+        return false
+      }
+      if resumeNow { continuation.resume() }
+    }
+
+    func append(_ pcm: AVAudioPCMBuffer) {
+      let count = Int(pcm.frameLength)
+      var floats: [Float] = []
+      if let data = pcm.floatChannelData?[0] {
+        floats = Array(UnsafeBufferPointer(start: data, count: count))
+      } else if let data = pcm.int16ChannelData?[0] {
+        floats = UnsafeBufferPointer(start: data, count: count).map { Float($0) / 32768 }
+      }
+      state.withLock { state in
+        state.sampleRate = pcm.format.sampleRate
+        state.samples += floats
+      }
+    }
+
+    func finish(cancelled: Bool = false) {
+      let continuation = state.withLock { state -> CheckedContinuation<Void, Never>? in
+        guard !state.finished else { return nil }
+        state.finished = true
+        state.cancelled = cancelled
+        defer { state.continuation = nil }
+        return state.continuation
+      }
+      continuation?.resume()
+    }
+
+    func rendered() -> Rendered? {
+      let (samples, sampleRate, cancelled) = state.withLock {
+        ($0.samples, $0.sampleRate, $0.cancelled)
+      }
+      guard !cancelled, !samples.isEmpty, sampleRate > 0 else { return nil }
+      return Rendered(samples: samples, sampleRate: sampleRate)
+    }
+  }
+}
+
+/// A sentence's audio, mono, between the render that made it and the engine that plays it. Plain
+/// samples rather than an `AVAudioPCMBuffer`, which is not `Sendable` and so cannot be what a
+/// render task returns.
+nonisolated private struct Rendered: Sendable {
+  var samples: [Float]
+  var sampleRate: Double
+
+  func buffer() -> AVAudioPCMBuffer? {
     guard
+      let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
       let buffer = AVAudioPCMBuffer(
         pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
       let channel = buffer.floatChannelData?[0]
-    else { return false }
+    else { return nil }
     buffer.frameLength = buffer.frameCapacity
     samples.withUnsafeBufferPointer { source in
       if let base = source.baseAddress { channel.update(from: base, count: samples.count) }
     }
-    do {
-      try startEngine()
-    } catch {
-      return false
-    }
-    playToken += 1
-    let token = playToken
-    await withCheckedContinuation { continuation in
-      playing = (token, continuation)
-      player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable _ in
-        self.bufferPlayed(token: token)
-      }
-      player.play()
-    }
-    return true
-  }
-
-  nonisolated private func bufferPlayed(token: Int) {
-    DispatchQueue.main.async { MainActor.assumeIsolated { self.endPlaying(token: token) } }
-  }
-
-  private func endPlaying(token: Int) {
-    guard let playing, playing.token == token else { return }
-    self.playing = nil
-    playing.continuation.resume()
-  }
-
-  /// Started for the first Kokoro sentence and stopped when the queue drains, so the audio
-  /// hardware is not held between answers.
-  private func startEngine() throws {
-    if player.engine == nil {
-      engine.attach(player)
-      engine.connect(player, to: engine.mainMixerNode, format: format)
-      // A changed output device stops the engine without completing the buffer it was playing.
-      NotificationCenter.default.addObserver(
-        self, selector: #selector(engineConfigurationChanged),
-        name: .AVAudioEngineConfigurationChange, object: engine)
-    }
-    if !engine.isRunning { try engine.start() }
-  }
-
-  /// Stop the player before the engine, every time. An engine stopped under a player left playing
-  /// restarts with that player stuck: `isPlaying` stays true, `play()` does nothing, and the next
-  /// buffer never plays and never completes, so the queue waits on it forever. Measured on
-  /// 2026-09-15, as a second answer that was never heard.
-  private func stopEngine() {
-    guard player.engine != nil else { return }
-    player.stop()
-    if engine.isRunning { engine.stop() }
-  }
-
-  /// The system stopped the engine, but not the player: stop that too, and treat the sentence that
-  /// was playing as done, or the queue would wait on it forever.
-  @objc nonisolated private func engineConfigurationChanged(_ notification: Notification) {
-    DispatchQueue.main.async {
-      MainActor.assumeIsolated {
-        self.stopEngine()
-        self.endPlaying(token: self.playToken)
-      }
-    }
+    return buffer
   }
 }

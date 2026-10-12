@@ -416,7 +416,8 @@ if [ "$status" -eq 0 ]; then
     echo "  Voice can fetch its own speech models from huggingface.co, each only when its"
     echo "  Download button is pressed in Settings ▸ Voice."
   fi
-  echo "  Its one entitlement is the microphone, open only while voice is listening."
+  echo "  Its one entitlement is the microphone, open only while voice is listening,"
+  echo "  or speaking a reply that Keep listening lets you answer."
   echo "  This says nothing about the \`claude\` it spawns, which talks to Anthropic"
   echo "  on your own sign-in — see SECURITY.md."
 else

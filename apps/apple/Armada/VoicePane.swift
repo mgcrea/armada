@@ -26,8 +26,8 @@ struct VoicePane: View {
   @State private var monitor = EntitlementMonitor.shared
   @State private var chord = VoiceShortcut.Chord.stored
   @State private var kokoro = SpeechModelStore.voice
-  /// Its own synthesizer, so a preview never cuts into an answer being spoken.
-  @State private var preview = Speaker()
+  /// Its own synthesizer and engine, so a preview never cuts into an answer being spoken.
+  @State private var preview = Speaker(audio: VoiceAudio())
 
   private static let sample = "Two sessions need you. Bastion is waiting for your approval."
   private static let kokoroChoice = VoiceChoice.kokoro(KokoroSynthesizer.voice)
@@ -98,7 +98,7 @@ struct VoicePane: View {
       Text("Voice")
     } footer: {
       Text(
-        "The microphone is on only while the card at the top of the screen says it is listening. Your speech becomes text on this Mac, and the audio is never kept or sent. The question goes to Anthropic as text, through your own claude on the account below, like any prompt. Armada runs that claude in the background with no built-in tools and only its read tools, and closes it after five idle minutes."
+        "The microphone is on only while the card at the top of the screen says it is listening, or, with Keep listening on, while it speaks a reply you might answer. Your speech becomes text on this Mac, and the audio is never kept or sent. The question goes to Anthropic as text, through your own claude on the account below, like any prompt. Armada runs that claude in the background with no built-in tools and only its read tools, and closes it after five idle minutes."
       )
     }
   }
@@ -124,7 +124,7 @@ struct VoicePane: View {
     } footer: {
       Text(
         mode == .press
-          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it, and Esc stops it at any point, a question included. Keep listening opens the microphone again once a reply is spoken, so you can answer it without the shortcut, and closes it if you say nothing."
+          ? "Press once and ask. Armada sends when you pause, or when you press again. Pressing while it answers stops it, and Esc stops it at any point, a question included. Keep listening keeps the microphone on while a reply is spoken and after it, so you can answer without the shortcut, or talk over the reply to cut it short. The reply is taken out of what the microphone hears, and it closes if you say nothing."
           : "Hold the shortcut while you ask and let go to send. Pressing while it answers stops it, and Esc stops it at any point. The microphone opens only while you hold the shortcut, so Keep listening is off."
       )
     }

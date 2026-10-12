@@ -8,6 +8,20 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.10.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Talk over a reply to answer it.** With Keep listening on, you no longer have to wait for a
+  spoken reply to finish: start talking and it stops, and what you say becomes your answer. The
+  reply is taken out of what the microphone hears, so Armada does not mistake its own voice for
+  yours, and an answer can start the moment the reply ends.
+
+### Changed
+
+- **With Keep listening on, the microphone is on while a reply is spoken**, so the orange dot
+  shows then too. With Keep listening set to Never, or in hold mode, nothing changes.
+
 ## [1.10.0] - 2026-10-05
 
 **Schedules, and a Mac that stays awake for your agents.** Claude Code can manage Codex

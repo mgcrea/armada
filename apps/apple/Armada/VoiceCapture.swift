@@ -2,6 +2,7 @@ import AVFoundation
 import ArmadaSpeech
 import ArmadaSupervisor
 import Speech
+import Synchronization
 
 /// The microphone, and the on-device recognizer that turns one spoken question into text.
 ///
@@ -13,7 +14,8 @@ import Speech
 ///
 /// **The microphone runs only between `start` and `finish` or `cancel`**, so the menu bar's
 /// orange dot is on exactly while the overlay says it is listening. There is no always-on
-/// capture and no wake phrase.
+/// capture and no wake phrase. The one exception is `standBy`: with a follow-up set, the
+/// microphone also runs while a reply is spoken, so it can be talked over and answered.
 ///
 /// **Parakeet's live words come from transcribing again.** Every half second the audio so far is
 /// transcribed whole, each pass replacing the last guess, and `finish` transcribes it once more.
@@ -55,7 +57,11 @@ final class VoiceCapture {
   /// The recognizer is getting ready: Apple's language assets, or Parakeet's first load.
   var onPreparing: ((Bool) -> Void)?
 
-  private var engine: AVAudioEngine?
+  /// The engine shared with the `Speaker`.
+  private let engine: VoiceAudio
+  /// The microphone kept open through a reply, until `start` takes it over or it is closed.
+  private var standby: StandbyPipe?
+  private var watching: Task<Void, Never>?
   private var levels: Task<Void, Never>?
   private var detector = SilenceDetector()
   private var reportedPause = false
@@ -72,6 +78,11 @@ final class VoiceCapture {
   private var collecting: Task<Void, Never>?
   private var live: Task<Void, Never>?
   private var audio: [Float] = []
+
+  /// `audio` is shared with the `Speaker`, so a reply it plays is cancelled out of this microphone.
+  init(audio: VoiceAudio) {
+    self.engine = audio
+  }
 
   func start(hints: [String]) async throws {
     guard await Self.microphoneAllowed() else { throw Failure.microphoneDenied }
@@ -92,7 +103,7 @@ final class VoiceCapture {
 
   /// Stop listening and return the whole question.
   func finish() async -> String {
-    stopEngine()
+    stopMicrophone()
     switch recognizer {
     case .apple:
       input?.finish()
@@ -130,7 +141,7 @@ final class VoiceCapture {
 
   /// Stop listening and drop whatever was heard.
   func cancel() {
-    stopEngine()
+    stopMicrophone()
     levels?.cancel()
     levels = nil
     input?.finish()
@@ -161,7 +172,7 @@ final class VoiceCapture {
     let (stream, continuation) = AsyncStream<[Float]>.makeStream()
     // The microphone first, then the model: a question started while the model is still loading
     // is recorded from its first word rather than cut.
-    try startEngine(output: .samples(continuation), format: format)
+    try startMicrophone(output: .samples(continuation), format: format)
     samples = continuation
     collecting = Task { [weak self] in
       for await chunk in stream { self?.audio += chunk }
@@ -213,7 +224,7 @@ final class VoiceCapture {
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
     try await analyzer.start(inputSequence: stream)
     do {
-      try startEngine(output: .analyzer(continuation), format: analyzerFormat)
+      try startMicrophone(output: .analyzer(continuation), format: analyzerFormat)
     } catch {
       continuation.finish()
       await analyzer.cancelAndFinishNow()
@@ -243,36 +254,69 @@ final class VoiceCapture {
 
   // MARK: - The microphone
 
-  /// Start the input tap, converting to `format` (the microphone's own when nil).
-  private func startEngine(output: TapPipe.Output, format: AVAudioFormat?) throws {
-    let engine = AVAudioEngine()
-    let node = engine.inputNode
-    let micFormat = node.outputFormat(forBus: 0)
-    guard micFormat.channelCount > 0, micFormat.sampleRate > 0 else { throw Failure.noMicrophone }
+  /// Open the microphone for a reply that may be talked over, and call `onVoice` once if someone
+  /// does. The microphone is echo-cancelled (`VoiceAudio`'s duplex mode), so the reply the same
+  /// engine plays is not heard as a voice, and the last `StandbyPipe.keep` seconds are kept so
+  /// that `start` begins the answer from its first word rather than from when it was noticed.
+  func standBy(onVoice: @escaping () -> Void) throws {
+    // Synchronous, so the engine is open before the first sentence plays: a question was just
+    // heard, so the microphone is already allowed.
+    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+      throw Failure.microphoneDenied
+    }
+    try engine.open(.duplex)
+    guard let format = engine.microphoneFormat else { throw Failure.noMicrophone }
+    let (levelStream, levelContinuation) = AsyncStream<Float>.makeStream(
+      bufferingPolicy: .bufferingNewest(16))
+    let pipe = StandbyPipe(sampleRate: format.sampleRate, levels: levelContinuation)
+    standby = pipe
+    engine.setMicrophone(pipe.receiver)
+    watching = Task { [weak self] in
+      var onset = VoiceOnset()
+      for await level in levelStream {
+        guard let self, standby === pipe else { return }
+        // The warm-up counts from the reply's first sound, not from the microphone opening:
+        // its first sentence can take most of a second to render.
+        guard engine.hasPlayed else { continue }
+        if onset.feed(level: level, at: ProcessInfo.processInfo.systemUptime) {
+          onVoice()
+          return
+        }
+      }
+    }
+  }
+
+  var isStandingBy: Bool { standby != nil }
+
+  /// Start reading the microphone, converting to `format` (the microphone's own when nil). The
+  /// one standing by through a reply when there is one, with what it kept; otherwise a
+  /// microphone of its own, without voice processing, since nothing is playing to cancel.
+  private func startMicrophone(output: TapPipe.Output, format: AVAudioFormat?) throws {
+    if standby == nil { try engine.open(.listening) }
+    guard let micFormat = engine.microphoneFormat else { throw Failure.noMicrophone }
     let (levelStream, levelContinuation) = AsyncStream<Float>.makeStream(
       bufferingPolicy: .bufferingNewest(16))
     let pipe = TapPipe(
       from: micFormat, to: format ?? micFormat, output: output, levels: levelContinuation)
-    node.installTap(onBus: 0, bufferSize: 2048, format: micFormat, block: pipe.block())
-    engine.prepare()
-    do {
-      try engine.start()
-    } catch {
-      node.removeTap(onBus: 0)
-      levelContinuation.finish()
-      throw error
+    if let standby {
+      watching?.cancel()
+      watching = nil
+      standby.forward(to: pipe)
+    } else {
+      engine.setMicrophone(pipe.receiver)
     }
-    self.engine = engine
     levels = Task { [weak self] in
       for await level in levelStream { self?.observe(level) }
     }
   }
 
-  private func stopEngine() {
-    guard let engine else { return }
-    engine.inputNode.removeTap(onBus: 0)
-    engine.stop()
-    self.engine = nil
+  /// Close the microphone, and the engine with it unless it is only playing.
+  private func stopMicrophone() {
+    watching?.cancel()
+    watching = nil
+    standby = nil
+    engine.setMicrophone(nil)
+    if engine.mode == .listening || engine.mode == .duplex { engine.close() }
   }
 
   private func observe(_ level: Float) {
@@ -334,11 +378,11 @@ nonisolated private final class TapPipe: @unchecked Sendable {
     self.levels = levels
   }
 
-  func block() -> AVAudioNodeTapBlock {
-    { [self] buffer, _ in receive(buffer) }
+  var receiver: @Sendable (AVAudioPCMBuffer) -> Void {
+    { [self] buffer in receive(buffer) }
   }
 
-  private func receive(_ buffer: AVAudioPCMBuffer) {
+  func receive(_ buffer: AVAudioPCMBuffer) {
     if let channel = buffer.floatChannelData?[0] {
       levels.yield(
         SilenceDetector.level(
@@ -375,6 +419,70 @@ nonisolated private final class TapPipe: @unchecked Sendable {
     }
     guard status != .error, converted.frameLength > 0 else { return nil }
     return converted
+  }
+}
+
+/// The microphone while a reply is spoken: its level for `VoiceOnset`, and the last `keep`
+/// seconds of what it heard, until `forward` hands both to the answer's `TapPipe`.
+///
+/// The hand-over happens under the lock the audio thread takes for each buffer, so the answer
+/// gets what was kept and then every buffer after it, none twice and none lost. The buffers are
+/// `VoiceAudio`'s own copies, so keeping them is safe.
+nonisolated private final class StandbyPipe: Sendable {
+  /// Enough to hold a voice from its first word: `VoiceOnset` warms up for 0.6 s and holds for
+  /// 0.25 s, and the main actor takes a moment to act on it.
+  static let keep: Double = 1.5
+
+  private enum State: @unchecked Sendable {
+    case keeping([AVAudioPCMBuffer], frames: Int)
+    case forwarding(TapPipe)
+  }
+
+  private let state = Mutex(State.keeping([], frames: 0))
+  private let limit: Int
+  private let levels: AsyncStream<Float>.Continuation
+
+  init(sampleRate: Double, levels: AsyncStream<Float>.Continuation) {
+    self.limit = Int(sampleRate * Self.keep)
+    self.levels = levels
+  }
+
+  var receiver: @Sendable (AVAudioPCMBuffer) -> Void {
+    { [self] buffer in receive(buffer) }
+  }
+
+  private func receive(_ buffer: AVAudioPCMBuffer) {
+    let pipe: TapPipe? = state.withLock { state in
+      switch state {
+      case .forwarding(let pipe):
+        return pipe
+      case .keeping(var kept, var frames):
+        kept.append(buffer)
+        frames += Int(buffer.frameLength)
+        while frames - Int(kept[0].frameLength) >= limit {
+          frames -= Int(kept.removeFirst().frameLength)
+        }
+        state = .keeping(kept, frames: frames)
+        return nil
+      }
+    }
+    if let pipe { return pipe.receive(buffer) }
+    if let channel = buffer.floatChannelData?[0] {
+      levels.yield(
+        SilenceDetector.level(
+          of: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))))
+    }
+  }
+
+  /// Give the answer what was kept, and every buffer from now on.
+  func forward(to pipe: TapPipe) {
+    state.withLock { state in
+      if case .keeping(let kept, _) = state {
+        for buffer in kept { pipe.receive(buffer) }
+      }
+      state = .forwarding(pipe)
+    }
+    levels.finish()
   }
 }
 

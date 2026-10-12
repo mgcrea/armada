@@ -207,7 +207,10 @@ struct VoiceTurnTests {
   @Test("after a question: once the question is spoken, the microphone opens for the answer")
   func listensAfterQuestion() {
     var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
-    _ = run(&turn, Self.asked)
+    #expect(
+      run(&turn, Self.asked).suffix(3) == [
+        [.standBy, .speak("I'd start it.")], [.speak("Should I go ahead?")], [],
+      ])
     #expect(turn.handle(.speechFinished) == [.startCapture])
     #expect(turn.phase == .listening(finishing: false))
     #expect(turn.listensForAnswer)
@@ -225,7 +228,9 @@ struct VoiceTurnTests {
         .shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("Any news?"),
         .sentence("None."), .turnEnded(error: nil),
       ])
-    #expect(turn.handle(.speechFinished) == [.scheduleDismiss])
+    #expect(
+      turn.handle(.speechFinished) == [.scheduleDismiss, .cancelCapture],
+      "the microphone that stood by through the reply closes")
   }
 
   @Test("after every reply: any reply listens")
@@ -274,6 +279,82 @@ struct VoiceTurnTests {
     _ = run(&turn, [.shortcutDown, .speechEnded])
     #expect(turn.handle(.transcriptFinal("")) == [.scheduleDismiss])
     #expect(turn.phase == .failed(VoiceTurn.emptyTranscriptMessage))
+  }
+
+  @Test("the microphone stands by through a reply only when a reply may be answered by voice")
+  func listensDuringReply() {
+    #expect(VoiceTurn(mode: .press, followUp: .afterQuestion).listensDuringReply)
+    #expect(VoiceTurn(mode: .press, followUp: .afterEveryReply).listensDuringReply)
+    #expect(!VoiceTurn(mode: .press, followUp: .never).listensDuringReply)
+    #expect(!VoiceTurn(mode: .hold, followUp: .afterEveryReply).listensDuringReply)
+    #expect(
+      !VoiceTurn(mode: .press, speaksReplies: false, followUp: .afterEveryReply)
+        .listensDuringReply, "nothing is spoken, so there is nothing to talk over")
+
+    var never = VoiceTurn(mode: .press)
+    #expect(
+      run(&never, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One.")]).last
+        == [.speak("One.")])
+    #expect(never.handle(.voiceHeard) == [], "with no microphone standing by, nothing was heard")
+  }
+
+  @Test("talking over a reply that is still coming interrupts it and becomes the answer")
+  func talkOverStreaming() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&turn, [.shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("Two of")])
+    #expect(turn.handle(.voiceHeard) == [.interrupt, .stopSpeaking, .startCapture])
+    #expect(turn.phase == .listening(finishing: false))
+    #expect(turn.listensForAnswer)
+    #expect(turn.handle(.voiceHeard) == [], "heard once per reply")
+    #expect(turn.handle(.sentence("late.")) == [], "the interrupted reply's last words are dropped")
+    #expect(
+      run(&turn, [.speechEnded, .transcriptFinal("stop")]) == [[.finishCapture], [.send("stop")]])
+  }
+
+  @Test("talking over a reply that has arrived only stops the voice")
+  func talkOverSpeaking() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterEveryReply)
+    _ = run(
+      &turn,
+      [
+        .shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One."),
+        .turnEnded(error: nil),
+      ])
+    #expect(turn.handle(.voiceHeard) == [.stopSpeaking, .startCapture])
+    #expect(turn.listensForAnswer)
+    #expect(turn.handle(.speechFinished) == [], "the stopped voice reports nothing")
+  }
+
+  @Test("once the reply is spoken, a late voiceHeard changes nothing")
+  func voiceHeardLate() {
+    var turn = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&turn, Self.asked + [.speechFinished])
+    #expect(turn.handle(.voiceHeard) == [])
+    #expect(turn.phase == .listening(finishing: false))
+  }
+
+  @Test("every other way out of a reply closes the microphone that stood by")
+  func standByCloses() {
+    let streaming: [VoiceTurn.Event] = [
+      .shortcutDown, .speechEnded, .transcriptFinal("hi"), .sentence("One."),
+    ]
+    var pressed = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&pressed, streaming)
+    #expect(pressed.handle(.shortcutDown) == [.interrupt, .stopSpeaking, .hide, .cancelCapture])
+
+    var stopped = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&stopped, streaming)
+    #expect(stopped.handle(.stop) == [.interrupt, .stopSpeaking, .hide, .cancelCapture])
+
+    var failed = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&failed, streaming)
+    #expect(
+      failed.handle(.turnEnded(error: "No.")) == [.stopSpeaking, .scheduleDismiss, .cancelCapture])
+
+    var closed = VoiceTurn(mode: .press, followUp: .afterQuestion)
+    _ = run(&closed, streaming + [.turnEnded(error: nil)])
+    #expect(closed.handle(.closed) == [.stopSpeaking, .hide, .cancelCapture])
+    #expect(closed.handle(.shortcutDown) == [.startCapture], "and the next question opens it again")
   }
 
   @Test("a question is recognised past quotes, brackets and emphasis")

@@ -31,6 +31,12 @@ public enum VoiceFollowUp: String, CaseIterable, Sendable {
 /// **A reply can listen for its answer.** With `followUp` set, a reply that is over opens the
 /// microphone again instead of waiting to hide. Silence then closes the card quietly: nobody
 /// asked a question, so "Didn't catch that" would be wrong.
+///
+/// **A reply that may be answered can be talked over.** When it can (`listensDuringReply`),
+/// the reply's first spoken sentence opens the microphone too (`standBy`), echo-cancelled, so
+/// the reply is not heard as an answer. A voice heard over it (`voiceHeard`) stops it, as a
+/// press would, and becomes the answer. Every other way out of the reply closes that microphone
+/// again: `cancelCapture`, added last to whatever else the event does.
 public struct VoiceTurn: Equatable, Sendable {
   public enum Phase: Equatable, Sendable {
     case idle
@@ -62,9 +68,14 @@ public struct VoiceTurn: Equatable, Sendable {
     case closed
     /// The stop key, held only while `isStoppable`.
     case stop
+    /// The microphone standing by through the reply heard someone start talking.
+    case voiceHeard
   }
 
   public enum Effect: Equatable, Sendable {
+    /// Open the microphone through the reply, with the reply cancelled out of it, to hear
+    /// someone talk over it. `startCapture` takes it over; `cancelCapture` closes it.
+    case standBy
     case startCapture
     case finishCapture
     case cancelCapture
@@ -86,6 +97,8 @@ public struct VoiceTurn: Equatable, Sendable {
   public private(set) var listensForAnswer = false
   /// The reply's latest sentence ends with a question mark.
   private var replyAsks = false
+  /// The microphone opened for this reply by `standBy`, and not yet closed or taken over.
+  private var standingBy = false
 
   public init(mode: VoiceMode, speaksReplies: Bool = true, followUp: VoiceFollowUp = .never) {
     self.mode = mode
@@ -103,9 +116,28 @@ public struct VoiceTurn: Equatable, Sendable {
     }
   }
 
+  /// A reply may be answered by voice, so the microphone can stand by while it is spoken.
+  /// `afterQuestion` counts too: whether the reply asks is only known once it has.
+  public var listensDuringReply: Bool {
+    mode == .press && speaksReplies && followUp != .never
+  }
+
   public mutating func handle(_ event: Event) -> [Effect] {
-    let effects = step(event)
+    var effects = step(event)
     if case .listening = phase {} else { listensForAnswer = false }
+    if standingBy {
+      switch phase {
+      case .thinking, .answering(replyDone: false, _),
+        .answering(replyDone: true, speechDone: false):
+        break
+      // The answer has the microphone now.
+      case .listening:
+        standingBy = false
+      case .answering(replyDone: true, speechDone: true), .idle, .failed:
+        standingBy = false
+        effects.append(.cancelCapture)
+      }
+    }
     return effects
   }
 
@@ -173,7 +205,15 @@ public struct VoiceTurn: Equatable, Sendable {
 
     case (.thinking, .sentence(let text)):
       phase = .answering(replyDone: false, speechDone: !speaksReplies)
-      return speaksReplies ? [.speak(text)] : []
+      guard speaksReplies else { return [] }
+      guard listensDuringReply else { return [.speak(text)] }
+      standingBy = true
+      return [.standBy, .speak(text)]
+
+    case (.answering(let replyDone, _), .voiceHeard) where standingBy:
+      phase = .listening(finishing: false)
+      listensForAnswer = true
+      return (replyDone ? [] : [.interrupt]) + [.stopSpeaking, .startCapture]
 
     case (.answering(let replyDone, _), .sentence(let text)):
       guard speaksReplies else { return [] }

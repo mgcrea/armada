@@ -1,5 +1,6 @@
 import AppKit
 import ArmadaMCP
+import ArmadaSpeech
 import ArmadaSupervisor
 import Foundation
 import Observation
@@ -49,7 +50,8 @@ final class VoiceController {
   nonisolated static let legacySessionsKey = "armada.voiceSessions"
 
   static let dismissDelay: Duration = .seconds(6)
-  /// How long after a reply is spoken before the microphone opens for an answer. Untuned.
+  /// How long after a reply is spoken before the microphone opens for an answer, when it could
+  /// not stand by through the reply with the reply cancelled out of it. Untuned.
   static let answerSettle: Duration = .milliseconds(300)
 
   static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
@@ -102,8 +104,10 @@ final class VoiceController {
   /// resumes it and a changed brief starts a new one (see `VoiceConversation`).
   @ObservationIgnored private var conversation: VoiceConversation?
 
-  @ObservationIgnored private let capture = VoiceCapture()
-  @ObservationIgnored private let speaker = Speaker()
+  /// The microphone and the speaker share one engine, so a reply can be cancelled out of the
+  /// microphone that listens for its answer.
+  @ObservationIgnored private let capture: VoiceCapture
+  @ObservationIgnored private let speaker: Speaker
   @ObservationIgnored private let overlay = VoiceOverlay()
   @ObservationIgnored private var process: SupervisorProcess?
   @ObservationIgnored private var processFolder: String?
@@ -130,6 +134,9 @@ final class VoiceController {
   @ObservationIgnored private var pointerOnCard = false
 
   private init() {
+    let audio = VoiceAudio()
+    capture = VoiceCapture(audio: audio)
+    speaker = Speaker(audio: audio)
     UserDefaults.standard.removeObject(forKey: Self.legacySessionsKey)
     capture.onTranscript = { [weak self] in self?.transcript = $0 }
     capture.onLevel = { [weak self] in self?.level = $0 }
@@ -274,7 +281,8 @@ final class VoiceController {
     if unfinished, !exchanges.isEmpty {
       switch turn.phase {
       case .failed(let message): exchanges[exchanges.count - 1].problem = message
-      case .idle: exchanges[exchanges.count - 1].wasCutOff = true
+      // Cut off by a press or the stop key, or talked over.
+      case .idle, .listening: exchanges[exchanges.count - 1].wasCutOff = true
       default: break
       }
     }
@@ -286,6 +294,14 @@ final class VoiceController {
 
   private func perform(_ effect: VoiceTurn.Effect) {
     switch effect {
+    case .standBy:
+      do {
+        try capture.standBy { [weak self] in self?.dispatch(.voiceHeard) }
+      } catch {
+        // The reply is still spoken; it just cannot be talked over, and its answer waits for it
+        // to ring out, as before.
+        capture.cancel()
+      }
     case .startCapture: beginQuestion()
     case .finishCapture: endQuestion()
     case .cancelCapture:
@@ -324,6 +340,7 @@ final class VoiceController {
     transcript = ""
     level = -160
     let answering = turn.listensForAnswer
+    let standingBy = capture.isStandingBy
     // An answer keeps the reply it answers on the card. `ask` clears it once the answer is sent.
     if !answering {
       question = ""
@@ -341,9 +358,10 @@ final class VoiceController {
     starting = Task { [weak self] in
       guard let self else { return }
       do {
-        // Nothing cancels echo, so a microphone opened by the reply ending waits out the last of
-        // the voice rather than hearing it as the start of an answer.
-        if answering {
+        // A microphone that stood by through the reply had the reply cancelled out of it. One
+        // opened only now, after a spoken reply, waits out the last of the voice rather than
+        // hearing it as the start of an answer.
+        if answering, !standingBy, turn.speaksReplies {
           try await Task.sleep(for: Self.answerSettle)
         }
         try await capture.start(hints: hints)
