@@ -333,6 +333,25 @@ struct UnitCheck {
       check("a file reads", false)
     }
 
+    // A prompt typed as a bare string, and a system notice, are cut like any block.
+    let typed = String(repeating: "y", count: 5_000)
+    let plainFile = FileManager.default.temporaryDirectory
+      .appending(path: "armada-unit-\(UUID().uuidString).jsonl")
+    let plainLines = [
+      #"{"type":"user","uuid":"p1","message":{"role":"user","content":"\#(typed)"}}"#,
+      #"{"type":"system","uuid":"s1","content":"\#(typed)"}"#,
+    ]
+    try? Data((plainLines.joined(separator: "\n") + "\n").utf8).write(to: plainFile)
+    defer { try? FileManager.default.removeItem(at: plainFile) }
+    let plainEntries = TranscriptLog.whole(of: plainFile) ?? []
+    expectEqual(
+      "a bare-string prompt and a notice are both cut", plainEntries.filter(\.truncated).count, 2)
+    for entry in plainEntries {
+      expectEqual(
+        "and a cut \(entry.kind) reopens at full length",
+        TranscriptLog.fullText(of: entry, in: plainFile)?.count, 5_000)
+    }
+
     // Following reads from an offset, not a tail, so a burst bigger than any tail window
     // cannot drop turns. The docs record a real ~140KB burst after a single turn.
     let growing = FileManager.default.temporaryDirectory

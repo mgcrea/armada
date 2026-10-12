@@ -233,10 +233,18 @@ nonisolated enum TranscriptLog {
     defer { try? handle.close() }
     try? handle.seek(toOffset: UInt64(entry.line.lowerBound))
     guard let data = try? handle.read(upToCount: entry.line.count),
-      let line = try? JSONDecoder().decode(Line.self, from: data),
-      case .blocks(let blocks) = line.message?.content, entry.block < blocks.count
+      let line = try? JSONDecoder().decode(Line.self, from: data)
     else { return nil }
-    return blocks[entry.block].readableText(cap: .max)?.text
+    // The same three shapes `append` cuts, read back the same way.
+    if line.type == "system" { return notice(in: line, cap: .max)?.text }
+    switch line.message?.content {
+    case .text(let plain):
+      return cut(plain, to: .max)?.text
+    case .blocks(let blocks) where entry.block < blocks.count:
+      return blocks[entry.block].readableText(cap: .max)?.text
+    default:
+      return nil
+    }
   }
 
   // MARK: - Copying
