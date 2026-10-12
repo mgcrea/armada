@@ -168,6 +168,17 @@ struct StartSessionToolTests {
       ])
   }
 
+  @Test("Resume with an explicit null project and account is resume on its own")
+  func resumeWithNulls() async {
+    let starter = FakeSessionStarter()
+    let id = "1af3bb3d-a085-4a1f-a977-7602a286af91"
+    let result = await call(
+      ["resume": .string(id), "project": .null, "account": .null], starter: starter)
+    #expect(!result.isError)
+    #expect(starter.requests.first?.resume == id)
+    #expect(starter.requests.first?.projectID == nil)
+  }
+
   @Test(
     "Resume with a project, an account, Codex or a partial id is refused",
     arguments: [

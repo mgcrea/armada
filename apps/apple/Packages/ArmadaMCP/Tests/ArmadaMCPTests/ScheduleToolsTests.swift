@@ -240,6 +240,17 @@ struct ScheduleToolsTests {
     #expect(request == SaveScheduleRequest(id: "daily-intel", status: "paused"))
   }
 
+  @Test("An update with an explicit null project leaves the project alone")
+  func updateWithNullProject() async throws {
+    let store = FakeScheduleStore()
+    let result = await call(
+      "armada_save_schedule", ["id": "daily-intel", "status": "paused", "project": .null],
+      store: store)
+    #expect(!result.isError)
+    let request = try #require(store.saveRequests.first)
+    #expect(request == SaveScheduleRequest(id: "daily-intel", status: "paused"))
+  }
+
   @Test("An unsaved project, a bad status and a long prompt are refused")
   func refusals() async {
     let store = FakeScheduleStore()

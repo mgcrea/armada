@@ -778,7 +778,7 @@ public enum Tools {
       var projectID: String?
       let resume = arguments["resume"]?.stringValue?.trimmingCharacters(in: .whitespaces)
       if let resume {
-        guard arguments["project"] == nil, arguments["account"] == nil else {
+        guard !given(arguments["project"]), !given(arguments["account"]) else {
           return .failure(
             "Pass `resume` on its own, without `project` or `account`: a resumed session runs "
               + "where it ran before, on the account that holds its transcript.")
@@ -966,7 +966,7 @@ public enum Tools {
 
       // Anything but an array, read as "no names", would watch every session and could
       // answer with another session's change.
-      if let given = arguments["sessions"], given != .null, given.arrayValue == nil {
+      if given(arguments["sessions"]), arguments["sessions"]?.arrayValue == nil {
         return .failure("`sessions` is an array of session ids, even for one session.")
       }
       var ids: Set<String>?
@@ -1132,7 +1132,7 @@ public enum Tools {
       }
 
       var projectID: String?
-      if arguments["project"] != nil {
+      if given(arguments["project"]) {
         switch lookupProject(arguments["project"], in: projects) {
         case .refused(let refusal): return refusal
         case .found(let project): projectID = project.id
@@ -1869,6 +1869,14 @@ public enum Tools {
     let rightActivity = right.lastActivity ?? .distantPast
     if leftActivity != rightActivity { return leftActivity > rightActivity }
     return left.id > right.id
+  }
+
+  /// Whether an argument was given. An explicit `null`, which some clients send for an
+  /// optional field they leave unset, is not: MCPKit hands it over as `.null`, which an
+  /// `== nil` comparison reads as present.
+  static func given(_ value: JSONValue?) -> Bool {
+    guard let value else { return false }
+    return value != .null
   }
 
   static func clamp(_ value: Int?, _ fallback: Int, _ range: ClosedRange<Int>) -> Int {
