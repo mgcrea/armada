@@ -251,6 +251,7 @@ UNIT_SRC := \
 	Armada/MenuBarHalo.swift \
 	Armada/KeepAwake.swift \
 	Armada/SessionOrder.swift \
+	Armada/SessionState.swift \
 	Armada/Changelog.swift \
 	Armada/ScreenshotMode.swift \
 	Armada/HostWindow.swift \

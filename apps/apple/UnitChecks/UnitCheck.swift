@@ -34,6 +34,7 @@ struct UnitCheck {
     dayWeights()
     workingHours()
     sessionOrder()
+    sessionState()
     changelog()
     hostWindow()
     codexRollout()
@@ -1945,6 +1946,37 @@ struct UnitCheck {
       "what a search leaves of it",
       SessionHistory.countLabel(shown: 12, total: 1_461, locale: english),
       "12 of 1,461 sessions")
+  }
+
+  // MARK: - SessionState
+
+  static func sessionState() {
+    section("SessionState")
+    func resolve(_ reported: SessionState?, wrote: Bool, awaiting: Bool = false)
+      -> SessionState
+    {
+      SessionState.resolve(
+        reported: reported, wrote: wrote, hasTranscript: true, awaitingTool: { awaiting })
+    }
+    expectEqual(
+      "a write does not hide a session the registry says is waiting",
+      resolve(.waiting, wrote: true), .waiting)
+    expectEqual(
+      "nor turn a reported idle into working", resolve(.idle, wrote: true), .idle)
+    expectEqual(
+      "a reported busy session on an unanswered tool_use is running a tool, write or not",
+      resolve(.working, wrote: true, awaiting: true), .runningTool)
+    expectEqual(
+      "and working otherwise", resolve(.working, wrote: true), .working)
+    expectEqual(
+      "with no reported status, a write is the evidence of work",
+      resolve(nil, wrote: true), .working)
+    expectEqual(
+      "and silence after it is idle, or a tool call", resolve(nil, wrote: false, awaiting: true),
+      .runningTool)
+    expectEqual(
+      "a session with no transcript yet is idle",
+      SessionState.resolve(reported: nil, wrote: false, hasTranscript: false) { true }, .idle)
   }
 
   // MARK: - LaunchScript

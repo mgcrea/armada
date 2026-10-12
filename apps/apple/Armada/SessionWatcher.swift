@@ -490,44 +490,19 @@ final class SessionWatcher {
       compaction: TranscriptContext.newestCompaction(inChunk: whole, droppingFirstLine: false))
   }
 
-  /// Working on a write; otherwise the tool-use check decides between "running a
-  /// tool" and idle.
+  /// The registry's status where it reports one; otherwise working on a write, and the
+  /// tool-use check deciding between "running a tool" and idle. See `SessionState.resolve`.
   ///
-  /// Quitting a session produces a spurious `working` blip — a shutdown write
-  /// about 50ms before the registry file disappears. Not special-cased: the
-  /// registry event that follows removes the row within ~2s, which is faster than
-  /// anyone reads a state dot.
+  /// On a build that reports no status, quitting a session produces a spurious `working`
+  /// blip — a shutdown write about 50ms before the registry file disappears. Not
+  /// special-cased: the registry event that follows removes the row within ~2s, which is
+  /// faster than anyone reads a state dot.
   private func refreshState(_ session: Session, wrote: Bool) {
-    // A write this instant outranks everything: it is the freshest evidence there is,
-    // and it lands in milliseconds where a registry rewrite has to go through
-    // FSEvents and a rescan.
-    if wrote {
-      session.state = .working
-      return
-    }
-
-    // The registry's own answer, where it has one.
-    if let reported = SessionState(registryStatus: session.registry.status) {
-      // The one refinement it cannot make. `busy` is true of a model producing text
-      // and of one sitting on an unanswered `tool_use`, and the transcript is the
-      // only thing that separates them. Nothing is refined about `waiting` or `idle`
-      // — those are complete answers.
-      guard reported == .working, let transcript = session.transcript else {
-        session.state = reported
-        return
-      }
-      session.state =
-        isAwaitingToolResult(session, transcript: transcript) ? .runningTool : .working
-      return
-    }
-
-    // No reported status: a folder on a build older than the one that started writing
-    // it. Everything below is the original inference, unchanged.
-    guard let transcript = session.transcript else {
-      session.state = .idle
-      return
-    }
-    session.state = isAwaitingToolResult(session, transcript: transcript) ? .runningTool : .idle
+    let transcript = session.transcript
+    session.state = SessionState.resolve(
+      reported: SessionState(registryStatus: session.registry.status), wrote: wrote,
+      hasTranscript: transcript != nil,
+      awaitingTool: { transcript.map { isAwaitingToolResult(session, transcript: $0) } ?? false })
   }
 
   /// Whether the transcript ends on an unanswered `tool_use`, read at most once per
