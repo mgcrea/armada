@@ -104,10 +104,9 @@ export const verifySignature = async (
  * created some other way, and only when a key happens to be configured.
  *
  * `checkout.session.completed` does not carry line items, so this is a second
- * call — and it is deliberately incapable of failing the fulfilment it belongs
- * to. A licence that reached a paying customer with an empty `price_id` is a
- * reporting gap; a licence that never reached them because a reporting call
- * timed out is a refund.
+ * call. It never throws: any failure comes back as an empty string. What an
+ * empty price then means is `fulfil`'s decision, and here it refuses the sale
+ * (see the price guard there, which diverges from bastion on exactly this).
  */
 export const priceIdFor = async (sessionId: string, secretKey: string): Promise<string> => {
   try {
