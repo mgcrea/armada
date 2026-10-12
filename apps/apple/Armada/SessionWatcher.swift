@@ -175,7 +175,9 @@ final class SessionWatcher {
   /// keep their identity — and so their title, state and last-write time — because
   /// re-deriving those on every event would re-read a transcript for nothing.
   func rescan() {
-    let live = SessionRegistry.scan(in: folder.sessionsDir)
+    // A session whose file is mid-write keeps the copy held: see `SessionRegistry.carried`.
+    let scanned = SessionRegistry.scanReporting(in: folder.sessionsDir)
+    let live = SessionRegistry.carried(held: byId.values.map(\.registry), scanned: scanned)
     var next: [String: Session] = [:]
 
     for registry in live {

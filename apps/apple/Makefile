@@ -252,6 +252,8 @@ UNIT_SRC := \
 	Armada/KeepAwake.swift \
 	Armada/SessionOrder.swift \
 	Armada/SessionState.swift \
+	Armada/ProcessAncestry.swift \
+	Armada/SessionRegistry.swift \
 	Armada/Changelog.swift \
 	Armada/ScreenshotMode.swift \
 	Armada/HostWindow.swift \

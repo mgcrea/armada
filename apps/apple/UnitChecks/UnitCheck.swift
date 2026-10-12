@@ -35,6 +35,7 @@ struct UnitCheck {
     workingHours()
     sessionOrder()
     sessionState()
+    sessionRegistry()
     changelog()
     hostWindow()
     codexRollout()
@@ -2078,6 +2079,48 @@ struct UnitCheck {
     expectEqual(
       "a session with no transcript yet is idle",
       SessionState.resolve(reported: nil, wrote: false, hasTranscript: false) { true }, .idle)
+  }
+
+  // MARK: - SessionRegistry
+
+  static func sessionRegistry() {
+    section("SessionRegistry")
+    func decode(_ json: String) -> SessionRegistry? {
+      try? JSONDecoder().decode(SessionRegistry.self, from: Data(json.utf8))
+    }
+    let odd = decode(
+      #"{"pid":42,"sessionId":"s1","cwd":"/work/a","status":3,"updatedAt":"soon","name":"a-1"}"#)
+    check(
+      "a field of an unexpected type costs that field, not the session",
+      odd?.sessionId == "s1" && odd?.status == nil && odd?.updatedAt == nil && odd?.name == "a-1")
+    check(
+      "but the three it cannot do without are still required",
+      decode(#"{"pid":42,"cwd":"/work/a"}"#) == nil)
+
+    let folder = FileManager.default.temporaryDirectory.appending(
+      path: "armada-registry-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let pid = getpid()
+    try? Data(#"{"pid":\#(pid),"sessionId":"live","cwd":"/work/a"}"#.utf8)
+      .write(to: folder.appending(path: "\(pid).json"))
+    // Torn under a live process, the parent: a file left by a dead one is never carried.
+    let parent = getppid()
+    try? Data(#"{"pid":\#(parent),"sessionId":"torn","cw"#.utf8)
+      .write(to: folder.appending(path: "\(parent).json"))
+    try? Data(#"{"pid":999999,"sessi"#.utf8).write(to: folder.appending(path: "999999.json"))
+    let scanned = SessionRegistry.scanReporting(in: folder)
+    expectEqual("a whole file is read", scanned.registries.map(\.sessionId), ["live"])
+    expectEqual(
+      "and one that did not decode is named by its pid, if that process is alive",
+      scanned.undecoded, [parent])
+
+    let held = decode(#"{"pid":\#(parent),"sessionId":"torn","cwd":"/work/b"}"#)!
+    let gone = decode(#"{"pid":8,"sessionId":"ended","cwd":"/work/c"}"#)!
+    expectEqual(
+      "a session whose file did not decode this time is carried, one whose file is gone is not",
+      SessionRegistry.carried(held: [held, gone], scanned: scanned).map(\.sessionId),
+      ["live", "torn"])
   }
 
   // MARK: - LaunchScript

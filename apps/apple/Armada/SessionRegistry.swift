@@ -4,8 +4,8 @@ import Foundation
 /// One live Claude Code session, as `~/.claude/sessions/<pid>.json` describes it.
 ///
 /// Undocumented Claude Code internals: the format can change in any release, so
-/// every field beyond the four this app actually needs is optional and a file
-/// that fails to decode is skipped rather than fatal. `docs/claude-code-sessions.md`
+/// every field beyond the three this app actually needs is optional, read leniently
+/// (see `init(from:)`), and a file that fails to decode is skipped rather than fatal. `docs/claude-code-sessions.md`
 /// has the full shape.
 struct SessionRegistry: Decodable, Identifiable, Sendable, Hashable {
   let pid: Int32
@@ -142,6 +142,39 @@ struct SessionRegistry: Decodable, Identifiable, Sendable, Hashable {
 }
 
 extension SessionRegistry {
+  private enum Field: String, CodingKey {
+    case pid, sessionId, cwd, name, startedAt, version, entrypoint, nameSource, status
+    case waitingFor, statusUpdatedAt, kind, updatedAt
+  }
+
+  /// The three fields this app cannot do without are required; every other one is read
+  /// if it decodes and nil if it does not.
+  ///
+  /// **One odd field costs that field, not the session.** The synthesized decoder failed
+  /// the whole file on a type it did not expect, and because every session's file has the
+  /// same shape, a Claude Code release that changed one optional field would have emptied
+  /// the window at once.
+  init(from decoder: any Decoder) throws {
+    let fields = try decoder.container(keyedBy: Field.self)
+    func optional<T: Decodable>(_ type: T.Type, _ key: Field) -> T? {
+      (try? fields.decodeIfPresent(type, forKey: key)) ?? nil
+    }
+    self.init(
+      pid: try fields.decode(Int32.self, forKey: .pid),
+      sessionId: try fields.decode(String.self, forKey: .sessionId),
+      cwd: try fields.decode(String.self, forKey: .cwd),
+      name: optional(String.self, .name),
+      startedAt: optional(Int.self, .startedAt),
+      version: optional(String.self, .version),
+      entrypoint: optional(String.self, .entrypoint),
+      nameSource: optional(String.self, .nameSource),
+      status: optional(String.self, .status),
+      waitingFor: optional(String.self, .waitingFor),
+      statusUpdatedAt: optional(Int.self, .statusUpdatedAt),
+      kind: optional(String.self, .kind),
+      updatedAt: optional(Int.self, .updatedAt))
+  }
+
   /// Decode every registry file in `sessionsDir`.
   ///
   /// **Filters to `.json`.** Each registry file sits beside a `<pid>.<hash>.key`
@@ -151,20 +184,52 @@ extension SessionRegistry {
   /// A file caught mid-write fails to decode and is simply left out — the next
   /// FSEvents tick picks it up.
   static func scan(in sessionsDir: URL) -> [SessionRegistry] {
+    scanReporting(in: sessionsDir).registries
+  }
+
+  /// `scan`, and the live pids whose file is there but did not decode.
+  ///
+  /// **Claude Code writes the file in place**, not to a temporary file renamed over it
+  /// (2.1.296: `writeFile` on `<pid>.json`), so a read can land mid-write. The pid comes
+  /// from the file's name, which is the one thing a torn file still says; see `carried`.
+  static func scanReporting(in sessionsDir: URL)
+    -> (registries: [SessionRegistry], undecoded: Set<Int32>)
+  {
     let names =
       (try? FileManager.default.contentsOfDirectory(atPath: sessionsDir.path(percentEncoded: false)))
       ?? []
     let decoder = JSONDecoder()
-    return
-      names
-      .filter { $0.hasSuffix(".json") }
-      .compactMap { name -> SessionRegistry? in
-        let url = sessionsDir.appending(path: name, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: url),
-          let registry = try? decoder.decode(SessionRegistry.self, from: data)
-        else { return nil }
-        return registry
+    var registries: [SessionRegistry] = []
+    var undecoded: Set<Int32> = []
+    for name in names where name.hasSuffix(".json") {
+      let url = sessionsDir.appending(path: name, directoryHint: .notDirectory)
+      guard let data = try? Data(contentsOf: url),
+        let registry = try? decoder.decode(SessionRegistry.self, from: data)
+      else {
+        if let pid = Int32(name.dropLast(".json".count)), isAlive(pid: pid) {
+          undecoded.insert(pid)
+        }
+        continue
       }
-      .filter { $0.isAlive && !$0.isArmadaProbe && !$0.isTemporaryDirectorySpawn }
+      registries.append(registry)
+    }
+    return (
+      registries.filter { $0.isAlive && !$0.isArmadaProbe && !$0.isTemporaryDirectorySpawn },
+      undecoded
+    )
+  }
+
+  /// What a scan found, plus each held registry whose file was there and did not decode.
+  ///
+  /// **A torn read is not a session ending.** Dropping the session would discard what it
+  /// keeps once seen (`quotaHit`, `cacheTTL`, `sessionModelID`, the compaction), rerun its
+  /// deep scan and clear the selection, only to adopt it again a moment later. The copy
+  /// held stands in until the next scan reads the file whole.
+  static func carried(
+    held: [SessionRegistry], scanned: (registries: [SessionRegistry], undecoded: Set<Int32>)
+  ) -> [SessionRegistry] {
+    let found = Set(scanned.registries.map(\.pid))
+    return scanned.registries
+      + held.filter { scanned.undecoded.contains($0.pid) && !found.contains($0.pid) }
   }
 }
