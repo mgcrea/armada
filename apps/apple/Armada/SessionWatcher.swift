@@ -62,6 +62,8 @@ private nonisolated struct DeepScan: Sendable {
   let reading: ContextReading?
   let baseline: ContextBaseline?
   let compaction: Compaction?
+  /// The end of the last whole line read, where the watch for a later compaction starts.
+  let through: UInt64
 }
 
 /// Every live Claude Code session, kept current from the filesystem.
@@ -362,6 +364,7 @@ final class SessionWatcher {
     }
 
     refreshContext(session, tail: tail)
+    refreshCompaction(session, transcript: transcript)
 
     if let title = TranscriptTitle.newestTitle(
       inChunk: tail.chunk, droppingFirstLine: tail.droppingFirstLine)
@@ -465,7 +468,8 @@ final class SessionWatcher {
         if let reading = found.reading, session.context == nil { session.context = reading }
         if let ttl = found.reading?.cacheTTL, session.cacheTTL == nil { session.cacheTTL = ttl }
         session.baseline = found.baseline
-        session.compaction = found.compaction
+        session.compaction = Compaction.newer(found.compaction, than: session.compaction)
+        session.compactionThrough = found.through
       }
     }
   }
@@ -478,6 +482,7 @@ final class SessionWatcher {
     guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
     defer { try? handle.close() }
     guard let whole = try? handle.readToEnd() else { return nil }
+    let through = whole.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? 0
 
     return DeepScan(
       title: TranscriptTitle.newestTitle(inChunk: whole, droppingFirstLine: false),
@@ -487,7 +492,19 @@ final class SessionWatcher {
       // The baseline is in the first entries, so it is read off a prefix rather than
       // by walking a 50MB buffer that has already answered everything else.
       baseline: TranscriptContext.baseline(inChunk: whole.prefix(TranscriptTitle.headBytes)),
-      compaction: TranscriptContext.newestCompaction(inChunk: whole, droppingFirstLine: false))
+      compaction: TranscriptContext.newestCompaction(inChunk: whole, droppingFirstLine: false),
+      through: UInt64(through))
+  }
+
+  /// A compaction made since the deep scan, from what the transcript gained since the last
+  /// look. Waits for the deep scan, which seeds where to start; until then there is no
+  /// offset, and the deep scan itself reads to the end.
+  private func refreshCompaction(_ session: Session, transcript: URL) {
+    guard let since = session.compactionThrough,
+      let appended = TranscriptContext.compactionAppended(to: transcript, since: since)
+    else { return }
+    session.compaction = Compaction.newer(appended.compaction, than: session.compaction)
+    session.compactionThrough = appended.through
   }
 
   /// The registry's status where it reports one; otherwise working on a write, and the

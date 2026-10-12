@@ -645,6 +645,47 @@ struct UnitCheck {
       compaction?.wasManual == true && compaction?.preTokens == 390_000
         && compaction?.postTokens == 41_000)
 
+    // A compaction made while the session is watched: the boundary, then hundreds of KB
+    // of re-read attachments before the next reply, so a 64KB tail never sees it.
+    let watched = FileManager.default.temporaryDirectory
+      .appending(path: "armada-unit-\(UUID().uuidString).jsonl")
+    defer { try? FileManager.default.removeItem(at: watched) }
+    func append(_ text: String) {
+      guard let handle = try? FileHandle(forWritingTo: watched) else { return }
+      _ = try? handle.seekToEnd()
+      try? handle.write(contentsOf: Data(text.utf8))
+      try? handle.close()
+    }
+    try? Data((assistant(read: 10, block: 0, at: "2026-09-12T10:00:00Z") + "\n").utf8)
+      .write(to: watched)
+    let seeded = UInt64((try? Data(contentsOf: watched))?.count ?? 0)
+    let boundary =
+      #"{"type":"system","subtype":"compact_boundary","timestamp":"2026-09-12T12:00:00Z","compactMetadata":{"trigger":"auto","preTokens":180000,"postTokens":30000}}"#
+    let attachment = #"{"type":"attachment","text":"\#(String(repeating: "a", count: 1_000))"}"#
+    // Half the boundary line first, as a read can land mid-write.
+    append(String(boundary.prefix(60)))
+    let partial = TranscriptContext.compactionAppended(to: watched, since: seeded)
+    check("half a line is not read as one", partial?.compaction == nil)
+    expectEqual("and is read again next time", partial?.through, seeded)
+    append(String(boundary.dropFirst(60)) + "\n")
+    append(Array(repeating: attachment, count: 300).joined(separator: "\n") + "\n")
+    let size = UInt64((try? Data(contentsOf: watched))?.count ?? 0)
+    let appended = TranscriptContext.compactionAppended(to: watched, since: partial?.through ?? 0)
+    check(
+      "a compaction written since the last read is found past the tail's reach",
+      appended?.compaction?.preTokens == 180_000)
+    expectEqual("and the next read starts at the end", appended?.through, size)
+    let earlier = Compaction(
+      trigger: "auto", preTokens: 1, postTokens: 1, at: date("2026-09-12T08:00:00Z"))
+    expectEqual(
+      "a newer compaction replaces the one held",
+      Compaction.newer(appended?.compaction, than: earlier)?.preTokens, 180_000)
+    expectEqual(
+      "an older one does not", Compaction.newer(earlier, than: appended?.compaction)?.preTokens,
+      180_000)
+    expectEqual(
+      "and none found keeps what is held", Compaction.newer(nil, than: earlier)?.preTokens, 1)
+
     // The split as Claude Code writes it, keys in either order.
     func split(_ fiveMinute: Int, _ oneHour: Int) -> String {
       #"{"type":"assistant","timestamp":"2026-09-24T10:00:00Z","message":{"usage":{"input_tokens":2,"cache_creation_input_tokens":\#(fiveMinute + oneHour),"cache_read_input_tokens":389000,"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":\#(oneHour),"ephemeral_5m_input_tokens":\#(fiveMinute)}}}}"#

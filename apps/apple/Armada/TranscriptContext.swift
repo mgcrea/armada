@@ -233,6 +233,14 @@ nonisolated struct Compaction: Sendable, Hashable {
   let at: Date?
 
   var wasManual: Bool { trigger == "manual" }
+
+  /// `found` when it is newer than `held`, or there is nothing held; otherwise `held`.
+  /// Nothing found is not a change: a compaction stays the newest until another one.
+  static func newer(_ found: Compaction?, than held: Compaction?) -> Compaction? {
+    guard let found else { return held }
+    guard let held else { return found }
+    return (found.at ?? .distantPast) > (held.at ?? .distantPast) ? found : held
+  }
 }
 
 // `nonisolated` like the type it extends: under main-actor default isolation an
@@ -262,6 +270,38 @@ nonisolated extension TranscriptContext {
   /// A compaction that happens *after* that scan is still caught, without re-reading
   /// anything: it is the only thing that makes the running total fall between turns,
   /// and both turns are in the tail. See `Session.hasCompactedSinceBaseline`.
+  /// The newest compaction in what a transcript gained since `offset`, and where the next
+  /// read starts: the end of the last whole line, so a line still being written is read
+  /// again in full rather than lost across two reads.
+  ///
+  /// **Read from the offset, not off the tail.** Right after a boundary Claude Code writes
+  /// the summary and then the files it re-reads, a median 319KB measured across 170
+  /// compactions here, before the next assistant entry: a 64KB tail read a moment late has
+  /// already lost the boundary. What a session appends between two writes is usually a few
+  /// KB, so this is a small read; one past `appendedCap` keeps only its end.
+  static func compactionAppended(to url: URL, since offset: UInt64)
+    -> (compaction: Compaction?, through: UInt64)?
+  {
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
+    guard let size = try? handle.seekToEnd() else { return nil }
+    // Shorter than last time: rewritten, and read again from the start.
+    let from = size < offset ? 0 : offset
+    guard size > from else { return (nil, size) }
+    let start = size - from > appendedCap ? size - appendedCap : from
+    try? handle.seek(toOffset: start)
+    guard let chunk = try? handle.readToEnd() else { return nil }
+    let whole = chunk.lastIndex(of: UInt8(ascii: "\n")).map { $0 - chunk.startIndex + 1 } ?? 0
+    return (
+      newestCompaction(inChunk: chunk.prefix(whole), droppingFirstLine: start > from),
+      start + UInt64(whole)
+    )
+  }
+
+  /// The most of an append `compactionAppended` reads. Far past any compaction's
+  /// re-read burst, and still a bounded read on the main actor.
+  static let appendedCap: UInt64 = 4 * 1024 * 1024
+
   static func newestCompaction(inChunk chunk: Data, droppingFirstLine: Bool) -> Compaction? {
     for line in JSONLines.newestFirst(chunk, droppingFirstLine: droppingFirstLine) {
       guard line.range(of: Data("compact_boundary".utf8)) != nil,

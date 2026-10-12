@@ -78,8 +78,12 @@ final class Session: Identifiable {
   /// What was loaded before the first prompt. Read once, from the head of the file.
   var baseline: ContextBaseline?
 
-  /// The newest compaction found by the deep scan, if any.
+  /// The newest compaction: the deep scan's, or one made since and found in what the
+  /// transcript gained (see `TranscriptContext.compactionAppended`).
   var compaction: Compaction?
+
+  /// Where the next look for a compaction starts. Nil until the deep scan has run.
+  var compactionThrough: UInt64?
 
   /// The model id with its variant suffix, from the session's own `model` attachment.
   /// Usually nil — see `TranscriptContext.newestModelID`.
