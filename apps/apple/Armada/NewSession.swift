@@ -239,17 +239,9 @@ nonisolated enum NewSession {
       ([quoted(binary.path(percentEncoded: false))]
         + arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name)
         + (prompt.map { [$0.argument] } ?? []))
-        .joined(separator: " "),
-      "status=$?",
-      // `read -r` with no variable is zsh reading into REPLY, which is all this needs:
-      // the keystroke is the point, not what was typed.
-      "if [[ $status -ne 0 ]]; then",
-      "  echo \"\"",
-      "  echo \"\(agent.commandName) exited with status $status.\"",
-      "  echo -n \"Press return to close this window… \"",
-      "  read -r",
-      "fi",
+        .joined(separator: " ")
     ]
+    lines += LaunchScript.exitLines(command: agent.commandName)
     return lines.joined(separator: "\n") + "\n"
   }
 

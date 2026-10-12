@@ -23,4 +23,25 @@ nonisolated enum LaunchScript {
   static func promptLines(file: String) -> (setup: [String], argument: String) {
     (["prompt=\"$(<\(quoted(file)))\"", "rm -f \(quoted(file))"], "\"$prompt\"")
   }
+
+  /// What follows the agent on the script's last line: a failure is held on screen until a
+  /// keystroke, so a CLI that dies at startup leaves its message behind rather than a window
+  /// that closes on it.
+  ///
+  /// `read -r` with no variable is zsh reading into REPLY, which is all this needs: the
+  /// keystroke is the point, not what was typed.
+  ///
+  /// `rc`, never `status`: zsh keeps `$status` as a read-only alias of `$?`, so assigning it
+  /// kills the script on that line, with exit 1 after a clean run and before the message.
+  static func exitLines(command: String) -> [String] {
+    [
+      "rc=$?",
+      "if [[ $rc -ne 0 ]]; then",
+      "  echo \"\"",
+      "  echo \"\(command) exited with status $rc.\"",
+      "  echo -n \"Press return to close this window… \"",
+      "  read -r",
+      "fi",
+    ]
+  }
 }

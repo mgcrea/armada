@@ -1943,6 +1943,29 @@ struct UnitCheck {
       prompt.setup, [#"prompt="$(<'/tmp/a b/prompt.txt')""#, #"rm -f '/tmp/a b/prompt.txt'"#])
     expectEqual(
       "and passed as one word the shell does not split or glob", prompt.argument, #""$prompt""#)
+
+    // Run under the zsh the script names, after an agent that exits with `code`.
+    func ending(after code: Int32) -> (status: Int32, output: String) {
+      let process = Process()
+      process.executableURL = URL(filePath: "/bin/zsh")
+      let script = (["(exit \(code))"] + LaunchScript.exitLines(command: "claude"))
+        .joined(separator: "\n")
+      process.arguments = ["-f", "-c", script]
+      let output = Pipe()
+      process.standardOutput = output
+      process.standardError = output
+      process.standardInput = FileHandle.nullDevice
+      try? process.run()
+      process.waitUntilExit()
+      let text = String(decoding: output.fileHandleForReading.availableData, as: UTF8.self)
+      return (process.terminationStatus, text)
+    }
+    let clean = ending(after: 0)
+    expectEqual("an agent that exits cleanly leaves a script that exits cleanly", clean.status, 0)
+    expectEqual("and prints nothing", clean.output, "")
+    check(
+      "an agent that fails leaves its status on screen",
+      ending(after: 3).output.contains("claude exited with status 3."))
   }
 
   // MARK: - SessionClosePolicy
