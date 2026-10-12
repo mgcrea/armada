@@ -260,11 +260,11 @@ const deliver = async (env: Env, row: LicenseRow): Promise<Sent | null> => {
   return sent;
 };
 
+/** Every column of a `LicenseRow`, for each query read with `.first<LicenseRow>()`. */
+const LICENSE_COLUMNS = "id, email, key, issued_at, last_sent_at, revoked_at, revoked_reason";
+
 const findBySession = (env: Env, sessionId: string): Promise<LicenseRow | null> =>
-  env.DB.prepare(
-    "SELECT id, email, key, issued_at, last_sent_at, revoked_at, revoked_reason" +
-      " FROM licenses WHERE stripe_session_id = ?",
-  )
+  env.DB.prepare(`SELECT ${LICENSE_COLUMNS} FROM licenses WHERE stripe_session_id = ?`)
     .bind(sessionId)
     .first<LicenseRow>();
 
@@ -780,7 +780,7 @@ const resendTo = async (env: Env, email: string): Promise<void> => {
   try {
     if (await overLimit(env.RESEND_LIMIT, `email:${email}`)) return;
     const row = await env.DB.prepare(
-      `SELECT id, email, key, issued_at, last_sent_at, revoked_at, revoked_reason FROM licenses
+      `SELECT ${LICENSE_COLUMNS} FROM licenses
          WHERE email = ? AND revoked_at IS NULL
          ORDER BY issued_at DESC LIMIT 1`,
     )
