@@ -708,10 +708,20 @@ audit`. Nothing below has been run end to end.
 - **A conversation lasts until Start a New Conversation, an account switch or a relaunch.** Its
   session id is held in memory, so the context grows with every question until one of those, and
   a relaunch never resumes a history the Voice pane no longer shows.
-- **Keep listening has no echo cancellation.** The microphone opens 300 ms after the speaker
-  reports the queue drained (`VoiceController.answerSettle`, untuned), and only then does the
-  6 s give-up start. A speaker loud enough to ring past that is heard as the start of an answer.
-  `VoiceTurn.listensForAnswer` is what turns an empty transcript into a quiet close.
+- **Talking over a reply has been measured on levels, never tried with a voice.** On
+  2026-10-12, with a MacBook Pro's own microphone and speakers at 25% volume, an 8 s reply raised
+  the microphone above the room by about 21 dB without voice processing. With it on, the reply
+  still rose 27 dB through `AVSpeechSynthesizer.speak`, 18 dB through a second engine, and 5.5 dB
+  through the microphone's own engine, with the ring after it gone. That is why `VoiceAudio` is
+  one engine; one run per path, so indicative only. Nobody has talked over a reply in the app:
+  `VoiceOnset`'s -40 dBFS, 0.25 s hold and 0.6 s warm-up are guesses, voice processing's gain
+  control may push a voice past or under them, and how long the canceller takes to settle at a
+  reply's start is unmeasured. Parakeet has never transcribed processed audio, whose noise
+  suppression may cost words. A sentence `Speaker` could not render goes to
+  `AVSpeechSynthesizer.speak`, is not cancelled, and can be heard as a voice. When voice
+  processing cannot start, the answer's microphone opens 300 ms after the reply ends, as before
+  (`VoiceController.answerSettle`, untuned). `VoiceTurn.listensForAnswer` is what turns an empty
+  transcript into a quiet close.
 - **Esc is a second hot key, held only while `VoiceTurn.isStoppable`.** `RegisterEventHotKey` on
   the bare Escape key returned noErr on macOS 27 (checked 2026-09-17 with a standalone script),
   but the app has not had Esc delivered end to end, nor has an Esc pressed in a Claude Code
