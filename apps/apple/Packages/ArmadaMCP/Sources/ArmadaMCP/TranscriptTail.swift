@@ -123,7 +123,9 @@ public enum TranscriptTail {
 
     func appendChunk(_ entryKind: Entry.Kind, _ text: String?) {
       guard let text, !text.isEmpty else { return }
-      if let last = entries.last, last.kind == entryKind, last.tool == nil, !last.truncated {
+      if let last = entries.last, last.kind == entryKind, last.tool == nil {
+        // Already cut: the rest of this message is past `maxChars`, not a message of its own.
+        guard !last.truncated else { return }
         let joined = (last.text ?? "") + text
         let (clipped, truncated) = clip(joined, to: maxChars)
         entries[entries.count - 1] = Entry(

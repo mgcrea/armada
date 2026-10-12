@@ -143,4 +143,17 @@ struct GrokToolsTests {
     #expect(entries[3].text == "hello")
     #expect(entries[3].at == Date(timeIntervalSince1970: 1_789_648_307).formatted(.iso8601))
   }
+
+  @Test("A reply longer than max_chars is one cut entry, not one per chunk past the cut")
+  func longReply() {
+    let chunk = String(repeating: "x", count: 40)
+    let lines = (0..<10).map { _ in
+      #"{"timestamp":1789648307,"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\#(chunk)"}}}}"#
+    }
+    let entries = TranscriptTail.condense(
+      TranscriptFixtures.read(lines), vendor: .grok, maxChars: 100)
+    #expect(entries.count == 1)
+    #expect(entries.first?.kind == .assistant)
+    #expect(entries.first?.truncated == true)
+  }
 }
