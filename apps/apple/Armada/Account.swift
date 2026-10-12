@@ -75,10 +75,6 @@ final class Account: Identifiable {
     (folder.base.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
   }
 
-  var usagePath: String {
-    (folder.usageJSON.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
-  }
-
   /// The newest rate-limit refusal this folder's transcripts have recorded.
   ///
   /// A second usage source beside `usage`, and the only one that is not a cache.

@@ -92,10 +92,6 @@ final class Accounts {
     }
   }
 
-  var totalSessionCount: Int {
-    all.reduce(0) { $0 + $1.sessions.sessions.count }
-  }
-
   func account(id: String) -> Account? {
     all.first { $0.id == id }
   }
