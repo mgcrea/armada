@@ -254,6 +254,7 @@ UNIT_SRC := \
 	Armada/SessionState.swift \
 	Armada/ProcessAncestry.swift \
 	Armada/SessionRegistry.swift \
+	Armada/ClaudeConfigFolder.swift \
 	Armada/Changelog.swift \
 	Armada/ScreenshotMode.swift \
 	Armada/HostWindow.swift \

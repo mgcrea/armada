@@ -87,10 +87,13 @@ nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
     var seen: Set<String> = []
 
     func consider(_ folder: ClaudeConfigFolder) {
-      let key = folder.base.standardizedFileURL.path(percentEncoded: false)
+      let path = folder.base.standardizedFileURL.path(percentEncoded: false)
+      // Keyed on the resolved path, so a symlink to a folder already found, or the same
+      // folder named by `CLAUDE_CONFIG_DIR` through one, is not a second account.
+      let key = resolvedPath(path) ?? path
       guard !seen.contains(key) else { return }
       var isDirectory: ObjCBool = false
-      guard fileManager.fileExists(atPath: key, isDirectory: &isDirectory), isDirectory.boolValue
+      guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue
       else { return }
       let sessions = folder.sessionsDir.path(percentEncoded: false)
       guard fileManager.fileExists(atPath: sessions) else { return }
@@ -186,4 +189,35 @@ nonisolated struct ClaudeConfigFolder: Sendable, Hashable {
   /// `/model` has diverged and nothing here can tell. `ContextWindow.Source` carries
   /// that caveat to the UI rather than dropping it.
   var settingsJSON: URL { base.appending(path: "settings.json") }
+}
+
+extension ClaudeConfigFolder {
+  /// The registry folder both ways its paths can be spelled.
+  ///
+  /// **FSEvents reports resolved paths.** A `~/.claude` that is a symlink, or one under
+  /// `/var` (really `/private/var`), has its events named under a prefix that is not the
+  /// one `sessionsDir` spells, and a registry event matched against that alone was never
+  /// recognised: new sessions and status changes waited for the dead-pid sweep.
+  nonisolated struct RegistryPaths: Sendable {
+    let directories: [String]
+
+    func contains(_ path: String) -> Bool {
+      directories.contains { path == $0 || path.hasPrefix($0 + "/") }
+    }
+  }
+
+  var registryPaths: RegistryPaths {
+    let spelled = sessionsDir.standardizedFileURL.path(percentEncoded: false)
+    let trimmed = spelled.hasSuffix("/") ? String(spelled.dropLast()) : spelled
+    let resolved = resolvedPath(trimmed)
+    return RegistryPaths(directories: resolved.map { [trimmed, $0] } ?? [trimmed])
+  }
+}
+
+/// `realpath(3)`, or nil for a path that does not exist. `URL.resolvingSymlinksInPath`
+/// leaves `/var` as it is, which is the mismatch this exists to bridge.
+nonisolated func resolvedPath(_ path: String) -> String? {
+  guard let pointer = realpath(path, nil) else { return nil }
+  defer { free(pointer) }
+  return String(cString: pointer)
 }

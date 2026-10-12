@@ -87,6 +87,8 @@ final class SessionWatcher {
   private(set) var sessions: [Session] = []
 
   let folder: ClaudeConfigFolder
+  /// Resolved once: the folder does not move while it is watched.
+  private let registryPaths: ClaudeConfigFolder.RegistryPaths
 
   private var byId: [String: Session] = [:]
   private var stream: FSEventStreamRef?
@@ -101,6 +103,7 @@ final class SessionWatcher {
   /// mean routing every event back to a folder by path prefix for no gain.
   init(folder: ClaudeConfigFolder) {
     self.folder = folder
+    self.registryPaths = folder.registryPaths
   }
 
   func start() {
@@ -233,13 +236,12 @@ final class SessionWatcher {
   /// times in one batch is refreshed once, which is all the size gate in `refreshTitle`
   /// would have let through anyway.
   fileprivate func handle(paths: [String]) {
-    let sessionsPath = folder.sessionsDir.path(percentEncoded: false)
     var needsRescan = false
     var written: [Session] = []
     var seen: Set<String> = []
 
     for path in paths {
-      if path.hasPrefix(sessionsPath) {
+      if registryPaths.contains(path) {
         needsRescan = true
         continue
       }

@@ -36,6 +36,7 @@ struct UnitCheck {
     sessionOrder()
     sessionState()
     sessionRegistry()
+    claudeConfigFolder()
     changelog()
     hostWindow()
     codexRollout()
@@ -2121,6 +2122,36 @@ struct UnitCheck {
       "a session whose file did not decode this time is carried, one whose file is gone is not",
       SessionRegistry.carried(held: [held, gone], scanned: scanned).map(\.sessionId),
       ["live", "torn"])
+  }
+
+  // MARK: - ClaudeConfigFolder
+
+  static func claudeConfigFolder() {
+    section("ClaudeConfigFolder")
+    // `/var/folders/…` on disk is `/private/var/folders/…`, the spelling FSEvents reports:
+    // the same mismatch a symlinked `~/.claude` makes, with no symlink to set up.
+    let home = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)
+      .appending(path: "armada-home-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let base = home.appending(path: ".claude", directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(
+      at: base.appending(path: "sessions"), withIntermediateDirectories: true)
+    let folder = ClaudeConfigFolder(
+      base: base, usageJSON: home.appending(path: ".claude.json"))
+    let resolved = resolvedPath(folder.sessionsDir.path(percentEncoded: false)) ?? ""
+    let registries = folder.registryPaths
+    check(
+      "a registry event under the resolved path is the folder's",
+      registries.contains("\(resolved)/123.json"))
+    let spelled = folder.sessionsDir.appending(path: "123.json").path(percentEncoded: false)
+    check("and one under the path as spelled", registries.contains(spelled))
+    check("a sibling folder's is not", !registries.contains("\(resolved)-old/123.json"))
+
+    try? FileManager.default.createSymbolicLink(
+      at: home.appending(path: ".claude-alias"), withDestinationURL: base)
+    expectEqual(
+      "a symlink to a folder already found is not a second account",
+      ClaudeConfigFolder.discoverAll(environment: [:], home: home).count, 1)
   }
 
   // MARK: - LaunchScript
