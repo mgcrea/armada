@@ -127,6 +127,14 @@ struct WaitToolTests {
     #expect(source.calls == 2)
   }
 
+  @Test("One session passed as a string, not an array, is refused rather than widened to all")
+  func sessionsNotAnArray() async {
+    let source = MovingFleetSource([Self.fleet([Self.session(a, "idle")])])
+    let result = await call(["sessions": .string(a), "timeout_seconds": 1], on: source)
+    #expect(result.isError)
+    #expect(source.calls == 1)
+  }
+
   @Test("An unlicensed Armada waits for nothing")
   func notEntitled() async {
     let source = MovingFleetSource([FakeFleetSource.fleet(isEntitled: false, claude: [])])

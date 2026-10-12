@@ -964,6 +964,11 @@ public enum Tools {
       let seconds = clamp(
         arguments["timeout_seconds"]?.intValue, defaultWaitSeconds, 1...maxWaitSeconds)
 
+      // Anything but an array, read as "no names", would watch every session and could
+      // answer with another session's change.
+      if let given = arguments["sessions"], given != .null, given.arrayValue == nil {
+        return .failure("`sessions` is an array of session ids, even for one session.")
+      }
       var ids: Set<String>?
       if let named = arguments["sessions"]?.arrayValue, !named.isEmpty {
         var found: Set<String> = []
