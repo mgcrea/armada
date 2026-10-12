@@ -675,7 +675,32 @@ actor UsageIndexer {
     codex.sort { $0.url.lastPathComponent < $1.url.lastPathComponent }
     mains.sort { $0.mtime > $1.mtime }
     subagents.sort { $0.mtime > $1.mtime }
-    return (codex + mains + subagents, listed)
+    return (onePerIdentity(codex + mains + subagents), listed)
+  }
+
+  /// One file per identity, the largest, in the order given.
+  ///
+  /// **The identity has no folder in it,** so a session found under two project folders —
+  /// a `cp -R` of a renamed repo, a backup left inside `projects/` — is two files competing
+  /// for one slot. Read both and the slot alternates between them, and every second pass
+  /// a shorter copy reads as a rewrite whose difference goes to `archive`, while the longer
+  /// one counts its later messages again: a total that grows with no new use. The largest
+  /// holds whatever the others do, and on a tie the first path by name is kept, so the
+  /// choice does not move between passes.
+  nonisolated static func onePerIdentity(_ items: [FileItem]) -> [FileItem] {
+    var kept: [String: FileItem] = [:]
+    for item in items {
+      guard let held = kept[item.identity] else {
+        kept[item.identity] = item
+        continue
+      }
+      if item.size > held.size
+        || (item.size == held.size && item.relativePath < held.relativePath)
+      {
+        kept[item.identity] = item
+      }
+    }
+    return items.filter { kept[$0.identity]?.relativePath == $0.relativePath }
   }
 
   private nonisolated static func file(

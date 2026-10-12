@@ -258,6 +258,8 @@ UNIT_SRC := \
 	Armada/ProjectPath.swift \
 	Armada/Project.swift \
 	Armada/UsageLedger.swift \
+	Armada/UsageDatabase.swift \
+	Armada/UsageIndexer.swift \
 	Armada/UsageLines.swift \
 	Armada/UsageIngest.swift \
 	Armada/ProjectStats.swift \

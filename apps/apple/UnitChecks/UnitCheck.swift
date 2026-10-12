@@ -44,6 +44,7 @@ struct UnitCheck {
     licenseKey()
     projects()
     usageLedger()
+    usageIndexer()
     usageLines()
     usageIngest()
     projectStats()
@@ -1524,6 +1525,55 @@ struct UnitCheck {
     _ input: Int, cached: Int, output: Int, reasoning: Int = 0, at: String
   ) -> String {
     #"{"timestamp":"\#(at)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"cache_write_input_tokens":0,"output_tokens":\#(output),"reasoning_output_tokens":\#(reasoning),"total_tokens":\#(input + output)}}}}"#
+  }
+
+  /// A pass's result, carried out of the indexer's actor to the synchronous checks.
+  nonisolated final class PassResult: @unchecked Sendable {
+    var snapshot: UsageLedgerSnapshot?
+  }
+
+  static func usageIndexer() {
+    section("UsageIndexer")
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appending(
+      path: "armada-indexer-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? fileManager.removeItem(at: root) }
+    let projects = root.appending(path: "projects", directoryHint: .isDirectory)
+    func write(_ lines: [String], to relative: String) {
+      let url = projects.appending(path: relative, directoryHint: .notDirectory)
+      try? fileManager.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? Data((lines.joined(separator: "\n") + "\n").utf8).write(to: url)
+    }
+    // One session in two project folders, as a `cp -R` of a renamed repo leaves it: the
+    // copy is the original as it stood, and the original has gone on.
+    let first = claudeLine(id: "m1", session: "s1")
+    let second = claudeLine(id: "m2", at: "2026-09-14T10:05:00.000Z", session: "s1")
+    write([first, second], to: "-work-armada/s1.jsonl")
+    write([first], to: "-work-armada-old/s1.jsonl")
+
+    let source = UsageIndexer.Source(account: "me", vendor: .claude, root: projects)
+    expectEqual(
+      "a session found in two folders is read from one of them",
+      UsageIndexer.enumerate([source]).items.count, 1)
+
+    let indexer = UsageIndexer(url: root.appending(path: "ledger.sqlite"))
+    // Read here: `utc` is the main actor's, and the main thread is about to wait.
+    let calendar = utc
+    func pass() -> UsageLedgerSnapshot? {
+      let result = PassResult()
+      let done = DispatchSemaphore(value: 0)
+      Task.detached {
+        result.snapshot = await indexer.runPass(
+          sources: [source], calendar: calendar, progress: { _ in }, publish: { _ in })
+        done.signal()
+      }
+      done.wait()
+      return result.snapshot
+    }
+    let outputs = (0..<4).map { _ in pass()?.rows.reduce(0) { $0 + $1.tokens.output } }
+    expectEqual(
+      "and pass after pass counts its two messages once", outputs, [100, 100, 100, 100])
   }
 
   static func usageLedger() {
