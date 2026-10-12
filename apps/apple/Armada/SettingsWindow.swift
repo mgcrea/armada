@@ -170,10 +170,6 @@ struct GeneralPane: View {
   private var cacheAlertMinimum = PromptCacheAlertSize.fallback
   @State private var notifier = PromptCacheNotifier.shared
 
-  /// Reading resolves the unset case to whichever terminal a launch would actually
-  /// use; writing stores the choice. Without the mapping the picker shows blank until
-  /// somebody touches it, because "" is nobody's bundle id — the same shape as
-  /// `MainWindowView.selection`.
   /// Every account on the panel, in the panel's order: Claude, Codex, Grok Build.
   private var panelAccounts: [(id: String, name: String, detail: String)] {
     accounts.all.map { ($0.id, $0.displayName, "Claude Code · \($0.displayPath)") }
@@ -187,6 +183,10 @@ struct GeneralPane: View {
       set: { storedHidden = PanelVisibility.setting(id, shown: $0, in: storedHidden) })
   }
 
+  /// Reading resolves the unset case to whichever terminal a launch would actually
+  /// use; writing stores the choice. Without the mapping the picker shows blank until
+  /// somebody touches it, because "" is nobody's bundle id — the same shape as
+  /// `MainWindowView.selection`.
   private var terminalSelection: Binding<String> {
     Binding(
       get: { TerminalApp.preferred(stored: terminal).bundleID },
