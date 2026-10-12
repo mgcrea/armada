@@ -297,8 +297,11 @@ public enum Tools {
         ],
         annotations: .readOnly)
     ) { arguments in
-      let snapshot = await source.snapshot()
       let vendor = arguments["vendor"]?.stringValue
+      if let vendor, !["claude", "codex", "grok"].contains(vendor) {
+        return .failure("`vendor` is claude, codex or grok, not \"\(vendor)\".")
+      }
+      let snapshot = await source.snapshot()
       let includeIdle = arguments["include_idle"]?.boolValue ?? true
       let includeEnded = arguments["include_ended"]?.boolValue ?? false
       let includeSubagents = arguments["include_subagents"]?.boolValue ?? false
