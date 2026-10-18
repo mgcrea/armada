@@ -338,7 +338,14 @@ const fulfil = async (event: StripeEvent, env: Env): Promise<Response> => {
     if (guarded && (!priceId || priceId !== env.EXPECTED_PRICE_ID)) {
       // 200, not 4xx: the event is valid and simply belongs to another product.
       // A 4xx would have Stripe retrying it for three days.
-      console.log(`fulfil: ignoring ${session.id}, price ${priceId || "(none)"} is not ours`);
+      if (priceId) {
+        console.log(`fulfil: ignoring ${session.id}, price ${priceId} is not ours`);
+      } else {
+        // An error, not the log line every other app's sale writes: this is the one that
+        // can be a genuine Armada sale refused (a Payment Link missing `price_id`, or the
+        // fallback lookup failing), and the comment above says it is found in the logs.
+        console.error(`fulfil: price unresolved for ${session.id}, refused as not ours`);
+      }
       return new Response("not this product", { status: 200 });
     }
 

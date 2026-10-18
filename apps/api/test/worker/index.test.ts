@@ -537,6 +537,20 @@ describe("the product guard", () => {
     expect(built.sent).toEqual([]);
   });
 
+  it("logs an unresolved price as an error, apart from another product's sale", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("down", { status: 503 }));
+    const unresolved = testEnv({ STRIPE_SECRET_KEY: "sk_test_x" });
+    await webhook(unresolved.env, completed({ metadata: {} }));
+    expect(errors.mock.calls.map(String).join("\n")).toContain("price unresolved");
+
+    errors.mockClear();
+    const other = testEnv(priced("price_live"));
+    await webhook(other.env, completed({ metadata: { price_id: "price_other" } }));
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("still guards the test environment once a price is pinned there", async () => {
     const built = testEnv(priced("price_test", { ENVIRONMENT: "test" }));
     const response = await webhook(built.env, completed({ metadata: { price_id: "price_other" } }));
