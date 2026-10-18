@@ -8,6 +8,8 @@ struct GrokPaneView: View {
   let account: GrokAccount
 
   @State private var selection: String?
+  /// The row a route asked for, until the list has scrolled to it.
+  @State private var scrollTarget: String?
   @State private var now = AppClock.now
   private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
   @State private var route = MainWindowRoute.shared
@@ -40,6 +42,7 @@ struct GrokPaneView: View {
   private func applyRoute() {
     guard let id = route.takeSession(in: .grok(account.id)) else { return }
     selection = id
+    scrollTarget = id
   }
 
   @ViewBuilder private var sessions: some View {
@@ -54,30 +57,46 @@ struct GrokPaneView: View {
         )
       }
     } else {
-      List(account.sessions.sessions, selection: $selection) { session in
-        GrokSessionRow(session: session, now: now)
-          .tag(session.id)
-      }
-      // Ordered as in `CodexPaneView`, so the menu a person learns is the same in every pane.
-      .contextMenu(forSelectionType: String.self) { ids in
-        if let id = ids.first, ids.count == 1,
-          let session = account.sessions.sessions.first(where: { $0.id == id }),
-          !session.summary.cwd.isEmpty
-        {
-          Button("New Session in \(session.summary.projectName)") {
-            NewSessionLauncher.shared.start(
-              .grok(account.home),
-              in: URL(filePath: session.summary.cwd, directoryHint: .isDirectory))
-          }
-          if let target = ForkAvailability.grok(session, in: account).target {
-            Button("Fork Session") {
+      // As in `CodexPaneView`: the panel lists live sessions only, so the row it sends here
+      // can be anywhere in a list that also holds the day's headless runs, and it has to be
+      // scrolled to rather than merely selected.
+      ScrollViewReader { proxy in
+        List(account.sessions.sessions, selection: $selection) { session in
+          GrokSessionRow(session: session, now: now)
+            .tag(session.id)
+        }
+        // Ordered as in `CodexPaneView`, so the menu a person learns is the same in every pane.
+        .contextMenu(forSelectionType: String.self) { ids in
+          if let id = ids.first, ids.count == 1,
+            let session = account.sessions.sessions.first(where: { $0.id == id }),
+            !session.summary.cwd.isEmpty
+          {
+            Button("New Session in \(session.summary.projectName)") {
               NewSessionLauncher.shared.start(
-                target.agent, in: target.project, start: target.start)
+                .grok(account.home),
+                in: URL(filePath: session.summary.cwd, directoryHint: .isDirectory))
             }
+            if let target = ForkAvailability.grok(session, in: account).target {
+              Button("Fork Session") {
+                NewSessionLauncher.shared.start(
+                  target.agent, in: target.project, start: target.start)
+              }
+            }
+            Divider()
+            CopySessionIDButton(id: session.id)
+            ProjectContextButton(path: session.summary.cwd, agent: .grok(homeID: account.id))
           }
-          Divider()
-          CopySessionIDButton(id: session.id)
-          ProjectContextButton(path: session.summary.cwd, agent: .grok(homeID: account.id))
+        }
+        .onChange(of: scrollTarget) { _, target in
+          guard let target else { return }
+          scrollTarget = nil
+          proxy.scrollTo(target, anchor: .center)
+        }
+        // A route that arrived while there was no list yet, before the first scan.
+        .onAppear {
+          guard let target = scrollTarget else { return }
+          scrollTarget = nil
+          proxy.scrollTo(target, anchor: .center)
         }
       }
     }
