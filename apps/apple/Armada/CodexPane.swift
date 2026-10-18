@@ -50,8 +50,6 @@ struct CodexPaneView: View {
       NewSessionToolbarItem(
         agent: .codex(account.home), suggestion: account.recentProjects.first?.url)
     }
-    .newSessionFailureAlert()
-    .sessionClosingAlerts()
     .onReceive(clock) { _ in now = AppClock.now }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }

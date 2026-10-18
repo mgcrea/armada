@@ -102,8 +102,6 @@ struct AccountPaneView: View {
       NewSessionToolbarItem(
         agent: .claude(account.folder), suggestion: account.recentProjects.first?.url)
     }
-    .newSessionFailureAlert()
-    .sessionClosingAlerts()
     .sessionBatchAlerts()
     .onReceive(clock) { _ in now = AppClock.now }
     // When the rows change and when Armada is activated, never on the clock: every

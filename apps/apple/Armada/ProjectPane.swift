@@ -234,8 +234,6 @@ struct ProjectsPaneView: View {
     .dropDestination(for: URL.self) { urls, _ in ProjectAdder.add(dropped: urls) }
     .navigationTitle("Projects")
     .navigationSubtitle(subtitle)
-    .newSessionFailureAlert()
-    .sessionClosingAlerts()
     .confirmationDialog(
       "Remove “\(removing?.displayName ?? "")” from Projects?",
       isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),

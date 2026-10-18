@@ -113,6 +113,11 @@ struct MainWindowView: View {
       splitView
     }
     .sheet(item: $addingAccount) { AddAccountSheet(vendor: $0) }
+    // On the window, not on the panes that start or close sessions: a launch from the menu
+    // bar panel, or one voice started, opens this window to show its failure, and the
+    // detail it lands on may be Usage, Schedules or Voice, which start nothing themselves.
+    .newSessionFailureAlert()
+    .sessionClosingAlerts()
     // Once per showing, for the sidebar row and its badge; the pane reads again while it is up.
     .task { await schedules.load() }
     .screenshotSubject()

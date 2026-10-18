@@ -82,7 +82,7 @@ final class NewSessionLauncher {
 
   /// The same launch, from the menu bar panel, which has no alert of its own.
   ///
-  /// `newSessionFailureAlert()` is attached by panes, and the popover is not a pane —
+  /// `newSessionFailureAlert()` is attached to the windows, and the popover is not one —
   /// so a launch that fails from there would set `failure` with nothing on screen to
   /// show it, which is precisely the button-that-does-nothing `NewSession` exists to
   /// prevent. Opening the main window gives the alert somewhere to land.
@@ -196,7 +196,8 @@ final class NewSessionLauncher {
 }
 
 extension View {
-  /// The alert a failed launch shows, attached once per pane.
+  /// The alert a failed launch shows, attached once per window: the main window, and
+  /// Settings ▸ Supervisor.
   func newSessionFailureAlert() -> some View {
     modifier(NewSessionFailureAlert())
   }
