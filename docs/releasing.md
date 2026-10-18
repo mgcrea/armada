@@ -117,6 +117,16 @@ has fallen behind its title or date, without needing the font.
 refund or a lost chargeback since the last release is honoured only by a build that re-ran it.
 It needs wrangler to be logged in, and fails loudly rather than skipping.
 
+It reads D1 and nothing else, so a key exists to it only once it has a row. The Worker records
+every key it mints, and so does `scripts/mint-license.mjs` unless told `--no-record`. A comp or a
+replacement is filed under `manual:<id>` with no payment intent, so no refund reaches it; revoke one,
+or a key posted somewhere public, by its id:
+
+```bash
+pnpm -C apps/api exec wrangler d1 execute armada-licenses --remote --command \
+  "UPDATE licenses SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ'), revoked_reason = 'leaked' WHERE id = '<id>'"
+```
+
 ### 3. Rehearse CI's gate locally
 
 ```bash

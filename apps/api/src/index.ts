@@ -106,8 +106,9 @@ const misconfigured = (what: string): Response => {
  *
  * A 200 is recorded in `stripe_events` like any other, so once the code is
  * fixed a "Resend" from the dashboard answers "duplicate". Replaying one means
- * deleting its row first or, for a sale, minting by hand with
- * scripts/mint-license.mjs.
+ * deleting its row first, which sends it through `fulfil` like any sale, or
+ * minting by hand with scripts/mint-license.mjs and its `--session` and
+ * `--payment-intent`, so the licence is recorded where a refund can revoke it.
  */
 const unprocessable = (what: string, event?: StripeEvent): Response => {
   const which = event ? ` ${event.id} (${event.type})` : "";
@@ -328,8 +329,9 @@ const fulfil = async (event: StripeEvent, env: Env): Promise<Response> => {
     // like. The cost is stated rather than hidden: Armada's Payment Link MUST
     // carry `price_id` in its metadata (or STRIPE_SECRET_KEY must be set), and
     // a Stripe API timeout on the fallback path refuses a genuine sale, which is
-    // then found in Workers Logs by the line below and minted by hand with
-    // scripts/mint-license.mjs.
+    // then found in Workers Logs by the error below and replayed: delete its
+    // `stripe_events` row and resend it, or mint by hand with
+    // scripts/mint-license.mjs, passing the sale's session and payment intent.
     //
     // Outside the test environment the guard is always on. In it, an empty
     // EXPECTED_PRICE_ID means unguarded, so a test-mode link can be rehearsed
