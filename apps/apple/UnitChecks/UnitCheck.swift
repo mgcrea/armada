@@ -53,6 +53,7 @@ struct UnitCheck {
     recentSessions()
     sessionHistory()
     launchScript()
+    loginShell()
     sessionClosePolicy()
     sessionBatch()
     newAccount()
@@ -2192,6 +2193,47 @@ struct UnitCheck {
     check(
       "an agent that fails leaves its status on screen",
       ending(after: 3).output.contains("claude exited with status 3."))
+  }
+
+  // MARK: - LoginShell
+
+  /// A shell run's result, carried out of the task to the synchronous checks.
+  nonisolated final class ShellResult: @unchecked Sendable {
+    var output: Data?
+  }
+
+  static func loginShell() {
+    section("LoginShell")
+    func run(_ shell: String, _ flags: [String], _ script: String, timeout: TimeInterval)
+      -> (output: String?, seconds: Double)
+    {
+      let result = ShellResult()
+      let done = DispatchSemaphore(value: 0)
+      let started = Date()
+      Task.detached {
+        result.output = await LoginShell.run(
+          shell: shell, flags: flags, script: script, timeout: timeout)
+        done.signal()
+      }
+      done.wait()
+      return (
+        result.output.map { String(decoding: $0, as: UTF8.self) },
+        Date().timeIntervalSince(started)
+      )
+    }
+    expectEqual(
+      "what the script prints is the result",
+      run("/bin/zsh", ["-fc"], "printf hello", timeout: 5).output, "hello")
+    let hung = run("/bin/zsh", ["-fic"], "sleep 5; printf survived", timeout: 0.5)
+    check(
+      "an interactive zsh that hangs is cut off at the deadline, though it ignores SIGTERM",
+      hung.output == nil && hung.seconds < 3)
+    let orphan = run("/bin/zsh", ["-fc"], "(sleep 5 &); printf done", timeout: 5)
+    check(
+      "a job the profile leaves running does not hold the result back",
+      orphan.output == "done" && orphan.seconds < 3)
+    let bash = run("/bin/bash", ["--norc", "--noprofile", "-ic"], "sleep 5", timeout: 0.5)
+    check("nor does an interactive bash that hangs", bash.output == nil && bash.seconds < 3)
   }
 
   // MARK: - SessionClosePolicy

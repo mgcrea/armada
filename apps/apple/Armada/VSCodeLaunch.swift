@@ -193,23 +193,10 @@ enum VSCodeLaunch {
   private static func loginShellEnvironment() async -> [String: String]? {
     let shell = getpwuid(getuid()).flatMap { String(cString: $0.pointee.pw_shell) } ?? "/bin/zsh"
     let command = "printf %s \(EditorLaunch.environmentMarker); /usr/bin/env -0"
-    return await Task.detached {
-      let process = Process()
-      process.executableURL = URL(filePath: shell)
-      process.arguments = ["-ilc", command]
-      process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-      let output = Pipe()
-      process.standardOutput = output
-      process.standardError = FileHandle.nullDevice
-      process.standardInput = FileHandle.nullDevice
-      do { try process.run() } catch { return nil }
-      let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
-      DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: timeout)
-      let data = output.fileHandleForReading.readDataToEndOfFile()
-      process.waitUntilExit()
-      timeout.cancel()
-      return EditorLaunch.shellEnvironment(data)
-    }.value
+    guard
+      let data = await LoginShell.run(shell: shell, flags: ["-ilc"], script: command, timeout: 5)
+    else { return nil }
+    return EditorLaunch.shellEnvironment(data)
   }
 
   /// VS Code's own `code` command, from inside its bundle so nobody has to have installed it
