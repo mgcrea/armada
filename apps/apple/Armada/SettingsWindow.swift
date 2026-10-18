@@ -196,17 +196,34 @@ struct GeneralPane: View {
   var body: some View {
     Form {
       Section {
-        Toggle("Launch Armada at login", isOn: $launchAtLogin)
-          .onChange(of: launchAtLogin) { _, wanted in
-            loginError = LoginItem.set(wanted)
-            // What the service reports, not what was asked for: a registration
-            // that did not take should show as unticked rather than be assumed.
-            launchAtLogin = LoginItem.isEnabled
-          }
+        // A binding rather than `onChange`: writing back what the service reports inside
+        // `onChange` changed the value again, and the second call undid the first — a
+        // registration waiting for approval was unregistered and its error replaced.
+        Toggle(
+          "Launch Armada at login",
+          isOn: Binding(
+            get: { launchAtLogin },
+            set: { wanted in
+              loginError = LoginItem.set(wanted)
+              // What the service reports, not what was asked for: a registration
+              // that did not take should show as unticked rather than be assumed.
+              launchAtLogin = LoginItem.isEnabled
+            })
+        )
+        .onAppear { launchAtLogin = LoginItem.isEnabled }
         if let loginError {
           Text(loginError)
             .font(.caption)
             .foregroundStyle(.red)
+        }
+        if LoginItem.needsApproval {
+          HStack {
+            Text("Armada is waiting for your approval in System Settings ▸ General ▸ Login Items.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Button("Open Login Items") { LoginItem.openSettings() }
+              .controlSize(.small)
+          }
         }
       } footer: {
         Text(

@@ -101,6 +101,13 @@ enum LoginItem {
     SMAppService.mainApp.status
   }
 
+  /// Registered, and waiting for the person to allow it in System Settings.
+  static var needsApproval: Bool { status == .requiresApproval }
+
+  /// System Settings ▸ General ▸ Login Items, where a registration that requires approval
+  /// is approved.
+  static func openSettings() { SMAppService.openSystemSettingsLoginItems() }
+
   /// Returns a message on failure, nil on success.
   ///
   /// Registering from a translocated or temporary copy records a path that will
@@ -108,6 +115,8 @@ enum LoginItem {
   /// because this app has no installer yet; `GeneralPane` shows the real status
   /// back, so a registration that did not take is visible rather than assumed.
   static func set(_ enabled: Bool) -> String? {
+    // Nothing to unregister: `unregister()` would only fail with "job not found".
+    if !enabled, status == .notRegistered { return nil }
     do {
       if enabled {
         try SMAppService.mainApp.register()
