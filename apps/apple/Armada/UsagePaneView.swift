@@ -191,7 +191,7 @@ struct GrokUsageCard: View {
           Text(plan).font(.caption).foregroundStyle(.secondary)
         }
         Spacer(minLength: 12)
-        StalenessBadge(fetchedAt: account.usage?.observedAt, now: now, source: .live)
+        StalenessBadge(fetchedAt: account.usage?.observedAt, now: now, source: .grok)
       }
 
       if let usage = account.usage {

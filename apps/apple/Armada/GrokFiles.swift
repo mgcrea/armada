@@ -158,7 +158,7 @@ nonisolated enum GrokFiles {
     var asSnapshot: UsageSnapshot {
       UsageSnapshot(
         fiveHour: nil, sevenDay: window(.sevenDay), limits: [], fetchedAt: observedAt,
-        source: .live)
+        source: .grok)
     }
   }
 

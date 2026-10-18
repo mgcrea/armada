@@ -1405,6 +1405,9 @@ struct UnitCheck {
       limits?.utilization == 13 && limits?.length == .sevenDay && limits?.tier == "X Premium"
         && limits?.resetsAt == UsageSnapshot.parseTimestamp("2026-09-22T21:25:12.584887+00:00")
         && limits?.asSnapshot.sevenDay?.utilization == 13 && limits?.asSnapshot.fiveHour == nil)
+    check(
+      "and says it came from Grok Build, not from Claude Code",
+      limits?.asSnapshot.source == .grok)
     let monthly = GrokFiles.limits(
       [
         "config": [

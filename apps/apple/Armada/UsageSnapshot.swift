@@ -136,6 +136,11 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
     /// until its window rolls over — which `UsageWindow.hasRolled` already shows.
     /// So this one gets no staleness warning, only its age.
     case sessionLog
+    /// `_x.ai/billing`, answered by the person's own `grok`. See `GrokControl`.
+    ///
+    /// Asked directly like `.live` and aged like it, but its own case so what Armada says
+    /// about where a figure came from names the right tool.
+    case grok
   }
 
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }

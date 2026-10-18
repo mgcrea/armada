@@ -422,7 +422,7 @@ struct StalenessBadge: View {
 
   private var staleAfter: TimeInterval {
     switch source {
-    case .live: Self.liveStale
+    case .live, .grok: Self.liveStale
     case .cache: Self.stale
     // Never. A Codex figure does not decay — it was true when its turn wrote it, and
     // the only thing that can invalidate it is its window rolling over, which the
@@ -464,7 +464,7 @@ struct StalenessBadge: View {
           .lineLimit(1)
         case .compact:
           Text(
-            "\(source == .live ? "checked" : "figures from") \(fetchedAt, format: .clockRelative(presentation: .named))"
+            "\(source == .live || source == .grok ? "checked" : "figures from") \(fetchedAt, format: .clockRelative(presentation: .named))"
           )
           .font(.caption2)
           .foregroundStyle(
@@ -504,6 +504,10 @@ struct StalenessBadge: View {
       "Read from Claude Code's usage cache."
     case (.cache, true):
       "Claude Code refreshes this cache when it next talks to the API, so these figures may be behind."
+    case (.grok, false):
+      "Asked your account directly, through Grok Build."
+    case (.grok, true):
+      "Armada has not been able to reach Grok Build for a while, so this figure may be behind."
     case (.sessionLog, _):
       "Codex reports its limits only inside a session log, so these are the figures from its last turn."
     }

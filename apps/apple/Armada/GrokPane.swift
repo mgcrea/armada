@@ -320,7 +320,7 @@ struct GrokOverview: View {
         } ?? "Reading usage…"
       ) {
         if let usage = account.usage {
-          StalenessBadge(fetchedAt: usage.observedAt, now: now, source: .live, style: .inline)
+          StalenessBadge(fetchedAt: usage.observedAt, now: now, source: .grok, style: .inline)
         }
       }
       Section {

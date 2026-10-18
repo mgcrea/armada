@@ -97,7 +97,7 @@ extension SidebarUsage {
   /// is left unlabelled rather than guessed at: one bar needs no label to tell it apart.
   init(account: GrokAccount) {
     let usage = account.usage
-    self.init(fetchedAt: usage?.observedAt, source: .live) { _ in
+    self.init(fetchedAt: usage?.observedAt, source: .grok) { _ in
       guard let usage else { return [] }
       let label =
         switch usage.period {
