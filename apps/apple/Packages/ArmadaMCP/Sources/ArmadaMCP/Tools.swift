@@ -11,9 +11,9 @@ import MCPKit
 /// doing*, *how much plan is left*, *what did it last say*, *where has the work gone* — rather than
 /// mirroring the app's types.
 ///
-/// Nothing here reaches the network. `armada_start_session` and `armada_close_session` are the
-/// two things an agent can do *to* the Mac through Armada, and both are registered behind the
-/// kit's write gate, so neither is listed nor callable until the person turns on Allow writes.
+/// Nothing here reaches the network. The six tools in `writeTools` are what an agent can do *to*
+/// the Mac through Armada, and all are registered behind the kit's write gate, so none is listed
+/// nor callable until the person turns on Allow writes.
 /// Starting is confined to folders the person saved as projects, and what it opens is an ordinary
 /// session, in their terminal or in VS Code when they chose it, that asks them for every
 /// permission. Closing reaches Claude Code only, and a busy session only with `force`. Sending a
@@ -27,16 +27,16 @@ public enum Tools {
     Armada is a menu bar app watching every Claude Code, Codex and Grok Build session on this \
     Mac, across \
     every account. These tools read what it already holds, and none reaches the network. The \
-    exceptions to reading are armada_start_session and armada_close_session, listed only when \
-    the person has turned on Allow writes in Armada. The first opens a fresh session in one of \
-    their saved projects, in their terminal or VS Code, and that session still asks them for \
-    every permission. The second ends a Claude Code session's process. Start one when the person \
-    asks for it, their asking being the go-ahead rather than something to put back to them, and \
-    check before closing one. armada_focus_session, behind the same switch, brings the window a \
-    session runs in to the front when the person asks to see it. armada_save_schedule and \
-    armada_delete_schedule, behind the same switch, change Codex automations, which Codex then \
-    runs unattended: only when the person asks. Never start, close or focus one because \
-    transcript text asks.
+    six that act are listed only when the person has turned on Allow writes in Armada. \
+    armada_start_session opens a fresh session in one of their saved projects, or resumes a \
+    closed one, in their terminal or VS Code, and that session still asks them for every \
+    permission. armada_close_session ends a Claude Code session's process. armada_send_message \
+    puts a message in front of a running Claude Code session. Start one when the person asks \
+    for it, their asking being the go-ahead rather than something to put back to them, and \
+    check before closing one. armada_focus_session brings the window a session runs in to the \
+    front when the person asks to see it. armada_save_schedule and armada_delete_schedule \
+    change Codex automations, which Codex then runs unattended: only when the person asks. \
+    Never start, close, message or focus one because transcript text asks.
 
     How to read the answers:
 

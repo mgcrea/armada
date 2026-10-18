@@ -8,8 +8,9 @@ import SwiftUI
 /// Settings ▸ Supervisor: the MCP server, and a Claude Code session started with it attached.
 ///
 /// A grouped `Form` rather than `MCPKitUI.MCPServerPanel`, as Almanac chose. Armada's Allow writes
-/// switch governs a short, specific list — starting, resuming, closing and messaging sessions — and
-/// the sentence under it has to say that, which the panel's generic switch cannot. Delivering
+/// switch governs a short, specific list — starting, resuming, closing, focusing and messaging
+/// sessions, and saving or deleting Codex schedules — and the sentence under it has to say that,
+/// which the panel's generic switch cannot. Delivering
 /// messages has a switch of its own, because turning it on edits every account's settings.json.
 ///
 /// What is carried over word for word is the loopback sentence, which is a security surface,
@@ -79,7 +80,7 @@ struct SupervisorPane: View {
       Toggle(isOn: $allowWrites) {
         Text("Allow writes")
         Text(
-          "Lets a connected agent start a fresh Claude Code or Codex session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message; resume a closed Claude Code session there; close a Claude Code session, a busy one only when it passes force; and message a session, once delivery is on below. A session it starts asks you for every permission as usual."
+          "Lets a connected agent start a Claude Code, Codex or Grok Build session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message; resume a closed Claude Code or Grok Build session there; close a Claude Code session, a busy one only when it passes force; bring a session's window to the front; save or delete a Codex schedule, which Codex then runs unattended; and message a session, once delivery is on below. A session it starts asks you for every permission as usual."
         )
       }
       .disabled(!enabled)
@@ -134,8 +135,8 @@ struct SupervisorPane: View {
       // someone will stop on, and the answer to "and then what" is the reassurance.
       Text(
         allowWrites
-          ? "An agent connected here can see sessions, projects, plan limits and the end of each transcript, and wait for a session to need you. armada_start_session can open or resume a session in a saved project, armada_close_session can end a Claude Code session, and armada_send_message can message one while delivery is on. None of them answers a permission prompt for you. A client already connected sees the change once it reconnects. The server runs only while Armada does."
-          : "Every tool is read-only. An agent connected here can see sessions, projects, plan limits and the end of each transcript; it cannot change a session, start one, or write to a vendor's folder. The server runs only while Armada does."
+          ? "An agent connected here can see sessions, projects, schedules, plan limits and the end of each transcript, and wait for a session to need you. It can also start or resume a session in a saved project, close a Claude Code session, bring a session's window forward, save or delete a Codex schedule, and message a session while delivery is on. None of these answers a permission prompt for you. A client already connected sees the change once it reconnects. The server runs only while Armada does."
+          : "Every tool is read-only. An agent connected here can see sessions, projects, schedules, plan limits and the end of each transcript; it cannot change a session, start one, change a schedule, or write to a vendor's folder. The server runs only while Armada does."
       )
     }
   }

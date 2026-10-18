@@ -42,6 +42,10 @@ const TOOLS = [
     title: "Wait for a change",
     body: "Holds the call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling.",
   },
+  {
+    title: "Scheduled tasks",
+    body: "Every Codex automation and Claude desktop scheduled task on the Mac. The vendor's own app runs each one; Armada never does.",
+  },
 ] as const;
 
 /** Listed and callable only while Allow writes is on, and never pre-allowed. */
@@ -62,11 +66,19 @@ const WRITE_TOOLS = [
     title: "Message a session",
     body: "Puts a message in front of a running Claude Code session, labelled as coming from an agent. Also needs Deliver messages to sessions.",
   },
+  {
+    title: "Save a Codex schedule",
+    body: "Creates or changes a Codex automation in a saved project, which Codex then runs on its own until it is paused or deleted.",
+  },
+  {
+    title: "Delete a Codex schedule",
+    body: "Removes a Codex automation so Codex stops running it, and Armada posts a notification when it does.",
+  },
 ] as const;
 
 const GROUPS = [
-  { heading: "Seven tools, all read-only", tools: TOOLS },
-  { heading: "Four more, only with Allow writes on", tools: WRITE_TOOLS },
+  { heading: "Eight tools, all read-only", tools: TOOLS },
+  { heading: "Six more, only with Allow writes on", tools: WRITE_TOOLS },
 ] as const;
 ---
 
@@ -92,7 +104,7 @@ const GROUPS = [
       <p class="m-0 text-[14px] leading-[1.6] text-pretty text-fg-muted">
         Off by default, because it is the one part of the app that shows your fleet to a model. It
         binds <code>127.0.0.1</code> only and answers a token kept in your Keychain. Its tools only read
-        until you turn on Allow writes, and even then none of the four that act is pre-allowed. The
+        until you turn on Allow writes, and even then none of the six that act is pre-allowed. The
         session runs on your own plan, and its connection details never touch your Claude
         configuration.
       </p>
