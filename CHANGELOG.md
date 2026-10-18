@@ -5,10 +5,14 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.10.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.11.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.11.0] - 2026-10-18
+
+**Talk over a reply, and a supervisor you can see.** With Keep listening on, start talking and a
+spoken reply stops to hear you. The MCP server shows its light in the toolbar and menu bar, and
+many fixes put session states and usage figures right.
 
 ### Added
 
@@ -17,10 +21,63 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   reply is taken out of what the microphone hears, so Armada does not mistake its own voice for
   yours, and an answer can start the moment the reply ends.
 
+- **The supervisor's server in the toolbar and the menu bar.** A button at the trailing edge of
+  the main window shows whether the MCP server is on and listening and when an agent last asked,
+  turns it on or off, and adds it to Claude Code, Codex, Cursor or VS Code in one click. While it
+  is on, the menu bar panel shows its light and what it last did.
+- **Add Armada to Bastion.** Settings › Supervisor offers Add to Bastion… where Bastion is
+  installed, which hands it Armada's server with the tools that act held back behind Bastion's
+  own switch. Bastion asks before adding anything.
+
 ### Changed
 
 - **With Keep listening on, the microphone is on while a reply is spoken**, so the orange dot
   shows then too. With Keep listening set to Never, or in hold mode, nothing changes.
+- **Allow writes says everything it unlocks.** The switch and the text under it now name
+  bringing a window forward, Grok Build sessions, and saving or deleting Codex schedules, which
+  Codex then runs unattended.
+
+### Fixed
+
+- **A session started in Terminal or iTerm no longer ends on an error.** Every launch script
+  stopped with "read-only variable: status", so an agent that failed at startup never showed why,
+  and a session that ended cleanly still left its window open.
+- **A session waiting for you no longer shows as Working.** A transcript write while Claude Code
+  reported a permission prompt or an idle session turned the row to Working until the next status
+  change, which hid it from the menu bar ring. Running a tool shows again during a tool call.
+- **Usage no longer grows for a session found in two folders.** A project folder copied after
+  renaming a repository put one session in two places, and every other pass counted part of it
+  again.
+- **A full window no longer forecasts the past.** At 100% the meter said "At this rate, 100% 3
+  minutes ago".
+- **A compaction made while Armada is open shows in the context panel.** It used to show only a
+  compaction that happened before Armada first read the session.
+- **Show all works on a long typed prompt.** A prompt pasted as plain text, or a long notice,
+  stayed cut after Show all.
+- **Opening a session in VS Code no longer waits on a login profile that hangs.** The five-second
+  limit on reading your shell's environment did not stop an interactive shell, and a background
+  job your profile started could hold it open indefinitely.
+- **Launch at login no longer undoes itself.** A registration waiting for your approval was
+  removed and its message lost; Settings now says when System Settings is waiting for you.
+- **A launch or close that fails from the menu bar always shows why.** With the main window on
+  Usage, Schedules or Voice, the alert waited until another pane appeared.
+- **A session no longer flickers out and back when its registry file is caught mid-write**, and a
+  Claude Code folder that is a symlink now picks up new sessions and status changes at once.
+- **Grok Build:** the pane scrolls to a session opened from the menu bar, and its usage tooltip
+  names Grok Build rather than Claude Code.
+- **MCP tools:** `armada_read_transcript` keeps a long Grok Build reply as one entry;
+  `armada_get_fleet` refuses a vendor it does not know rather than answering with an empty fleet;
+  `armada_wait` refuses `sessions` given as a string rather than watching everything; and an
+  optional argument sent as `null` is treated as left out.
+
+### Internal
+
+- `scripts/mint-license.mjs` records every key it mints in D1, as the Worker does, so a refund
+  or a revocation by id reaches a key minted by hand; `--no-record` skips it.
+- The licence Worker logs a sale refused for an unresolved price as an error, apart from other
+  products' sales.
+- `make unit` also compiles `SessionState`, `SessionRegistry`, `ClaudeConfigFolder`,
+  `UsageDatabase`, `UsageIndexer` and `LoginShell`.
 
 ## [1.10.0] - 2026-10-05
 

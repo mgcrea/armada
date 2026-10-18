@@ -212,7 +212,131 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_10_0, v1_9_0, v1_8_0, v1_7_0, v1_6_0]
+  static let releases: [Release] = [v1_11_0, v1_10_0, v1_9_0, v1_8_0, v1_7_0]
+
+  // swift-format-ignore
+  private static let v1_11_0: Release = Release(
+    version: "1.11.0",
+    date: "2026-10-18",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Talk over a reply to answer it.",
+            body: [
+              "With Keep listening on, you no longer have to wait for a spoken reply to finish: start talking and it stops, and what you say becomes your answer. The reply is taken out of what the microphone hears, so Armada does not mistake its own voice for yours, and an answer can start the moment the reply ends.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "The supervisor's server in the toolbar and the menu bar.",
+            body: [
+              "A button at the trailing edge of the main window shows whether the MCP server is on and listening and when an agent last asked, turns it on or off, and adds it to Claude Code, Codex, Cursor or VS Code in one click. While it is on, the menu bar panel shows its light and what it last did.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Add Armada to Bastion.",
+            body: [
+              "Settings › Supervisor offers Add to Bastion… where Bastion is installed, which hands it Armada's server with the tools that act held back behind Bastion's own switch. Bastion asks before adding anything.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "With Keep listening on, the microphone is on while a reply is spoken",
+            body: [
+              ", so the orange dot shows then too. With Keep listening set to Never, or in hold mode, nothing changes.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Allow writes says everything it unlocks.",
+            body: [
+              "The switch and the text under it now name bringing a window forward, Grok Build sessions, and saving or deleting Codex schedules, which Codex then runs unattended.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 5,
+            headline: "A session started in Terminal or iTerm no longer ends on an error.",
+            body: [
+              "Every launch script stopped with \"read-only variable: status\", so an agent that failed at startup never showed why, and a session that ended cleanly still left its window open.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "A session waiting for you no longer shows as Working.",
+            body: [
+              "A transcript write while Claude Code reported a permission prompt or an idle session turned the row to Working until the next status change, which hid it from the menu bar ring. Running a tool shows again during a tool call.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "Usage no longer grows for a session found in two folders.",
+            body: [
+              "A project folder copied after renaming a repository put one session in two places, and every other pass counted part of it again.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "A full window no longer forecasts the past.",
+            body: [
+              "At 100% the meter said \"At this rate, 100% 3 minutes ago\".",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "A compaction made while Armada is open shows in the context panel.",
+            body: [
+              "It used to show only a compaction that happened before Armada first read the session.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: "Show all works on a long typed prompt.",
+            body: [
+              "A prompt pasted as plain text, or a long notice, stayed cut after Show all.",
+            ]),
+          Entry(
+            ordinal: 11,
+            headline: "Opening a session in VS Code no longer waits on a login profile that hangs.",
+            body: [
+              "The five-second limit on reading your shell's environment did not stop an interactive shell, and a background job your profile started could hold it open indefinitely.",
+            ]),
+          Entry(
+            ordinal: 12,
+            headline: "Launch at login no longer undoes itself.",
+            body: [
+              "A registration waiting for your approval was removed and its message lost; Settings now says when System Settings is waiting for you.",
+            ]),
+          Entry(
+            ordinal: 13,
+            headline: "A launch or close that fails from the menu bar always shows why.",
+            body: [
+              "With the main window on Usage, Schedules or Voice, the alert waited until another pane appeared.",
+            ]),
+          Entry(
+            ordinal: 14,
+            headline: "A session no longer flickers out and back when its registry file is caught mid-write",
+            body: [
+              ", and a Claude Code folder that is a symlink now picks up new sessions and status changes at once.",
+            ]),
+          Entry(
+            ordinal: 15,
+            headline: "Grok Build:",
+            body: [
+              "the pane scrolls to a session opened from the menu bar, and its usage tooltip names Grok Build rather than Claude Code.",
+            ]),
+          Entry(
+            ordinal: 16,
+            headline: "MCP tools:",
+            body: [
+              "`armada_read_transcript` keeps a long Grok Build reply as one entry; `armada_get_fleet` refuses a vendor it does not know rather than answering with an empty fleet; `armada_wait` refuses `sessions` given as a string rather than watching everything; and an optional argument sent as `null` is treated as left out.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_10_0: Release = Release(
@@ -421,53 +545,6 @@ nonisolated enum Changelog {
             headline: "A conversation handed to another account can come back.",
             body: [
               "Carrying it back to the account it started on used to report a different conversation under the same id, because closing the session there appends a few bookkeeping lines the earlier copy never had. Those are now set aside before comparing. An original that gained a real message is still left alone.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_6_0: Release = Release(
-    version: "1.6.0",
-    date: "2026-09-23",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Close a session from Armada.",
-            body: [
-              "Close Session, last in a Claude Code session's details, its right-click menu and the menu bar popover, ends the session the way quitting it in its terminal would. An idle session or one waiting on you closes straight away, since the conversation stays on disk and can be picked up again. One that is working or running a tool asks first, because closing it stops the turn part-way. Closing several rows is that many clicks, with no wait in between.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Pick up a session that has ended.",
-            body: [
-              "Recently ended, under Live sessions in a project's details, lists the last eight Claude Code sessions that ran in that project and are no longer open, however they stopped. Click one to read its transcript, or press Resume to continue it in a terminal on the account it ran on. A session still open elsewhere is not listed, so one conversation never gets two writers.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Copy a transcript.",
-            body: [
-              "Copy Transcript, in a Claude Code session's right-click menu and in the Recently ended list, puts the whole conversation on the clipboard as plain text, each turn labelled and timed. Copy, in the transcript window's footer, does the same for what the Thinking and Tools checkboxes are showing. Either way every entry is copied at full length, including the long tool results the window cuts short.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Copy a session's id.",
-            body: [
-              "Copy Session ID, in the right-click menu of a Claude Code, Codex or Grok Build session, copies exactly the id `claude --resume` or `codex resume` takes, with nothing around it.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 4,
-            headline: "A burst early in the week now shows the overrun chevron.",
-            body: [
-              "For the first tenth of a weekly window there is too little history to project from, so usage far ahead of pace drew a calm bar. Until the projection is ready, the chevron now comes up once usage runs 5 points ahead of pace.",
             ]),
         ]),
     ])
