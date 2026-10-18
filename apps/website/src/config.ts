@@ -44,9 +44,8 @@ export const ISSUES_URL = "https://github.com/mgcrea/support/issues";
  *
  * Must match `Support.app.slug` in apps/apple/Armada/Support.swift, and must be
  * one of `APP_SLUGS` in `@mgcrea/feedback-contract` for the Worker to accept a
- * submission. It was NOT in that list on 2026-09-14 (neither the published 0.2.0
- * nor the unpublished 0.3.0), so until the contract and the Worker are updated
- * every submission from /feedback/ is answered with a 400.
+ * submission. Registered in 0.3.0 (c143632, 2026-09-21, with the Worker
+ * redeployed to accept it); `feedback:check` warns if a later contract drops it.
  */
 export const APP_SLUG = "armada";
 
