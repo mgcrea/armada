@@ -29,7 +29,7 @@ struct MousePane: View {
         Toggle("Drive Armada with your mouse buttons", isOn: $mouse.isEnabled)
 
         if mouse.isEnabled {
-          LabeledContent("Accessibility") {
+          LabeledContent(HostWindow.grantName) {
             HStack(spacing: 8) {
               Text(trust.isTrusted ? "Allowed" : "Not allowed")
               Button("Open System Settings…") { HostWindow.openAccessibilitySettings() }
@@ -47,7 +47,7 @@ struct MousePane: View {
             // The same failure with the grant in place: macOS can still refuse to
             // create the tap, and without this line the pane would read as working.
             Text(
-              "Accessibility is allowed, but macOS refused to let Armada listen for the buttons, so nothing below will fire. Quitting and reopening Armada makes it ask again."
+              "\(HostWindow.grantName) is allowed, but macOS refused to let Armada listen for the buttons, so nothing below will fire. Quitting and reopening Armada makes it ask again."
             )
             .font(.caption)
             .foregroundStyle(.secondary)

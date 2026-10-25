@@ -373,7 +373,7 @@ struct FocusNote: View {
       if !trust.isTrusted {
         VStack(alignment: .leading, spacing: 4) {
           Text(
-            "Armada can only bring \(host.name) itself forward, so the window you were last in wins. Allowing Accessibility lets it raise the window this session's folder is open in."
+            "Armada can only bring \(host.name) itself forward, so the window you were last in wins. Allowing \(HostWindow.grantName) lets it raise the window this session's folder is open in."
           )
           Button("Allow in System Settings…") { HostWindow.openAccessibilitySettings() }
             .buttonStyle(.link)

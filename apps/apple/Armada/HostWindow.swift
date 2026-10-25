@@ -34,6 +34,19 @@ nonisolated enum HostWindow {
   /// nothing about the shipped one.
   static var isTrusted: Bool { AXIsProcessTrusted() }
 
+  /// What System Settings calls the grant `isTrusted` asks about, for any copy that
+  /// sends the person there.
+  ///
+  /// macOS 27 renamed the pane "Device Control and Data Access" without announcing it
+  /// (read from `SecurityPrivacyExtension.appex`'s `Localizable.loctable`, 2026-10-24),
+  /// and Armada still runs on 26, where it is "Accessibility". The API keeps its old
+  /// name, so only text the person reads goes through here.
+  static var grantName: String { grantName(on: ProcessInfo.processInfo.operatingSystemVersion) }
+
+  static func grantName(on version: OperatingSystemVersion) -> String {
+    version.majorVersion >= 27 ? "Device Control and Data Access" : "Accessibility"
+  }
+
   @MainActor
   static func openAccessibilitySettings() {
     guard

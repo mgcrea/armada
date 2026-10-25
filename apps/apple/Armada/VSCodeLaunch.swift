@@ -84,7 +84,7 @@ enum VSCodeLaunch {
     }
     guard HostWindow.isTrusted else {
       return
-        "Starting a session in \(name) needs Accessibility, so Armada can bring \(projectName)'s window to the front before it opens the session. Allow it in Settings ▸ General, or turn off \(name) there to start in your terminal."
+        "Starting a session in \(name) needs \(HostWindow.grantName), so Armada can bring \(projectName)'s window to the front before it opens the session. Allow it in Settings ▸ General, or turn off \(name) there to start in your terminal."
     }
     guard let application = applicationURL,
       let scheme = ExtensionTab.urlScheme(of: application),

@@ -362,9 +362,11 @@ struct GeneralPane: View {
             Toggle("Send an agent's opening message", isOn: $sendPromptInVSCode)
           }
           if inVSCode && !trust.isTrusted {
-            Text("Needs Accessibility, below, to bring the project's window to the front.")
-              .font(.caption)
-              .foregroundStyle(.red)
+            Text(
+              "Needs \(HostWindow.grantName), below, to bring the project's window to the front."
+            )
+            .font(.caption)
+            .foregroundStyle(.red)
           }
         }
         // See `HandoverTarget.copyOnlyDefaultsKey`: for switching an editor window's account
@@ -383,7 +385,7 @@ struct GeneralPane: View {
       }
 
       Section {
-        LabeledContent("Accessibility") {
+        LabeledContent(HostWindow.grantName) {
           HStack(spacing: 8) {
             Text(trust.isTrusted ? "Allowed" : "Not allowed")
             Button("Open System Settings…") { HostWindow.openAccessibilitySettings() }

@@ -1433,7 +1433,7 @@ public enum Tools {
       let why =
         focused.accessibilityGranted
         ? "no window of it is titled with the session's folder"
-        : "Armada has no Accessibility access to pick the window"
+        : "Armada has no Accessibility access (Device Control and Data Access on macOS 27) to pick the window"
       return "Brought \(focused.app) forward for \(what), but not a particular window: \(why)."
     }
   }

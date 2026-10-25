@@ -1255,6 +1255,18 @@ struct UnitCheck {
       "not a cut that differs",
       !HostWindow.tabLabel("Session list popover but…", names: "Session sort menu and grouping"))
     check("an empty title matches nothing", !HostWindow.tabLabel("", names: ""))
+
+    section("HostWindow.grantName")
+    check(
+      "macOS 26 still calls it Accessibility",
+      HostWindow.grantName(
+        on: OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 0))
+        == "Accessibility")
+    check(
+      "macOS 27 calls it Device Control and Data Access",
+      HostWindow.grantName(
+        on: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
+        == "Device Control and Data Access")
   }
 
   // MARK: - CodexRollout
