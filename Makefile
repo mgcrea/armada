@@ -59,7 +59,7 @@ $(APPLE_TARGETS):
 ICON_MARK   := design/armada-mark.svg
 # `#` starts a comment in a makefile, so the hex colours are built from HASH, defined
 # once at the top of this file for the same reason.
-ICON_PLATE   = $(HASH)FFD9A2,$(HASH)F6A177
+ICON_PLATE   = $(HASH)FFD08A,$(HASH)F2895C
 ICON_RADIUS := 230
 ICON_BUNDLE := apps/apple/Armada/Armada.icon
 ASSETS      := apps/apple/Armada/Assets.xcassets

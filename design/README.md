@@ -42,13 +42,14 @@ colours are copied to the digit from `../../bastion/design/colors.json` — `#B0
 `#7A2F1C`, the same two hills — so the three sit beside each other in a Dock as siblings
 rather than as near misses, which is worse than either matching or differing.
 
-What is Armada's own is the subject and the plate: `#FFF6E8` sails at 92%, over a gradient a
-shade lighter and pinker than bastion's.
+What is Armada's own is the subject: `#FFF6E8` sails at 92%. The plate is the family's too,
+`#FFD08A` to `#F2895C` as on bastion and cupertino; Armada once ran a shade lighter and
+pinker, and next to the siblings it read as a near miss rather than a choice.
 
 ## Why the sky is a flag and not artwork
 
 The mark carries no background. `make icon` passes the sky as `--plate-gradient
-'#FFD9A2,#F6A177' --plate-angle 90`, so appshot writes the `.icon` as **two layers** —
+'#FFD08A,#F2895C' --plate-angle 90`, so appshot writes the `.icon` as **two layers** —
 `mark.png` over an opaque `plate.png`. macOS 26 lights and parallaxes them independently; a
 single flattened bitmap gets one specular sweep across the whole icon and reads flat.
 
@@ -82,8 +83,8 @@ same arrangement cupertino's sun has, drawn before its hills and setting behind 
 
 | Token         | Hex       | Role                                   |
 | ------------- | --------- | -------------------------------------- |
-| plate top     | `#FFD9A2` | icon background, top                   |
-| plate bottom  | `#F6A177` | icon background, bottom                |
+| plate top     | `#FFD08A` | icon background, top                   |
+| plate bottom  | `#F2895C` | icon background, bottom                |
 | sail          | `#FFF6E8` | the mark's ink, at 92% over the sky    |
 | water mid     | `#B0532F` | back wave, at 90% over the sky         |
 | water fore    | `#7A2F1C` | front wave                             |

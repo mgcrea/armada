@@ -1,8 +1,8 @@
 {
   "name": "Armada",
   "colors": {
-    "plateTop": "#FFD9A2",
-    "plateBottom": "#F6A177",
+    "plateTop": "#FFD08A",
+    "plateBottom": "#F2895C",
     "sail": "#FFF6E8",
     "waterMid": "#B0532F",
     "waterFore": "#7A2F1C"
@@ -12,8 +12,8 @@
       "type": "linear",
       "angle": 180,
       "stops": [
-        { "offset": 0, "color": "#FFD9A2" },
-        { "offset": 1, "color": "#F6A177" }
+        { "offset": 0, "color": "#FFD08A" },
+        { "offset": 1, "color": "#F2895C" }
       ]
     }
   }

@@ -2,8 +2,8 @@
   <!-- Armada's mark: one ship on the family's water.
        Candidate 6a from .idea/design/app-icon/Armada Icon.dc.html, symbol #a6a.
 
-       Bare and transparent on purpose. The plate gradient (plateC, #FFD9A2 ->
-       #F6A177, top to bottom) is NOT in this file: `appshot icon build` composites
+       Bare and transparent on purpose. The plate gradient (plateC, #FFD08A ->
+       #F2895C, top to bottom) is NOT in this file: `appshot icon build` composites
        it as a separate layer, which is what lets the .icon format light and
        parallax the ship independently of the water. Baking a plate in here would
        flatten that back down, and a rounded one would be masked twice.
