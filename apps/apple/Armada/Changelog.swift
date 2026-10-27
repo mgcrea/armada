@@ -212,7 +212,42 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_11_0, v1_10_0, v1_9_0, v1_8_0, v1_7_0]
+  static let releases: [Release] = [v1_11_1, v1_11_0, v1_10_0, v1_9_0, v1_8_0]
+
+  // swift-format-ignore
+  private static let v1_11_1: Release = Release(
+    version: "1.11.1",
+    date: "2026-10-27",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "macOS 27's name for the Accessibility grant.",
+            body: [
+              "macOS 27 renamed the pane in System Settings to Device Control and Data Access, so Armada's Settings told you to allow something you could not find there. Settings ▸ General, Settings ▸ Mouse, the note under Focus and the error when a session cannot start in VS Code now use the name your Mac shows; on macOS 26 it is still Accessibility. The button opens the right pane on both.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "MCP tools:",
+            body: [
+              "`armada_focus_session` names both, since the agent relaying it does not know which macOS you run.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "The icon matches its siblings.",
+            body: [
+              "Its plate ran a shade lighter and pinker than Bastion's and Cupertino's, and beside them in the Dock it read as a near miss. It is now the same.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_11_0: Release = Release(
@@ -504,47 +539,6 @@ nonisolated enum Changelog {
             headline: "A transcript window opens under its session's name.",
             body: [
               "The first transcript opened after launch could come up titled Transcript, and only some opens corrected it afterwards.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_7_0: Release = Release(
-    version: "1.7.0",
-    date: "2026-09-24",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "See when a session's prompt cache goes cold.",
-            body: [
-              "A stopped Claude Code session's context panel now says how long its prompt cache stays warm, and once it has lapsed, how much the next turn writes back. In the sessions list, a timer appears beside the token count in the last quarter of the cache's life and a snowflake once it has expired. Nothing shows while the cache is comfortably warm or the session is working. Codex and Grok Build are left out, since their logs never say how long their caches last.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Get warned before a prompt cache expires.",
-            body: [
-              "Warn before a prompt cache expires, in Settings ▸ General, sends one notification per cache in the last quarter of its life, either for sessions waiting on a prompt or for any session between turns, and only for prompts over a size you pick (100k by default). Clicking it brings the session forward. It is off until you turn it on.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Continue on another account without a terminal.",
-            body: [
-              "A new toggle in Settings ▸ General makes Continue on Another Account copy the conversation and stop there, for anyone who switches an editor window's account by hand. The action then reads Copy to Another Account, and its note says to close this session before opening the copy from Claude Code's past conversations, since it keeps the same session id.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "A conversation handed to another account can come back.",
-            body: [
-              "Carrying it back to the account it started on used to report a different conversation under the same id, because closing the session there appends a few bookkeeping lines the earlier copy never had. Those are now set aside before comparing. An original that gained a real message is still left alone.",
             ]),
         ]),
     ])

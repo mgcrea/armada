@@ -5,8 +5,35 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.11.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.11.1` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.11.1] - 2026-10-27
+
+**The right pane name on macOS 27, and a matching icon.** On macOS 27, Armada now sends you to
+Device Control and Data Access, the new name of the Accessibility pane. Its icon takes the same
+warm colours as Bastion and Cupertino, its sibling apps.
+
+### Fixed
+
+- **macOS 27's name for the Accessibility grant.** macOS 27 renamed the pane in System Settings
+  to Device Control and Data Access, so Armada's Settings told you to allow something you could
+  not find there. Settings ▸ General, Settings ▸ Mouse, the note under Focus and the error when a
+  session cannot start in VS Code now use the name your Mac shows; on macOS 26 it is still
+  Accessibility. The button opens the right pane on both.
+- **MCP tools:** `armada_focus_session` names both, since the agent relaying it does not know which
+  macOS you run.
+
+### Changed
+
+- **The icon matches its siblings.** Its plate ran a shade lighter and pinker than Bastion's and
+  Cupertino's, and beside them in the Dock it read as a near miss. It is now the same.
+
+### Internal
+
+- The website takes the icon's new accent, `#f2895c`, with `#f2a07c` on hover.
+- `PLAN.md` lists queued work, starting with Codex's compressed session logs, and
+  `docs/marketing/` holds the 27 October competitive brief, a battlecard and a monitoring plan.
 
 ## [1.11.0] - 2026-10-18
 
