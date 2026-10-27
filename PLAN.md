@@ -14,12 +14,14 @@ rollouts under `~/.codex/sessions` were `.jsonl.zst`, and so were all 14 in
 Found by the feature scout (`.idea/feature-scout/2026-10-24.md`).
 
 Armada only accepts `.jsonl`:
+
 - `apps/apple/Armada/UsageIndexer.swift:654` (`sessions/`) and `:665` (`archived_sessions/`)
 - `apps/apple/Armada/TranscriptArchive.swift:236` (`isRollout`)
 - `apps/apple/Armada/CodexRollout.swift:189` (`sessionId(fromFilename:)`, the key both of the
   above use)
 
 What goes wrong:
+
 - A new install, or a Codex home added later, counts about the last 7 days of Codex spend only.
   The 30-day and all-time figures come out low and nothing says so.
 - An existing install keeps its totals, because the gone `.jsonl` is folded into `archive`
@@ -29,6 +31,7 @@ What goes wrong:
 - Live sessions are unaffected.
 
 Shape of the work:
+
 - **Archive (S):** copy `.jsonl.zst` byte for byte, and teach `isRollout` and `codexDay` the
   suffix.
 - **Ledger (M):** the 27.0 SDK's Compression framework has no zstd, so link a decoder
