@@ -8,7 +8,7 @@
 // The palette is the site's, by hand. It cannot import design/colors.json: this
 // is a Worker bundle, and a build step to inline three hex values would cost more
 // than it saves. The one thing to keep true is the accent, which is the site's
-// --color-accent, #f6a177, in apps/website/src/styles/tokens.css.
+// --color-accent, #f2895c, in apps/website/src/styles/tokens.css.
 
 const escapeHtml = (text: string): string =>
   text
@@ -32,7 +32,7 @@ const shell = (title: string, inner: string): string => `<!doctype html>
   code { display: block; overflow-wrap: anywhere; background: #17171a;
     border: 1px solid #2a2a2e; border-radius: 10px; padding: 14px;
     font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8e6e3; }
-  a { color: #f6a177; }
+  a { color: #f2895c; }
 </style>
 </head><body><main>${inner}</main></body></html>
 `;

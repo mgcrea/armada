@@ -53,7 +53,7 @@
       },
       "title": "#F4F2EF",
       "subtitle": "#9B9A96",
-      "accent": "#F6A177"
+      "accent": "#F2895C"
     }
   },
   "//screens": "Order here IS the order of the framed set: it stamps the 01-, 02- prefix. Captures stay unnumbered, so reordering never renames an image. `id` is <id>~dark.png in source/ and the -ScreenshotStage value `DemoSeed.Stage` parses. No caption quotes a fixture count: `five sessions` is a fact about DemoSeed, and it goes stale the first time someone adds a row.",
