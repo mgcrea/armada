@@ -17,13 +17,15 @@ designed and not started. See [implementation.md](implementation.md).
 | --- | --- |
 | [implementation.md](implementation.md) | What exists today, the traps in it, how to verify it. **Read first if you are touching the code.** |
 | [design.md](design.md) | Decisions, architecture, message flow, open questions. **Read first if you are extending the plan.** |
+| [../PLAN.md](../PLAN.md) | Work queued and not started, each item with its source, when it bites, and where it lands |
 | [reaching-agents.md](reaching-agents.md) | Measured: every way to get a message to a waiting agent, and how to tell who sent one |
 | [claude-code-sessions.md](claude-code-sessions.md) | Measured: reading Claude Code sessions, titles and state from disk |
 | [focusing-sessions.md](focusing-sessions.md) | Measured: how a session's pid resolves to the app hosting it, and what that cannot reach |
 | [codex-sessions.md](codex-sessions.md) | Measured: Codex's equivalents — session logs, liveness, titles, limits, hooks |
 | [grok-sessions.md](grok-sessions.md) | Measured: Grok Build's equivalents, and why Armada's Claude hook hung its turns |
 | [limits-accounts-and-terms.md](limits-accounts-and-terms.md) | Plan-limit data, multiple accounts, and what Anthropic's terms allow |
-| [landscape.md](landscape.md) | Competitors and standards (A2A) |
+| [landscape.md](landscape.md) | Standards (A2A, MCP); its competitor list is from 2026-09-10 and stale |
+| [marketing/](marketing/) | Dated competitive briefs. **Read the newest before positioning or pricing work** |
 | [spike/](spike/README.md) | Throwaway code the measurements came from |
 | [market-intel.md](market-intel.md) | Ledger of feature ideas accepted and rejected outside design.md's table. **Read before proposing a feature**, with design.md's "Rejected:" clauses |
 | [releasing.md](releasing.md) | Cutting a release: the secrets CI needs, the version copies it checks, and the push order |

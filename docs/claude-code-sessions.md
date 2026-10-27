@@ -109,6 +109,26 @@ work lands under `projects/<enc-cwd>/<sessionId>/…`.
 
 Transcripts get large (1–13MB, over 5,000 lines). Never parse a whole one on every change.
 
+**A transcript can be rewritten in place, but only where someone opted in.** This comes from
+the Claude Code changelog and env-vars page and was not measured here (read 2026-10-24):
+- From 2.1.287 (2026-10-01), `CLAUDE_CODE_TRANSCRIPT_LOCAL_GC=1` trims the transcript of a
+  `-p` or Agent SDK session. After each compaction, once the file is over 5 MB, it drops the
+  history from before that compaction. Interactive sessions are never trimmed.
+- The variable has to be in the environment Claude Code starts from; a settings `env` block
+  can't turn it on. Armada's voice `claude` (`-p`) qualifies only if the variable reaches it.
+- 2.1.296 (2026-10-09) skips a rewrite that would free under 10%.
+- From 2.1.300 (2026-10-14), each API request's system prompt, tools and parameters are
+  recorded in the transcript too, so files grow faster. That is true of every session, opted in
+  or not.
+
+Two of Armada's readers notice a rewrite:
+- `UsageIndexer` treats a file that shrank, or whose first bytes changed, as rewritten.
+- `TranscriptContext.compactionAppended` restarts from zero only when the file is shorter than
+  its saved offset.
+
+A rewrite followed by enough appends to pass the old offset would get past the second one.
+Unverified whether that happens.
+
 Entry `type` values seen: `user`, `assistant`, `attachment`, `ai-title`, `last-prompt`,
 `bridge-session`, `queue-operation`, `atis-latch`, `file-history-snapshot`,
 `file-history-delta`, `mode`, `permission-mode`, `system`, `cost-state`.

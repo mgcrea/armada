@@ -3,6 +3,11 @@
 Checked 2026-09-09 and 2026-09-10. Competitors were judged from their READMEs and product
 pages, not by using them.
 
+> **The competitor sections are out of date.** Since the check, other tools have gained
+> waiting-on-approval detection, multi-vendor coverage, and moving a session between accounts.
+> For competitors, read the newest `docs/marketing/competitive-brief-*.md` instead. The
+> Standards and "Built into Claude Code" sections still stand.
+
 ## Standards
 
 ### A2A (Agent2Agent)

@@ -324,3 +324,8 @@ Still open:
   session?
 - Does anything prune `sessions/`, or does it grow forever? Six months and 418 files here
   with no sign of a sweep.
+- `codex-cli` 0.163.0 (2026-10-15) adds two things. Codex reports its own lifecycle status to
+  the terminal over OSC 7501. The app-server gets an experimental durable thread "read state",
+  with change notifications. Both come from the release notes (github.com/openai/codex,
+  `rust-v0.163.0`) and neither was measured. Unchecked: whether the read state lands in a file
+  Armada reads, and whether OSC 7501 is a better state signal than the writer lock.
