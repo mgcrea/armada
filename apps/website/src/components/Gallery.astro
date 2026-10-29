@@ -1,7 +1,8 @@
 ---
 /**
  * The rest of the app, captured: the menu bar panel, the Projects pane, a Codex home
- * and the transcript window, from the capture pipeline (see `Capture`).
+ * and the transcript window, from the capture pipeline (see `Capture`), after the
+ * whole window moving in `Tour`.
  *
  * Tiles rather than full-width plates, because the two screens that earn full width,
  * the main window and the Usage pane, already have them above and below. At tile size
@@ -22,6 +23,7 @@ import projects from "../assets/screenshots/projects.png";
 import transcript from "../assets/screenshots/transcript.png";
 import Capture from "./Capture.astro";
 import SectionHeader from "./SectionHeader.astro";
+import Tour from "./Tour.astro";
 
 const ROWS = [
   {
@@ -74,8 +76,10 @@ const ROWS = [
       class="mb-0!"
     >
       Captured from Armada itself, running on invented accounts rather than anyone's real sessions.
-      Select any of them to see it at full size.
+      Select any still to see it at full size.
     </SectionHeader>
+
+    <Tour />
 
     {
       ROWS.map((row) => (
@@ -94,7 +98,7 @@ const ROWS = [
     }
 
     <span class="font-mono text-[11px] text-fg-muted">
-      Captures of the app in demo mode · accounts, sessions and figures are examples
+      The app in demo mode · accounts, sessions and figures are examples
     </span>
   </div>
 </section>
