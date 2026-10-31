@@ -1,7 +1,8 @@
 ---
 /**
- * The cross-links to bastion and cupertino. Both siblings give each other one card
- * in this spot; Armada has two siblings, so it gives each a card in one section.
+ * The cross-links to bastion, cupertino and drakar. Bastion and cupertino give each
+ * other one card in this spot; Armada has three siblings, so it gives each a card in
+ * one section, three across at lg so none is left an orphan on a row of its own.
  *
  * Not a `SectionHeader` section: a cross-promo that borrowed the page's own
  * section opener would read as one of its arguments. It gets an eyebrow and cards,
@@ -21,7 +22,7 @@ import Button from "./Button.astro";
 <section id="also" class="wrap py-[96px]">
   <div class="mono mb-5 text-accent">Also from Magenta Creations</div>
 
-  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
     {
       SIBLING_APPS.map((app) => (
         <div class="reveal flex flex-col gap-5 rounded-[20px] border border-rule bg-bg-2 p-7 md:p-8">

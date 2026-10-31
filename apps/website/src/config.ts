@@ -189,9 +189,9 @@ export const SOCIAL_CARD = {
  * The sibling apps, cross-linked from the homepage and the footer. One constant
  * feeds both placements, so a name, a URL or an icon cannot drift between them.
  *
- * Neither pitch claims the apps work together. Nothing in any of the three repos
+ * No pitch claims the apps work together. Nothing in any of the four repos
  * documents an integration, and a cross-promo card is the worst place to invent
- * one. What is true is that all three are menu bar apps for people who work with
+ * one. What is true is that all four are Mac apps for people who work with
  * agents, sold the same way.
  *
  * The icons are the siblings' own `public/app-icon.svg`, copied into `public/apps/`
@@ -217,5 +217,14 @@ export const SIBLING_APPS = [
     blurb: "Your Apple apps as MCP servers, behind one Full Disk Access grant.",
     url: "https://cupertino.mgcrea.io",
     icon: "/apps/cupertino.svg",
+  },
+  {
+    name: "Drakar",
+    tagline: "Claude Code and Codex, in a native Mac window.",
+    pitch:
+      "A native Mac app for driving the claude and codex you already installed: the conversation, the tool calls, the permission prompts and the diffs, with an editor beside them. Signed, notarized, sold direct.",
+    blurb: "Claude Code and Codex in a native Mac window, on the CLIs you installed.",
+    url: "https://drakar.mgcrea.io",
+    icon: "/apps/drakar.svg",
   },
 ] as const;
