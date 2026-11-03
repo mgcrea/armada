@@ -666,9 +666,10 @@ limit, so it flags a live transcript that grew as different; check a prefix anot
   `/Volumes/nas` counts as available only while it exists and its volume is the one it was
   picked on, so an empty mount point on the startup disk is refused. A share that comes back as
   `/Volumes/nas-1` is reported unavailable until the folder is picked again.
-- **Nothing reads the archive back.** Resuming a session whose transcript Claude Code has
-  deleted, or counting its tokens, would need Recently ended and the usage index to look in the
-  archive; neither does.
+- **Only skill uses are read back from the archive.** The usage index reads its Claude Code
+  copies for skill uses, in a pass of its own after the live one. Resuming a session whose
+  transcript Claude Code has deleted, or counting its tokens, would need Recently ended and the
+  usage index to look in the archive for those too; neither does.
 - **Retention measures each file on its own.** A session that ran across the cut-off can lose a
   tool result or subagent transcript before its own transcript goes.
 - **Uncompressed.** A plain `.jsonl` can be read and grepped on the NAS and appended to in

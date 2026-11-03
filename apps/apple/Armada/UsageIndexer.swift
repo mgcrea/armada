@@ -49,8 +49,11 @@ import os
 /// **The transcript archive is read for skill uses only** (`Source.skillsOnly`), so skill
 /// history reaches back past the 30 days Claude Code keeps, and a token is never counted from
 /// a copy. Its files are keyed with `~a:` before their usual key, so a copy never shares a row
-/// with its live file, and go after every live file, so a use both hold is the live file's. An
-/// archive that cannot be listed, a NAS not mounted, folds nothing. The archive is only read.
+/// with its live file, and go after every live file, so a use both hold is the live file's.
+/// `UsageIndex` reads them in a pass of their own, after the live one and on a byte budget,
+/// so a slow share never holds up the live figures. An archive that cannot be listed, a NAS
+/// not mounted, folds nothing, and a copy is known without its inode, which a share can
+/// change on every mount. The archive is only read.
 actor UsageIndexer {
   nonisolated struct Source: Hashable, Sendable {
     let account: String
@@ -82,6 +85,14 @@ actor UsageIndexer {
     var bytesDone: Int64 = 0
     var bytesTotal: Int64 = 0
     var firstPass = false
+  }
+
+  /// What a pass ends with.
+  nonisolated struct PassResult: Sendable {
+    let snapshot: UsageLedgerSnapshot
+    /// Every file that needed reading was read: the pass was neither cancelled nor stopped
+    /// on its byte budget.
+    let reachedEnd: Bool
   }
 
   nonisolated struct FileItem: Sendable {
@@ -152,7 +163,17 @@ actor UsageIndexer {
   static let schemaVersion = 2
   /// Bumped when the reading of skill uses changes: every file still on disk is read again
   /// for its uses, one at a time as each is reached.
-  static let skillParserVersion = 1
+  ///
+  /// **2 before the first release,** so a debug ledger re-keys the typed uses it read before
+  /// the `ms|cwd|name` key. A schema 1 ledger's files arrive at 0 either way, so a released
+  /// ledger reads nothing more for it.
+  ///
+  /// **A bump past 2 needs a per-row parser stamp first.** A stale file's own uses are
+  /// deleted when its read starts and read back as it goes. If that read spans commits, the
+  /// pass is cut part way, and the file is gone or rewritten before the next pass, the uses
+  /// past the cut are lost. The fix: stamp each `skill_uses` row with the parser that read
+  /// it, and delete a slot's older-stamped rows only once its re-read reaches the end.
+  static let skillParserVersion = 2
   static let chunkBytes = 1 << 20
   static let commitBytes: Int64 = 64 << 20
   static let headBytes: Int64 = 4_096
@@ -233,11 +254,22 @@ actor UsageIndexer {
   ///
   /// `progress` is called at most twice a second and `publish` at most every ten seconds,
   /// both from this actor; the caller hops to wherever it draws.
+  ///
+  /// **Only `sources` are listed, so only their files can fold.** A pass of the live
+  /// transcripts never folds an archive file, and an archive pass never folds a live one:
+  /// each file is checked against the roots its own pass listed (`StoredFile.listing`).
+  ///
+  /// **`byteBudget` stops it starting files once that much was read.** The file under way is
+  /// read to its end; the rest wait, from their committed cursors, for the next pass, and
+  /// the result says it did not reach the end.
+  ///
+  /// **`first_pass_done` and `skills_pass_done` describe the live transcripts,** so a pass
+  /// of only `skillsOnly` sources leaves both as they were.
   func runPass(
-    sources: [Source], calendar: Calendar,
+    sources: [Source], calendar: Calendar, byteBudget: Int64? = nil,
     progress: @escaping @Sendable (Progress) -> Void,
     publish: @escaping @Sendable (UsageLedgerSnapshot) -> Void
-  ) -> UsageLedgerSnapshot? {
+  ) -> PassResult? {
     guard let db = open() else { return nil }
     let started = Date()
     do {
@@ -250,7 +282,10 @@ actor UsageIndexer {
       for item in items {
         present.insert(item.identity)
         let file = stored[item.identity]
-        if let file, file.inode == item.inode, file.size == item.size, file.mtime == item.mtime,
+        // An archive copy is known without its inode: a share can hand out new ones on
+        // every mount, and the archive only appends, keeping a rewrite as a `~<n>` copy.
+        if let file, item.source.skillsOnly || file.inode == item.inode,
+          file.size == item.size, file.mtime == item.mtime,
           file.start(item.source.vendor) >= item.size, file.replaces == nil
         {
           // Unchanged. A Codex rollout moved into `archived_sessions` keeps its inode and
@@ -289,9 +324,14 @@ actor UsageIndexer {
       progress(report)
       var lastProgress = Date.distantPast
       var lastPublish = Date()
+      var overBudget = false
 
       for (item, file) in work {
         if Task.isCancelled { break }
+        if let byteBudget, report.bytesDone >= byteBudget {
+          overBudget = true
+          break
+        }
         let parentFolder = item.parentSession.flatMap {
           parentFolders["\(item.source.account)|\($0)"]
         }
@@ -327,16 +367,19 @@ actor UsageIndexer {
       }
       progress(report)
 
-      if !Task.isCancelled {
+      let reachedEnd = !Task.isCancelled && !overBudget
+      let archiveOnly = !sources.isEmpty && sources.allSatisfy(\.skillsOnly)
+      if reachedEnd, !archiveOnly {
         try setMeta("first_pass_done", "1", db)
         try setMeta("skills_pass_done", "1", db)
       }
       let snapshot = try buildSnapshot(db)
       let seconds = Date().timeIntervalSince(started)
+      let ending = Task.isCancelled ? " (cancelled)" : overBudget ? " (over budget)" : ""
       Self.logger.info(
-        "index pass: \(report.filesDone, privacy: .public)/\(work.count, privacy: .public) files, \(report.bytesDone, privacy: .public) bytes, \(seconds, format: .fixed(precision: 1), privacy: .public)s\(Task.isCancelled ? " (cancelled)" : "", privacy: .public)"
+        "index pass: \(report.filesDone, privacy: .public)/\(work.count, privacy: .public) files, \(report.bytesDone, privacy: .public) bytes, \(seconds, format: .fixed(precision: 1), privacy: .public)s\(ending, privacy: .public)"
       )
-      return snapshot
+      return PassResult(snapshot: snapshot, reachedEnd: reachedEnd)
     } catch {
       try? db.rollback()
       Self.logger.error("index pass failed: \(error.localizedDescription, privacy: .public)")
@@ -364,8 +407,9 @@ actor UsageIndexer {
     var skills: SkillCursor
     var replaces: Int64?
 
+    // An archive copy's inode says nothing, as in `runPass`: size and head bytes decide.
     if let stored, item.size >= stored.cursor.offset, headHash == stored.headHash,
-      stored.inode == item.inode || stored.path != item.relativePath
+      item.source.skillsOnly || stored.inode == item.inode || stored.path != item.relativePath
     {
       slot = stored.slot
       cursor = stored.cursor
@@ -623,8 +667,8 @@ actor UsageIndexer {
   /// **The same in any read order.** An alias counts only while its use is still in
   /// `skill_uses`, so one whose row a stale re-read deleted is passed over. When the line's
   /// two identities lead to two uses, each counted from copies that shared neither, the line
-  /// shows they are one: the later id is folded into the earlier one, which keeps any reply
-  /// or args the other had, and its aliases follow.
+  /// shows they are one: the row with the lower `use_id` survives, keeps any reply or args
+  /// the other had, and the other's aliases follow it.
   private nonisolated static func countedSlashUse(_ use: SkillUseEvent, _ db: UsageDatabase)
     throws -> String?
   {

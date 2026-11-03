@@ -1635,23 +1635,21 @@ struct UnitCheck {
     #"{"timestamp":"\#(at)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"cache_write_input_tokens":0,"output_tokens":\#(output),"reasoning_output_tokens":\#(reasoning),"total_tokens":\#(input + output)}}}}"#
   }
 
-  /// A pass's result, carried out of the indexer's actor to the synchronous checks.
-  nonisolated final class PassResult: @unchecked Sendable {
-    var snapshot: UsageLedgerSnapshot?
+  /// A result carried out of the indexer's actor to the synchronous checks.
+  nonisolated final class Blocked<Value>: @unchecked Sendable {
+    var value: Value?
   }
 
   /// Runs `body` off the main thread and waits for it: the checks are synchronous.
-  static func blocking(
-    _ body: @escaping @Sendable () async -> UsageLedgerSnapshot?
-  ) -> UsageLedgerSnapshot? {
-    let result = PassResult()
+  static func blocking<Value>(_ body: @escaping @Sendable () async -> Value) -> Value {
+    let result = Blocked<Value>()
     let done = DispatchSemaphore(value: 0)
     Task.detached {
-      result.snapshot = await body()
+      result.value = await body()
       done.signal()
     }
     done.wait()
-    return result.snapshot
+    return result.value!
   }
 
   static func usageIndexer() {
@@ -1685,7 +1683,7 @@ struct UnitCheck {
     func pass() -> UsageLedgerSnapshot? {
       blocking {
         await indexer.runPass(
-          sources: [source], calendar: calendar, progress: { _ in }, publish: { _ in })
+          sources: [source], calendar: calendar, progress: { _ in }, publish: { _ in })?.snapshot
       }
     }
     let outputs = (0..<4).map { _ in pass()?.rows.reduce(0) { $0 + $1.tokens.output } }
@@ -1766,7 +1764,7 @@ struct UnitCheck {
       let sources = [UsageIndexer.Source(account: "me", vendor: .claude, root: home)]
       return blocking {
         await indexer.runPass(
-          sources: sources, calendar: calendar, progress: progress, publish: { _ in })
+          sources: sources, calendar: calendar, progress: progress, publish: { _ in })?.snapshot
       }
     }
     func uses(_ snapshot: UsageLedgerSnapshot?, _ kind: SkillKind) -> Int {
@@ -2116,11 +2114,18 @@ struct UnitCheck {
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       try? ndjson(lines).write(to: url)
     }
-    func pass(_ indexer: UsageIndexer, _ sources: [UsageIndexer.Source]) -> UsageLedgerSnapshot? {
+    func run(
+      _ indexer: UsageIndexer, _ sources: [UsageIndexer.Source], budget: Int64? = nil,
+      progress: @escaping @Sendable (UsageIndexer.Progress) -> Void = { _ in }
+    ) -> UsageIndexer.PassResult? {
       blocking {
         await indexer.runPass(
-          sources: sources, calendar: calendar, progress: { _ in }, publish: { _ in })
+          sources: sources, calendar: calendar, byteBudget: budget, progress: progress,
+          publish: { _ in })
       }
+    }
+    func pass(_ indexer: UsageIndexer, _ sources: [UsageIndexer.Source]) -> UsageLedgerSnapshot? {
+      run(indexer, sources)?.snapshot
     }
     func uses(_ snapshot: UsageLedgerSnapshot?) -> Int {
       snapshot?.skills.reduce(0) { $0 + $1.count } ?? -1
@@ -2220,6 +2225,8 @@ struct UnitCheck {
       "and still no token from the archive",
       ledgerColumn(bothURL, "SELECT SUM(output) FROM file_usage"), liveTokens)
 
+    archivePasses(root: root, live: live, archive: archive, archiveHome: archiveHome, run: run)
+
     let codexHome = root.appending(path: "Armada Archive/codex", directoryHint: .isDirectory)
     write(
       [codexTokens(10, cached: 0, output: 5, at: "2026-09-14T10:00:00.000Z")],
@@ -2229,6 +2236,135 @@ struct UnitCheck {
     check(
       "an archived rollout is never read: it holds only tokens",
       UsageIndexer.enumerate([codexArchive]).items.isEmpty)
+  }
+
+  /// The archive read in a pass of its own, after the live one, as `UsageIndex` runs it.
+  static func archivePasses(
+    root: URL, live: UsageIndexer.Source, archive: UsageIndexer.Source, archiveHome: URL,
+    run: (
+      UsageIndexer, [UsageIndexer.Source], Int64?,
+      @escaping @Sendable (UsageIndexer.Progress) -> Void
+    ) -> UsageIndexer.PassResult?
+  ) {
+    let fileManager = FileManager.default
+    func uses(_ result: UsageIndexer.PassResult?) -> Int {
+      result?.snapshot.skills.reduce(0) { $0 + $1.count } ?? -1
+    }
+    func meta(_ url: URL) -> [String] {
+      ledgerColumn(url, "SELECT key FROM meta WHERE key LIKE '%pass_done' ORDER BY key")
+    }
+
+    // Read alone, the archive says nothing about the live transcripts.
+    let aloneURL = root.appending(path: "archive-alone.sqlite")
+    let aloneIndexer = UsageIndexer(url: aloneURL)
+    let alone = run(aloneIndexer, [archive], nil, { _ in })
+    check(
+      "an archive-only pass reads its uses",
+      alone?.reachedEnd == true && uses(alone) == 5)
+    check(
+      "and leaves first_pass_done and skills_pass_done unset",
+      alone?.snapshot.firstPassDone == false && alone?.snapshot.skillsPassDone == false
+        && meta(aloneURL).isEmpty)
+    _ = run(aloneIndexer, [live], nil, { _ in })
+    expectEqual(
+      "a live pass sets both", meta(aloneURL), ["first_pass_done", "skills_pass_done"])
+    expectEqual(
+      "and folds no archive file it did not list",
+      ledgerColumn(
+        aloneURL,
+        """
+        SELECT (SELECT COUNT(*) FROM files WHERE key LIKE '~a:%') || ' '
+          || (SELECT COUNT(*) FROM skill_uses WHERE slot IS NULL)
+        """), ["4 0"])
+    // What a new skill parser leaves: the live transcripts' skills read again.
+    ledgerExecute(aloneURL, "DELETE FROM meta WHERE key = 'skills_pass_done'")
+    let afterBump = run(aloneIndexer, [archive], nil, { _ in })
+    check(
+      "an archive-only pass leaves a cleared skills_pass_done cleared",
+      afterBump?.snapshot.skillsPassDone == false && meta(aloneURL) == ["first_pass_done"])
+    expectEqual(
+      "and folds no live file",
+      ledgerColumn(
+        aloneURL,
+        """
+        SELECT (SELECT COUNT(*) FROM files WHERE key NOT LIKE '~a:%') || ' '
+          || (SELECT COUNT(*) FROM skill_uses WHERE slot IS NULL)
+        """), ["1 0"])
+
+    // On a budget: one byte is spent by the first file, so no second one starts.
+    let budgetURL = root.appending(path: "archive-budget.sqlite")
+    let budgetIndexer = UsageIndexer(url: budgetURL)
+    let cut = run(budgetIndexer, [archive], 1, { _ in })
+    check(
+      "a pass over budget stops starting files, and says it did not reach the end",
+      cut?.reachedEnd == false && (1..<5).contains(uses(cut)))
+    expectEqual(
+      "having read one file of four", ledgerColumn(budgetURL, "SELECT COUNT(*) FROM files"),
+      ["1"])
+    let rest = run(budgetIndexer, [archive], nil, { _ in })
+    check(
+      "the next pass reads the rest from there, each use once",
+      rest?.reachedEnd == true && uses(rest) == 5
+        && ledgerColumn(budgetURL, "SELECT COUNT(*) FROM files") == ["4"])
+    let settled = run(budgetIndexer, [archive], 1, { _ in })
+    check(
+      "and a budgeted pass with nothing left to read reaches the end",
+      settled?.reachedEnd == true && uses(settled) == 5)
+
+    // A share remounted: every copy has a new inode, its bytes and date as they were.
+    let copyURL = archiveHome.appending(path: "-work-armada/s1.jsonl")
+    let slotsBefore = ledgerColumn(
+      budgetURL, "SELECT key || ' ' || slot || ' ' || inode FROM files ORDER BY key")
+    let slotKeys = ledgerColumn(budgetURL, "SELECT key || ' ' || slot FROM files ORDER BY key")
+    let usesBefore = ledgerColumn(
+      budgetURL, "SELECT use_id || ' ' || IFNULL(slot, 'none') FROM skill_uses ORDER BY use_id")
+    func replaceInode(_ url: URL, keepDate: Bool) {
+      let path = url.path(percentEncoded: false)
+      var info = Darwin.stat()
+      guard lstat(path, &info) == 0, let bytes = fileManager.contents(atPath: path) else {
+        check("could not stat \(path)", false)
+        return
+      }
+      let fresh = path + ".new"
+      _ = fileManager.createFile(atPath: fresh, contents: bytes)
+      if keepDate {
+        var times = [info.st_atimespec, info.st_mtimespec]
+        _ = utimensat(AT_FDCWD, fresh, &times, 0)
+      }
+      _ = rename(fresh, path)
+    }
+    replaceInode(copyURL, keepDate: true)
+    let seen = Blocked<UsageIndexer.Progress>()
+    let remounted = run(budgetIndexer, [archive], nil, { seen.value = $0 })
+    let slotsAfter = ledgerColumn(
+      budgetURL, "SELECT key || ' ' || slot || ' ' || inode FROM files ORDER BY key")
+    check(
+      "an archive copy whose inode changed and bytes did not is unchanged",
+      remounted?.reachedEnd == true && seen.value?.filesTotal == 0 && slotsAfter == slotsBefore)
+    replaceInode(copyURL, keepDate: false)
+    let touched = run(budgetIndexer, [archive], nil, { seen.value = $0 })
+    check(
+      "and with a new date too, it is read from its cursor, not from zero",
+      touched?.reachedEnd == true && seen.value?.filesTotal == 1 && seen.value?.bytesTotal == 0
+        && ledgerColumn(budgetURL, "SELECT key || ' ' || slot FROM files ORDER BY key")
+          == slotKeys
+    )
+    check(
+      "and no use moves",
+      uses(touched) == 5
+        && ledgerColumn(
+          budgetURL, "SELECT use_id || ' ' || IFNULL(slot, 'none') FROM skill_uses ORDER BY use_id")
+          == usesBefore
+    )
+
+    // A live transcript keeps today's rule: a new inode at the same path is a rewrite.
+    let liveURL = live.root.appending(path: "-work-armada/s1.jsonl")
+    let liveSlot = ledgerColumn(aloneURL, "SELECT slot FROM files WHERE key = 's1'")
+    replaceInode(liveURL, keepDate: true)
+    _ = run(aloneIndexer, [live], nil, { _ in })
+    check(
+      "a live transcript under a new inode is still read again from zero",
+      ledgerColumn(aloneURL, "SELECT slot FROM files WHERE key = 's1'") != liveSlot)
   }
 
   static func usageLedger() {
@@ -2679,13 +2815,30 @@ struct UnitCheck {
       parse(
         #"{"type":"user","uuid":"h2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ok"},{"type":"text","text":"looks fine"}]}}"#,
         wantHuman: true), [])
+    let markedSlash = slashLine(name: "code-health").replacingOccurrences(
+      of: #""message":"#, with: #""toolUseResult":{"type":"tool_result"},"message":"#)
+    check(
+      "a tool result's marker never hides a typed command, awaiting a reply or not",
+      [true, false].allSatisfy { wantHuman in
+        parse(markedSlash, wantHuman: wantHuman).map { event -> String in
+          if case .use(let use) = event { use.skill } else { "" }
+        } == ["code-health"]
+      })
+    check(
+      "nor a Skill call",
+      parse(
+        skillToolLine(ids: ["toolu_t"], skills: ["simplify"]).replacingOccurrences(
+          of: #""message":"#, with: #""toolUseResult":{"type":"tool_result"},"message":"#),
+        wantHuman: true
+      ).count == 1)
     expectEqual(
       "nor a local command's output",
       parse(
         humanLine(text: "<local-command-stdout>done</local-command-stdout>"), wantHuman: true),
       [])
     expectEqual(
-      "nor a slash command", parse(slashLine(name: "compact", order: .nameFirst), wantHuman: true)
+      "nor a slash command",
+      parse(slashLine(name: "compact", order: .nameFirst), wantHuman: true)
         .filter { if case .human = $0 { true } else { false } }, [])
     func flagged(_ flag: String) -> String {
       typed.replacingOccurrences(of: #""type":"user","#, with: #""type":"user",\#(flag),"#)

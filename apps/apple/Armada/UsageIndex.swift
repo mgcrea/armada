@@ -36,20 +36,25 @@ final class UsageIndex {
   @ObservationIgnored private var memo: Memo?
   @ObservationIgnored private var skillMemo: SkillMemo?
   /// Bumped each time `skillSources` is replaced, so `projectSkills` can memoise on it.
-  @ObservationIgnored private var skillSourcesVersion = 0
+  /// Observed, so a view whose memo hit still redraws when classifying finishes.
+  private var skillSourcesVersion = 0
   @ObservationIgnored private var classifying: Task<Void, Never>?
-  /// When a pass last read the transcript archive through to its end.
+  /// When an archive pass last read the transcript archive through to its end.
   @ObservationIgnored private var archiveReadAt: Date?
 
-  /// **The archive joins a pass at most once a day:** the first after launch, then the first
-  /// a day after the last that read it. A copy only adds a use once its live original is
-  /// gone, 30 days after its last write, so a day late costs nothing, and listing a NAS every
-  /// few minutes would. One that was not mounted, or a pass cancelled or failed, is tried
-  /// again next pass.
+  /// How much of the archive one pass reads before it stops starting files. The first read
+  /// of a big archive over Wi-Fi spreads over several passes rather than one long one.
+  static let archiveByteBudget: Int64 = 2 << 30
+
+  /// **The archive is read at most once a day:** after the first live pass after launch,
+  /// then a day after the last archive pass that reached its end. A copy only adds a use once
+  /// its live original is gone, 30 days after its last write, so a day late costs nothing,
+  /// and listing a NAS every few minutes would. One that was not mounted, or a pass
+  /// cancelled, failed or stopped on its budget, is tried again after the next live pass.
   ///
-  /// **A pass without it folds none of its files.** The archive's sources are not in the
-  /// pass, so their listing is never in `listed`, and the indexer folds only what a listed
-  /// root no longer holds.
+  /// **In a pass of its own, after the live one,** so a slow share never holds up the live
+  /// figures. Each pass lists only its own sources, and the indexer folds only what a listed
+  /// root no longer holds, so neither folds the other's files.
   private var archiveIsDue: Bool {
     archiveReadAt.map { Date().timeIntervalSince($0) >= 24 * 60 * 60 } ?? true
   }
@@ -82,6 +87,8 @@ final class UsageIndex {
   func stop() {
     loop?.cancel()
     loop = nil
+    classifying?.cancel()
+    classifying = nil
     isPassing = false
     progress = nil
   }
@@ -151,32 +158,46 @@ final class UsageIndex {
       + CodexAccounts.shared.all.map {
         UsageIndexer.Source(account: $0.id, vendor: .codex, root: $0.home.base)
       }
-    // Stored values only: whatever touches the archive's disk runs in the task below.
+    // Stored values only: whatever touches the archive's disk runs in its own task below.
     let archive = archiveIsDue ? TranscriptArchiver.shared.skillTarget : nil
     let calendar = Calendar.current
-    let work = Task.detached(priority: .background) {
-      // The archive's copies, for skill uses older than the transcripts on this Mac.
-      let archived =
-        archive.map {
-          TranscriptArchive.skillSources(target: $0.target, volume: $0.volume)
-        } ?? []
-      let snapshot = await indexer.runPass(
-        sources: sources + archived, calendar: calendar,
+    let live = Task.detached(priority: .background) {
+      await indexer.runPass(
+        sources: sources, calendar: calendar,
         progress: { progress in Task { @MainActor in UsageIndex.shared.receive(progress) } },
         publish: { snapshot in Task { @MainActor in UsageIndex.shared.receive(snapshot) } })
-      let readArchive = snapshot != nil && !archived.isEmpty && !Task.isCancelled
-      return (snapshot: snapshot, readArchive: readArchive)
     }
-    let (snapshot, readArchive) = await withTaskCancellationHandler {
-      await work.value
+    let result = await withTaskCancellationHandler {
+      await live.value
     } onCancel: {
-      work.cancel()
+      live.cancel()
     }
-    if readArchive { archiveReadAt = Date() }
-    if let snapshot { receive(snapshot) }
+    if let result { receive(result.snapshot) }
+    // The progress shown is the live pass's alone: the archive pass reports none, and a
+    // report of this one that lands late is dropped.
     isPassing = false
     progress = nil
     lastPassAt = Date()
+
+    guard let archive, result != nil, !Task.isCancelled else { return }
+    let budget = Self.archiveByteBudget
+    let archived = Task.detached(priority: .background) { () -> UsageIndexer.PassResult? in
+      // The archive's copies, for skill uses older than the transcripts on this Mac.
+      let sources = TranscriptArchive.skillSources(target: archive.target, volume: archive.volume)
+      guard !sources.isEmpty else { return nil }
+      return await indexer.runPass(
+        sources: sources, calendar: calendar, byteBudget: budget, progress: { _ in },
+        publish: { snapshot in Task { @MainActor in UsageIndex.shared.receive(snapshot) } })
+    }
+    let archiveResult = await withTaskCancellationHandler {
+      await archived.value
+    } onCancel: {
+      archived.cancel()
+    }
+    if let archiveResult {
+      receive(archiveResult.snapshot)
+      if archiveResult.reachedEnd { archiveReadAt = Date() }
+    }
   }
 
   /// Hops arrive in no particular order, so a progress report that lands after the pass

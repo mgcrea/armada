@@ -228,9 +228,11 @@ nonisolated enum TranscriptArchive {
   /// **Off the main actor, always.** Every step is a round trip to the archive's disk, and a
   /// hung SMB mount would stall whatever called it.
   ///
-  /// **Every account in the manifest, switched on or not:** one switched off still has the
-  /// history it was archived with. Nothing while the folder is not there, so an unmounted NAS
-  /// is listed by no source and folds nothing. Only read, like the rest of the index.
+  /// **Every account in the manifest, while archiving is on.** The index asks only while a
+  /// folder is picked and at least one account is switched on (`TranscriptArchiver.isOn`);
+  /// then an account switched off since still has the history it was archived with, and is
+  /// read too. Nothing while the folder is not there, so an unmounted NAS is listed by no
+  /// source and folds nothing. Only read, like the rest of the index.
   static func skillSources(target: URL, volume: String?) -> [UsageIndexer.Source] {
     guard isAvailable(target, volume: volume) else { return [] }
     let root = root(forPicked: target)

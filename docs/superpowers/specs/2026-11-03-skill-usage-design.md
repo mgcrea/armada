@@ -68,8 +68,8 @@ file sets `slot = NULL` and the row stays. A rewrite re-owns rows to the new slo
 `skill_slash_alias(alias TEXT PRIMARY KEY, use_id TEXT NOT NULL)` maps both identities of every
 slash line read, `"u:" + uuid` and `"k:" + use_id`, to the use it counted as. An alias counts only
 while its use is in `skill_uses`, and aliases are never deleted. A line whose two identities lead
-to two uses, each counted from copies that shared neither, folds the later id into the earlier.
-That keeps the count the same in any read order.
+to two uses, each counted from copies that shared neither, folds them into one: the row with the
+lower `use_id` survives. That keeps the count the same in any read order.
 
 **Decided 2026-11-03:** each use keeps `args` and `reply`, the next human message after it in the
 same main transcript, each at most 500 characters. Subagent uses get no reply.
@@ -84,7 +84,9 @@ slot, re-extracting from files on disk without touching tokens. `index.complete`
 
 History only the `archive` table holds has no skills. **Decided 2026-11-03:** v1 also reads the
 transcript archive folder (Settings › Archive) for skills only, when it is mounted, which recovers
-2026-08-05 → 2026-09-01. Uses are keyed by their own ids, so a copy cannot count twice.
+2026-08-05 → 2026-09-01. It is read in a pass of its own after the live one, so a slow share never
+holds up the live figures: at most 2 GiB a pass, and once one reaches the end, not again for a day.
+Uses are keyed by their own ids, so a copy cannot count twice.
 
 ## Skill or built-in
 

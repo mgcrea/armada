@@ -68,13 +68,17 @@ nonisolated enum ClaudeSkillLine {
   private static let skillMarker = Data(#""Skill""#.utf8)
   private static let commandMarker = Data("<command-".utf8)
   private static let userMarker = Data(#""type":"user""#.utf8)
+  private static let toolResultMarker = Data(#""type":"tool_result""#.utf8)
 
   /// `wantHuman`: also report a message the person typed (≤ 500 characters).
   static func parse(_ line: Data, wantHuman: Bool) -> [Event] {
-    // Cheap rejects first: nearly every line names no skill and is no typed message.
+    // Cheap rejects first: nearly every line names no skill and is no typed message. A tool
+    // result is never typed, and while a reply is awaited most user lines are one, so it is
+    // not parsed for that; a skill or command marker still gets it parsed.
     guard
       line.range(of: skillMarker) != nil || line.range(of: commandMarker) != nil
-        || (wantHuman && line.range(of: userMarker) != nil),
+        || (wantHuman && line.range(of: userMarker) != nil
+          && line.range(of: toolResultMarker) == nil),
       let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
       let message = object["message"] as? [String: Any]
     else { return [] }
@@ -84,8 +88,7 @@ nonisolated enum ClaudeSkillLine {
       return toolUses(in: message, of: object).map(Event.use)
     case "user":
       if let use = slashUse(in: message, of: object) { return [.use(use)] }
-      if wantHuman, isTyped(object), let text = typedText(in: message).flatMap(excerpt)
-      {
+      if wantHuman, isTyped(object), let text = typedText(in: message).flatMap(excerpt) {
         return [.human(text)]
       }
       return []
