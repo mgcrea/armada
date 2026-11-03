@@ -18,6 +18,14 @@ Survey of every transcript on the Mac on 2026-11-03 (5,277 files, 9.5 GB, two ac
 | reply-as-olivier | 81 | 80 | 1 |
 | push-testflight-build | 95 | 22 | 73 |
 
+**2026-11-03, after the fact:** this table, and the person's own count (project-mail-archive
+290/6/284, superpowers:brainstorming 153/153/0, code-health 103/17/86, reply-as-olivier 67/67/0,
+push-testflight-build 57/13/44), deduped slash uses on the entry `uuid`. That counts each fork or
+branch copy of a typed line again. Keyed as below, the live transcripts read again later that
+day give project-mail-archive 181/8/173, superpowers:brainstorming 238/237/1, code-health
+122/17/105, reply-as-olivier 83/82/1 and push-testflight-build 93/22/71. Only the slash column
+is lower: auto uses keep their `tool_use` id in every copy.
+
 - **Auto:** an `assistant` entry whose `message.content[]` holds a `tool_use` with
   `name == "Skill"`. The skill is `input.skill` (may carry a plugin prefix), args `input.args`.
   Dedupe on the `tool_use` id.
@@ -26,7 +34,13 @@ Survey of every transcript on the Mac on 2026-11-03 (5,277 files, 9.5 GB, two ac
   `<command-message>`; 274 open with `<command-name>` (`/compact` 252, `/model` 10, and `/commit`
   9 and `/commit-task` 3 from an older Claude Code). 5 lines carry `<command-name>` mid-text —
   workflow-harness relays quoting a request — and are not uses. The name is
-  `<command-name>/(…)</command-name>`, the args `<command-args>`. Dedupe on the entry `uuid`.
+  `<command-name>/(…)</command-name>`, the args `<command-args>`. Dedupe on the raw
+  `timestamp`, the entry's own `cwd` (empty when missing) and the name, and also on the entry
+  `uuid`: a use counts once when either was seen before. **Amended 2026-11-03:** first keyed on
+  the `uuid` alone, but a fork or branch copies the line with the same timestamp, folder and
+  `promptId` under a new `uuid` and `sessionId` (live transcripts: 1,640 slash uuids, 1,329
+  distinct (timestamp, cwd, name)). The `uuid` stays as a second key because 25 entries come back
+  with another `cwd`. `promptId` spans several commands in 196 cases, so it can't be the key.
 - The `type` filter drops `api-request-blob`, `api-request-shape`, `attachment` and `tools-used`,
   which repeat the same text.
 - The two forms are disjoint: typing `/name` writes no `Skill` tool_use.
@@ -39,7 +53,7 @@ ledger aside, which is the existing rule.
 
 ```sql
 CREATE TABLE skill_uses(
-  use_id TEXT PRIMARY KEY,      -- "a:" + tool_use id, or "s:" + entry uuid
+  use_id TEXT PRIMARY KEY,      -- "a:" + tool_use id, or "s:" + timestamp|cwd|name
   slot INTEGER,                 -- the file holding it; NULL once that file is gone
   day INTEGER NOT NULL, cwd TEXT NOT NULL, account TEXT NOT NULL, vendor INTEGER NOT NULL,
   skill TEXT NOT NULL, kind INTEGER NOT NULL,   -- 0 auto, 1 slash
@@ -49,6 +63,9 @@ CREATE TABLE skill_uses(
 
 One row per use; counts are a `GROUP BY` of (day, folder, account, vendor, skill, kind). A gone
 file sets `slot = NULL` and the row stays. A rewrite re-owns rows to the new slot.
+
+`skill_slash_seen(entry_uuid TEXT PRIMARY KEY, use_id TEXT NOT NULL)` maps each slash entry
+`uuid` the indexer has read to the use it counted as, which is the second key above.
 
 **Decided 2026-11-03:** each use keeps `args` and `reply`, the next human message after it in the
 same main transcript, each at most 500 characters. Subagent uses get no reply.

@@ -1606,8 +1606,10 @@ struct UnitCheck {
   enum SlashOrder { case messageFirst, nameFirst }
 
   /// A user line for a typed `/name`, in either of the two tag orders Claude Code writes.
+  /// `cwd` is the entry's own field, left out when nil, as older lines have none.
   static func slashLine(
-    name: String, uuid: String = "u1", args: String? = nil, order: SlashOrder = .messageFirst
+    name: String, uuid: String = "u1", args: String? = nil, order: SlashOrder = .messageFirst,
+    cwd: String? = nil, session: String = "s1"
   ) -> String {
     let content =
       switch order {
@@ -1617,8 +1619,9 @@ struct UnitCheck {
       case .nameFirst:
         "<command-name>/\(name)</command-name>\n            <command-message>\(name)</command-message>\n            <command-args>\(args ?? "")</command-args>"
       }
+    let folder = cwd.map { #""cwd":\#(quoted($0)),"# } ?? ""
     return
-      #"{"type":"user","uuid":\#(quoted(uuid)),"sessionId":"s1","timestamp":"2026-10-24T21:50:00.000Z","message":{"role":"user","content":\#(quoted(content))}}"#
+      #"{"type":"user","uuid":\#(quoted(uuid)),\#(folder)"sessionId":\#(quoted(session)),"timestamp":"2026-10-24T21:50:00.000Z","message":{"role":"user","content":\#(quoted(content))}}"#
   }
 
   /// A user line holding a message the person typed.
@@ -2057,6 +2060,28 @@ struct UnitCheck {
     check(
       "a rewrite of a file read to its end reads its uses from the start",
       shorter?.skills.contains { $0.skill == "d" } == true && held == ["1"])
+
+    // A fork or branch copies a typed line with its time and folder, under a new uuid.
+    let forkHome = home("forks")
+    let forkURL = ledger("forks")
+    write(
+      [slashLine(name: "code-health", uuid: "u1", cwd: "/work/armada")],
+      to: "-work-armada/s1.jsonl", in: forkHome)
+    write(
+      [slashLine(name: "code-health", uuid: "u2", cwd: "/work/armada", session: "s2")],
+      to: "-work-armada/s2.jsonl", in: forkHome)
+    let forking = UsageIndexer(url: forkURL)
+    expectEqual(
+      "the same typed line in two sessions, under two uuids, counts once",
+      uses(pass(forking, forkHome), .slash), 1)
+    write(
+      [
+        slashLine(name: "code-health", uuid: "u1", cwd: "/work/armada/sub", session: "s3"),
+        slashLine(name: "simplify", uuid: "u3", cwd: "/work/armada", session: "s3"),
+      ], to: "-work-armada/s3.jsonl", in: forkHome)
+    expectEqual(
+      "and so does one uuid written again with another folder, beside a new use",
+      uses(pass(forking, forkHome), .slash), 2)
 
     archiveSkills(root: root, calendar: calendar)
   }
@@ -2577,12 +2602,20 @@ struct UnitCheck {
       "a Skill call without a timestamp is skipped",
       uses(skillToolLine(ids: ["t"], skills: ["a"], at: "")).isEmpty)
 
-    let slash = uses(slashLine(name: "code-health", uuid: "u1", args: "src/"))
+    let slash = uses(slashLine(name: "code-health", uuid: "u1", args: "src/", cwd: "/w/a"))
     check(
-      "a typed /name is one slash use, keyed on the entry uuid, with its args",
-      slash.count == 1 && slash.first?.useID == "s:u1" && slash.first?.kind == .slash
-        && slash.first?.skill == "code-health" && slash.first?.args == "src/"
-        && slash.first?.entryUUID == "u1")
+      "a typed /name is one slash use, keyed on its time, folder and name, with its args",
+      slash.count == 1 && slash.first?.useID == "s:2026-10-24T21:50:00.000Z|/w/a|code-health"
+        && slash.first?.kind == .slash && slash.first?.skill == "code-health"
+        && slash.first?.args == "src/" && slash.first?.entryUUID == "u1")
+    expectEqual(
+      "a fork's copy, with a new uuid and session, has the same key",
+      uses(slashLine(name: "code-health", uuid: "u2", cwd: "/w/a", session: "s2")).map(\.useID),
+      slash.map(\.useID))
+    expectEqual(
+      "a line with no cwd of its own keys on an empty folder",
+      uses(slashLine(name: "code-health")).map(\.useID),
+      ["s:2026-10-24T21:50:00.000Z||code-health"])
     let nameFirst = uses(slashLine(name: "compact", order: .nameFirst))
     check(
       "the name-first order of built-ins and old commands is read too, empty args as nil",

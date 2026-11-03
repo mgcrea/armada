@@ -195,7 +195,14 @@ block with `name == "Skill"`:
 first tag, after any whitespace, is one of the command tags:
 
 - The name is in `<command-name>/…</command-name>` and the arguments in `<command-args>`.
-  The entry's `uuid` is the key.
+- **The key is the raw `timestamp`, the entry's own `cwd` and the name, not the `uuid`.** A
+  fork or branch copies the line into another session file with the same timestamp, folder
+  and `promptId`, but a new `uuid` and `sessionId`. Over the live transcripts there were 1,640
+  slash uuids and only 1,329 distinct (timestamp, cwd, name). `promptId` won't do either: 196
+  of them span several commands.
+- **The same entry can also come back with another `cwd`.** 25 uuids appear under two folders at
+  the same timestamp. In the ten sampled, one is a subfolder of the other. So the indexer
+  also counts a use once when its `uuid` was already seen under another key.
 - **Both tag orders occur.** In the survey, 1,619 lines open with `<command-message>`, which is
   what skills and newer commands write. 274 open with `<command-name>`: `/compact` 252, `/model`
   10, and `/commit` 9 and `/commit-task` 3 from an older Claude Code.
@@ -215,6 +222,10 @@ The survey's counts for five skills, deduped:
 | code-health | 122 | 17 | 105 |
 | reply-as-olivier | 81 | 80 | 1 |
 | push-testflight-build | 95 | 22 | 73 |
+
+The slash column above deduped on the entry `uuid`, so it counts fork copies again. Keyed on
+time, folder and name, the live transcripts read again later that day give 173, 1, 105, 1 and
+71 slash uses.
 
 Which names are skills and which are built-ins like `/compact` is not in the transcript. Armada
 settles it from the config folder and the project's `.claude/` (`SkillStats`).

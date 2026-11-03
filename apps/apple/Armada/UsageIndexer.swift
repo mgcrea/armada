@@ -24,7 +24,9 @@ import os
 /// **Skill uses are kept one row each, behind a second cursor.** A Claude transcript's
 /// `skill_offset` can trail its token cursor. A read starts at the lesser of the two and each
 /// half reads only past its own, so a backfill rides the pass it is part of and never counts
-/// a token twice. A use is keyed by its own id, so a copy of it counts once.
+/// a token twice. A use is keyed by its own id, so a copy of it counts once. A typed use is
+/// also found by every entry uuid it was seen under (`skill_slash_seen`), because a copy of
+/// the line can carry another folder, and so another key.
 ///
 /// **A slot holds only the uses its file still holds**, which is what lets a file be read
 /// again for them. While a rewrite is read, each use the new version still holds moves to
@@ -172,6 +174,8 @@ actor UsageIndexer {
       session_id TEXT NOT NULL, at REAL NOT NULL, entry_uuid TEXT NOT NULL,
       args TEXT, reply TEXT) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS skill_uses_slot ON skill_uses(slot);
+    CREATE TABLE IF NOT EXISTS skill_slash_seen(
+      entry_uuid TEXT PRIMARY KEY, use_id TEXT NOT NULL) WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS seen(hash INTEGER PRIMARY KEY, slot INTEGER NOT NULL)
       WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS file_usage(
@@ -429,25 +433,48 @@ actor UsageIndexer {
     let skill: (SkillContribution) -> Bool = { contribution in
       let use = contribution.event
       do {
-        try db.run(
-          """
-          INSERT OR IGNORE INTO skill_uses(use_id, slot, day, cwd, account, vendor, skill, kind,
-            session_id, at, entry_uuid, args)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """,
-          [
-            .text(use.useID), .int(slot), .int(Int64(contribution.day)),
-            .text(Self.storedFolder(contribution.cwd ?? "")), .text(item.source.account),
-            .int(vendor), .text(use.skill), .int(Int64(use.kind.rawValue)),
-            .text(item.sessionID), .double(use.at.timeIntervalSince1970), .text(use.entryUUID),
-            use.args.map { .text($0) } ?? .null,
-          ])
-        if db.changes > 0 { return true }
+        // A slash use whose entry uuid already counted under another key is that use: the
+        // same entry is sometimes written again with another `cwd`, which changes the key.
+        // An automatic use has its own id, and one line can hold two, so its uuid says
+        // nothing.
+        var counted: String?
+        if use.kind == .slash {
+          try db.query(
+            """
+            SELECT s.use_id FROM skill_slash_seen s JOIN skill_uses u ON u.use_id = s.use_id
+            WHERE s.entry_uuid = ?
+            """, [.text(use.entryUUID)]
+          ) { counted = $0.text(0) }
+        }
+        var isNew = false
+        if counted == nil {
+          try db.run(
+            """
+            INSERT OR IGNORE INTO skill_uses(use_id, slot, day, cwd, account, vendor, skill,
+              kind, session_id, at, entry_uuid, args)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+              .text(use.useID), .int(slot), .int(Int64(contribution.day)),
+              .text(Self.storedFolder(contribution.cwd ?? "")), .text(item.source.account),
+              .int(vendor), .text(use.skill), .int(Int64(use.kind.rawValue)),
+              .text(item.sessionID), .double(use.at.timeIntervalSince1970),
+              .text(use.entryUUID), use.args.map { .text($0) } ?? .null,
+            ])
+          isNew = db.changes > 0
+          if use.kind == .slash {
+            // Every uuid the use was seen under, the first copy's and each fork's.
+            try db.run(
+              "INSERT OR REPLACE INTO skill_slash_seen(entry_uuid, use_id) VALUES (?, ?)",
+              [.text(use.entryUUID), .text(use.useID)])
+          }
+        }
+        if isNew { return true }
         if let replaces {
           // The new version still holds it, so it is this file's now.
           try db.run(
             "UPDATE skill_uses SET slot = ? WHERE use_id = ? AND slot = ?",
-            [.int(slot), .text(use.useID), .int(replaces)])
+            [.int(slot), .text(counted ?? use.useID), .int(replaces)])
         }
         return false
       } catch {

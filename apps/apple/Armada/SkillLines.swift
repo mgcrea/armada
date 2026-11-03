@@ -13,8 +13,12 @@ nonisolated enum SkillKind: Int, Hashable, Sendable {
 /// One use of a skill, read from a Claude Code transcript line.
 ///
 /// **Keyed so that a line read twice counts once.** An automatic use takes its `tool_use`
-/// id, which a session copied into another folder keeps; a slash use has no id of its own,
-/// so it takes its entry's `uuid`. The prefixes keep the two from ever colliding.
+/// id, which every copy of a session keeps. A slash use has no id of its own, and its
+/// entry's `uuid` will not do: a fork or a branch copies the line with the same timestamp
+/// and folder but a new `uuid` (and a new `sessionId`). So it is keyed on the raw
+/// timestamp, the line's `cwd` and the name. The indexer also counts it once when its
+/// `uuid` was seen under another key: the same entry can be written again with a different
+/// `cwd`. The prefixes keep the two kinds from ever colliding.
 nonisolated struct SkillUseEvent: Equatable, Sendable {
   let useID: String
   let kind: SkillKind
@@ -124,11 +128,21 @@ nonisolated enum ClaudeSkillLine {
       let raw = tag("command-name", in: content), !raw.contains("<"),
       let skill = skillName(raw),
       let uuid = object["uuid"] as? String, !uuid.isEmpty,
-      let at = (object["timestamp"] as? String).flatMap(UsageSnapshot.parseTimestamp)
+      let timestamp = object["timestamp"] as? String,
+      let at = UsageSnapshot.parseTimestamp(timestamp)
     else { return nil }
+    // The line's own folder, never the indexer's: the id has to come from the line alone.
+    let cwd = object["cwd"] as? String ?? ""
     return SkillUseEvent(
-      useID: "s:" + uuid, kind: .slash, skill: skill, entryUUID: uuid, at: at,
+      useID: slashID(timestamp: timestamp, cwd: cwd, skill: skill), kind: .slash,
+      skill: skill, entryUUID: uuid, at: at,
       args: tag("command-args", in: content).flatMap(excerpt))
+  }
+
+  /// A slash use's key: the raw timestamp, the line's folder and the name, never the uuid,
+  /// which a fork or branch copy gets anew.
+  static func slashID(timestamp: String, cwd: String, skill: String) -> String {
+    "s:\(timestamp)|\(cwd)|\(skill)"
   }
 
   /// Whether the entry's flags leave it as something the person typed.
