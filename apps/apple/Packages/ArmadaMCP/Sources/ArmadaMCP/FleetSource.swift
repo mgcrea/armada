@@ -23,6 +23,12 @@ public protocol FleetSource: Sendable {
   /// wants it, and it rolls a token ledger up into projects. Never called beside
   /// `snapshot()` in one tool, so the ids and the figures describe one instant.
   func projects() async -> ProjectsSnapshot
+
+  /// Each skill and custom command used in Claude Code, per project, account and window.
+  ///
+  /// A hop of its own for the reason `projects()` is one: only `armada_get_skill_usage`
+  /// wants it, and it rolls the skill ledger up into projects.
+  func skills() async -> SkillsSnapshot
 }
 
 /// The fleet at one instant, as `Sendable` values.

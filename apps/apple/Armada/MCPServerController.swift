@@ -14,7 +14,7 @@ import os
 ///
 /// **Off by default, and never constructed until switched on.** An Armada nobody has pointed
 /// at this has no listener object at all, the same property the updater has. The listener
-/// binds 127.0.0.1 and nothing else — the kit makes the interface unconfigurable. Eight tools
+/// binds 127.0.0.1 and nothing else — the kit makes the interface unconfigurable. Nine tools
 /// read. The six that act (`Tools.writeTools`) sit behind the kit's write gate, and `allowWrites` is the
 /// Allow writes switch in Settings ▸ Supervisor, read from defaults on every request so the
 /// switch needs no restart and cannot drift from the listener.

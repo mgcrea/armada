@@ -23,6 +23,7 @@ private final class MovingFleetSource: FleetSource, @unchecked Sendable {
 
   func host(forClaudeSession id: String) async -> FleetSnapshot.Host? { nil }
   func projects() async -> ProjectsSnapshot { FakeFleetSource.projects() }
+  func skills() async -> SkillsSnapshot { FakeFleetSource.skills() }
 }
 
 @Suite("armada_wait")

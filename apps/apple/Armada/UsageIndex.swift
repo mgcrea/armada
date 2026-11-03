@@ -25,6 +25,9 @@ final class UsageIndex {
   /// Nil between passes.
   private(set) var progress: UsageIndexer.Progress?
   private(set) var lastPassAt: Date?
+  /// What each name in the skill ledger is on disk: a skill, a command, a plugin's, or a
+  /// built-in. A name missing here rolls up as a built-in.
+  private(set) var skillSources: [String: SkillSource] = [:]
 
   @ObservationIgnored private var indexer: UsageIndexer?
   @ObservationIgnored private var loop: Task<Void, Never>?

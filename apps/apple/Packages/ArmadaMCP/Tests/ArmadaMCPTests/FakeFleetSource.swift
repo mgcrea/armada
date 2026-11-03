@@ -29,9 +29,11 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
   private let lock = NSLock()
   private var calls = 0
   private var projectCalls = 0
+  private var skillCalls = 0
   let fleet: FleetSnapshot
   var hosts: [String: FleetSnapshot.Host] = [:]
   var projectsFixture: ProjectsSnapshot = FakeFleetSource.projects()
+  var skillsFixture: SkillsSnapshot = FakeFleetSource.skills()
 
   init(_ fleet: FleetSnapshot = FakeFleetSource.fleet()) {
     self.fleet = fleet
@@ -39,6 +41,7 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
 
   var snapshotCalls: Int { lock.withLock { calls } }
   var projectsCalls: Int { lock.withLock { projectCalls } }
+  var skillsCalls: Int { lock.withLock { skillCalls } }
 
   func snapshot() async -> FleetSnapshot {
     lock.withLock { calls += 1 }
@@ -50,6 +53,54 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
   func projects() async -> ProjectsSnapshot {
     lock.withLock { projectCalls += 1 }
     return projectsFixture
+  }
+
+  func skills() async -> SkillsSnapshot {
+    lock.withLock { skillCalls += 1 }
+    return skillsFixture
+  }
+
+  /// The two Claude accounts and the two nested projects, with four names in every window:
+  /// `code-health` split across both projects and both kinds, a plugin's skill, a custom
+  /// command used outside every project, and the built-in `/compact`. Each window holds the
+  /// same uses scaled, 7d by 1, 30d by 2 and all by 3, so a filter on the wrong window shows.
+  static func skills(
+    isEntitled: Bool = true, complete: Bool = true, tallies: [SkillsSnapshot.Tally]? = nil
+  ) -> SkillsSnapshot {
+    func tally(
+      _ projectID: String?, _ accountID: String, _ skill: String, _ source: String,
+      _ window: String, auto: Int = 0, slash: Int = 0, ago: TimeInterval
+    ) -> SkillsSnapshot.Tally {
+      .init(
+        projectID: projectID, accountID: accountID, skill: skill, source: source,
+        window: window, auto: auto, slash: slash, lastUsed: now.addingTimeInterval(-ago))
+    }
+    let personal = "/Users/me/.claude"
+    let work = "/Users/me/.claude-work"
+    let scaled = [("7d", 1), ("30d", 2), ("all", 3)].flatMap { window, scale in
+      [
+        tally(
+          armadaProject, personal, "code-health", "skill", window, auto: 2 * scale,
+          slash: 3 * scale, ago: 3_600),
+        tally(siteProject, work, "code-health", "skill", window, slash: 2 * scale, ago: 2 * 86_400),
+        tally(
+          armadaProject, work, "superpowers:brainstorming", "plugin", window, auto: 3 * scale,
+          ago: 86_400),
+        tally(nil, personal, "distill", "command", window, slash: 4 * scale, ago: 5 * 86_400),
+        tally(armadaProject, personal, "compact", "builtin", window, slash: 9 * scale, ago: 600),
+      ]
+    }
+    return SkillsSnapshot(
+      takenAt: now, isEntitled: isEntitled,
+      index: .init(
+        complete: complete, filesRead: complete ? nil : 412, filesTotal: complete ? nil : 2_290,
+        earliestDay: now.addingTimeInterval(-40 * 86_400)),
+      projects: [
+        .init(id: armadaProject, name: "armada", path: "/Users/me/armada"),
+        .init(id: siteProject, name: "Armada site", path: "/Users/me/armada/web"),
+      ],
+      accounts: [.init(id: personal, name: "Default"), .init(id: work, name: "Work")],
+      tallies: tallies ?? scaled)
   }
 
   static func projects(

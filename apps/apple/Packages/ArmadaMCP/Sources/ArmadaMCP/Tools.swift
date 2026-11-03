@@ -3,12 +3,13 @@ import MCPKit
 
 /// Armada's tools.
 ///
-/// **Eight that read, and six that act: start, close, message and bring forward a session, and
+/// **Nine that read, and six that act: start, close, message and bring forward a session, and
 /// save or delete a Codex schedule.**
 /// Every definition is paid for in the client's context on every connect, so the reads are shaped
 /// around what a
 /// supervisor actually asks — *what needs me*, *what is everything doing*, *what is this one
-/// doing*, *how much plan is left*, *what did it last say*, *where has the work gone* — rather than
+/// doing*, *how much plan is left*, *what did it last say*, *where has the work gone*, *which
+/// skills get used* — rather than
 /// mirroring the app's types.
 ///
 /// Nothing here reaches the network. The six tools in `writeTools` are what an agent can do *to*
@@ -93,7 +94,8 @@ public enum Tools {
   /// the project and the message, or the session and whether it is forced.
   public static let readToolNames = [
     "armada_needs_attention", "armada_get_fleet", "armada_get_session", "armada_get_usage",
-    "armada_get_projects", "armada_read_transcript", "armada_wait", "armada_list_schedules",
+    "armada_get_projects", "armada_get_skill_usage", "armada_read_transcript", "armada_wait",
+    "armada_list_schedules",
   ]
 
   /// The tools behind the write gate, by name, in listing order: what Bastion holds back while
@@ -124,6 +126,7 @@ public enum Tools {
     add(session: &table, source: source)
     add(usage: &table, source: source)
     add(projects: &table, source: source)
+    add(skills: &table, source: source)
     add(transcript: &table, source: source)
     add(wait: &table, source: source, poll: waitPoll)
     add(listSchedules: &table, store: schedules)
@@ -540,7 +543,9 @@ public enum Tools {
       var shown = snapshot.projects
       let single = arguments["project"]?.stringValue != nil
       if single {
-        switch lookupProject(arguments["project"], in: snapshot) {
+        switch lookupProject(
+          arguments["project"], in: snapshot.projects, isEntitled: snapshot.isEntitled)
+        {
         case .refused(let refusal): return refusal
         case .found(let project): shown = [project]
         }
@@ -556,15 +561,7 @@ public enum Tools {
           (single ? "" : "\(plural(shown.count, "project")). ")
           + named.joined(separator: "; ") + more + "."
       }
-      if !snapshot.index.complete {
-        let counted =
-          if let read = snapshot.index.filesRead, let total = snapshot.index.filesTotal {
-            " (\(read) of \(total) files)"
-          } else {
-            ""
-          }
-        lede = "Armada is still reading older transcripts\(counted), so totals are low. " + lede
-      }
+      lede = stillReading(snapshot.index) + lede
 
       return envelope(
         [
@@ -584,14 +581,29 @@ public enum Tools {
     }
   }
 
-  enum ProjectLookup {
-    case found(ProjectsSnapshot.Project)
+  /// "Armada is still reading older transcripts (412 of 2290 files), so totals are low. ", or
+  /// nothing once every transcript has been read.
+  static func stillReading(_ index: ProjectsSnapshot.Index) -> String {
+    guard !index.complete else { return "" }
+    let counted =
+      if let read = index.filesRead, let total = index.filesTotal {
+        " (\(read) of \(total) files)"
+      } else {
+        ""
+      }
+    return "Armada is still reading older transcripts\(counted), so totals are low. "
+  }
+
+  enum ProjectLookup<P> {
+    case found(P)
     case refused(ToolResult)
   }
 
   /// The same contract as `lookup`: an exact id wins outright, otherwise a prefix of at least
   /// `minimumPrefix` characters, the project's path or its exact name — and exactly one match.
-  static func lookupProject(_ raw: JSONValue?, in snapshot: ProjectsSnapshot) -> ProjectLookup {
+  static func lookupProject<P: ProjectNaming>(
+    _ raw: JSONValue?, in projects: [P], isEntitled: Bool
+  ) -> ProjectLookup<P> {
     guard let query = raw?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
       !query.isEmpty
     else {
@@ -600,11 +612,11 @@ public enum Tools {
           "Pass `project`: an id from armada_get_projects, its first \(minimumPrefix) or more "
             + "characters, its path, or its exact name."))
     }
-    if let exact = snapshot.projects.first(where: { $0.id == query }) { return .found(exact) }
+    if let exact = projects.first(where: { $0.id == query }) { return .found(exact) }
 
     let lowered = query.lowercased()
     let path = normalizedPath(query)
-    let matches = snapshot.projects.filter { project in
+    let matches = projects.filter { project in
       (query.count >= minimumPrefix && project.id.lowercased().hasPrefix(lowered))
         || (path.hasPrefix("/") && project.path == path)
         || project.name.lowercased() == lowered
@@ -614,8 +626,8 @@ public enum Tools {
     case 1:
       return .found(matches[0])
     case 0:
-      if !snapshot.isEntitled { return .refused(.failure(notEntitled)) }
-      let known = snapshot.projects.prefix(12).map { "\($0.name) (\($0.path))" }
+      if !isEntitled { return .refused(.failure(notEntitled)) }
+      let known = projects.prefix(12).map { "\($0.name) (\($0.path))" }
       return .refused(
         .failure(
           "No project matches \"\(query)\". "
@@ -722,6 +734,169 @@ public enum Tools {
     }
   }
 
+  // MARK: - armada_get_skill_usage
+
+  /// The windows `armada_get_skill_usage` takes, as the lede words them.
+  static let skillWindows = [
+    "7d": "in the last 7 days", "30d": "in the last 30 days", "all": "over all time",
+  ]
+
+  private static func add(skills table: inout ToolTable, source: any FleetSource) {
+    table.add(
+      MCPTool(
+        name: "armada_get_skill_usage",
+        title: "Skill usage",
+        description:
+          "How often each Agent Skill and custom command was used in Claude Code, read from the "
+          + "transcripts on this Mac: loaded by Claude itself (auto) or typed as /name (slash), "
+          + "with the day each was last used. Filter by project or account, over 7 days, 30 "
+          + "days or all time. Built-in commands such as /compact are left out unless "
+          + "includeBuiltins is set. Codex records no skill use and is not counted.",
+        properties: [
+          "project": [
+            "type": "string",
+            "description": .string(
+              "A project id from armada_get_projects, its first 8 or more characters, its path, "
+                + "or its exact name. Default every project, and uses outside any."),
+          ],
+          "account": [
+            "type": "string",
+            "description": "An account id or name from armada_get_fleet. Default every account.",
+          ],
+          "window": [
+            "type": "string", "enum": ["7d", "30d", "all"], "description": "Default 30d.",
+          ],
+          "includeBuiltins": ["type": "boolean", "description": "Default false."],
+        ],
+        annotations: .readOnly)
+    ) { arguments in
+      let snapshot = await source.skills()
+
+      var window = "30d"
+      if given(arguments["window"]) {
+        guard let raw = arguments["window"]?.stringValue, skillWindows[raw] != nil else {
+          return .failure("Pass window: 7d, 30d or all.")
+        }
+        window = raw
+      }
+
+      var project: SkillsSnapshot.ProjectRef?
+      if given(arguments["project"]) {
+        switch lookupProject(
+          arguments["project"], in: snapshot.projects, isEntitled: snapshot.isEntitled)
+        {
+        case .refused(let refusal): return refusal
+        case .found(let found): project = found
+        }
+      }
+
+      // Every account the id or name matches, as armada_get_usage reads it: two folders the
+      // person named alike are both theirs.
+      var accounts: [SkillsSnapshot.AccountRef]?
+      if given(arguments["account"]) {
+        let raw = arguments["account"]?.stringValue ?? ""
+        let query = raw.lowercased()
+        let matched = snapshot.accounts.filter {
+          $0.id.lowercased() == query || $0.name.lowercased() == query
+        }
+        guard !matched.isEmpty else {
+          if !snapshot.isEntitled { return .failure(notEntitled) }
+          let known = snapshot.accounts.map(\.name)
+          return .failure(
+            "No account matches \"\(raw)\". "
+              + (known.isEmpty
+                ? "Armada knows no Claude Code account on this Mac."
+                : "Accounts: \(known.joined(separator: ", "))."))
+        }
+        accounts = matched
+      }
+      let accountIDs = accounts.map { Set($0.map(\.id)) }
+
+      let includeBuiltins = arguments["includeBuiltins"]?.boolValue ?? false
+      let used = skillUsage(
+        snapshot.tallies.filter {
+          $0.window == window && (project == nil || $0.projectID == project?.id)
+            && (accountIDs?.contains($0.accountID) ?? true)
+        })
+      let builtins = used.filter { $0.source == "builtin" }
+      let shown = includeBuiltins ? used : used.filter { $0.source != "builtin" }
+
+      let span = skillWindows[window] ?? window
+      var lede: String
+      if shown.isEmpty {
+        lede = "No skills used \(span)."
+      } else {
+        let named = shown.prefix(5).map {
+          $0.slash > 0 ? "\($0.skill) \($0.total) (\($0.slash) typed)" : "\($0.skill) \($0.total)"
+        }
+        let more = shown.count > 5 ? "; and \(shown.count - 5) more" : ""
+        lede =
+          "\(plural(shown.count, "skill")) used \(span): " + named.joined(separator: "; ") + more
+          + "."
+      }
+      lede = stillReading(snapshot.index) + lede
+
+      return envelope(
+        object([
+          "window": .string(window),
+          "project": project.map {
+            ["id": .string($0.id), "name": .string($0.name), "path": .string($0.path)]
+          },
+          "accounts": accounts.map {
+            .array($0.map { ["id": .string($0.id), "name": .string($0.name)] })
+          },
+          "skills": .array(
+            shown.map {
+              [
+                "name": .string($0.skill), "source": .string($0.source), "total": .int($0.total),
+                "auto": .int($0.auto), "slash": .int($0.slash),
+                "lastUsed": .string(localDay($0.lastUsed)),
+              ]
+            }),
+          "builtinsHidden": .int(includeBuiltins ? 0 : builtins.count),
+          "index": object([
+            "complete": .bool(snapshot.index.complete),
+            "filesRead": snapshot.index.filesRead.map { .int($0) },
+            "filesTotal": snapshot.index.filesTotal.map { .int($0) },
+            "since": snapshot.index.earliestDay.map { .string(localDay($0)) },
+          ]),
+          "note": "Claude Code only. Codex records no skill use of its own.",
+        ]), takenAt: snapshot.takenAt, isEntitled: snapshot.isEntitled, lede: lede)
+    }
+  }
+
+  /// One name's uses across the projects and accounts a call left in.
+  struct SkillSum {
+    let skill: String
+    let source: String
+    var auto = 0
+    var slash = 0
+    var lastUsed = Date.distantPast
+
+    var total: Int { auto + slash }
+  }
+
+  /// One entry per name, the busiest first.
+  static func skillUsage(_ tallies: [SkillsSnapshot.Tally]) -> [SkillSum] {
+    var sums: [String: SkillSum] = [:]
+    for tally in tallies {
+      var sum = sums[tally.skill] ?? SkillSum(skill: tally.skill, source: tally.source)
+      sum.auto += tally.auto
+      sum.slash += tally.slash
+      sum.lastUsed = max(sum.lastUsed, tally.lastUsed)
+      sums[tally.skill] = sum
+    }
+    return sums.values.sorted {
+      $0.total != $1.total ? $0.total > $1.total : $0.skill < $1.skill
+    }
+  }
+
+  /// `2026-11-03`, the day on this Mac's clock rather than in UTC: the ledger counts uses by
+  /// local day, and a use at 00:30 in Paris is not the day before.
+  static func localDay(_ date: Date) -> String {
+    date.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
+  }
+
   // MARK: - armada_start_session
 
   private static func add(
@@ -793,7 +968,9 @@ public enum Tools {
               + "armada_close_session returned, not a prefix or a name.")
         }
       } else {
-        switch lookupProject(arguments["project"], in: snapshot) {
+        switch lookupProject(
+          arguments["project"], in: snapshot.projects, isEntitled: snapshot.isEntitled)
+        {
         case .refused(let refusal): return refusal
         case .found(let found): projectID = found.id
         }
@@ -1133,7 +1310,9 @@ public enum Tools {
 
       var projectID: String?
       if given(arguments["project"]) {
-        switch lookupProject(arguments["project"], in: projects) {
+        switch lookupProject(
+          arguments["project"], in: projects.projects, isEntitled: projects.isEntitled)
+        {
         case .refused(let refusal): return refusal
         case .found(let project): projectID = project.id
         }
