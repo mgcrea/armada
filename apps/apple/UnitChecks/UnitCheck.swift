@@ -1761,6 +1761,8 @@ struct UnitCheck {
   ) -> [Int: TokenTally] {
     var totals: [Int: TokenTally] = [:]
     var pending = Data()
+    // Skills read alongside, from the same byte, so only tokens are in play here.
+    var skills = SkillCursor(offset: cursor.offset)
     for buffer in buffers {
       pending.append(buffer)
       let used =
@@ -1769,11 +1771,57 @@ struct UnitCheck {
           pending, cursor: &cursor, calendar: utc, claim: { seen.insert($0).inserted },
           sink: { totals[$0.day, default: TokenTally()] += $0.tokens })
         : FileIngest.claude(
-          pending, cursor: &cursor, calendar: utc, claim: { seen.insert($0).inserted },
-          sink: { totals[$0.day, default: TokenTally()] += $0.tokens })
+          pending, base: cursor.offset, cursor: &cursor, skills: &skills, tokens: true,
+          subagent: false, calendar: utc, claim: { seen.insert($0).inserted },
+          sink: { totals[$0.day, default: TokenTally()] += $0.tokens }, skill: { _ in false },
+          reply: { _, _ in })
       pending = Data(pending.dropFirst(used))
     }
     return totals
+  }
+
+  /// A reply `FileIngest.claude` handed back: the uses it answers and what the person said.
+  struct SkillReply: Equatable {
+    let ids: [String]
+    let text: String
+  }
+
+  /// What one run of the two-cursor Claude ingest did.
+  struct SkillRead {
+    var tokens = TokenTally()
+    var sinks = 0
+    var uses: [String] = []
+    var replies: [SkillReply] = []
+  }
+
+  /// Feeds `buffers`, the first starting at file offset `base`, to the Claude ingest with
+  /// both cursors, carrying what it did not consume. `claimed` is what `skill` answers.
+  static func skillIngest(
+    _ buffers: [Data], base: Int64 = 0, cursor: inout IngestCursor, skills: inout SkillCursor,
+    tokens: Bool = true, subagent: Bool = false, claimed: Bool = true
+  ) -> SkillRead {
+    var read = SkillRead()
+    var seen: Set<UInt64> = []
+    var start = base
+    var pending = Data()
+    for buffer in buffers {
+      pending.append(buffer)
+      let used = FileIngest.claude(
+        pending, base: start, cursor: &cursor, skills: &skills, tokens: tokens,
+        subagent: subagent, calendar: utc, claim: { seen.insert($0).inserted },
+        sink: {
+          read.sinks += 1
+          read.tokens += $0.tokens
+        },
+        skill: {
+          read.uses.append($0.event.useID)
+          return claimed
+        },
+        reply: { read.replies.append(SkillReply(ids: $0, text: $1)) })
+      pending = Data(pending.dropFirst(used))
+      start += Int64(used)
+    }
+    return read
   }
 
   static func sum(_ totals: [Int: TokenTally]) -> TokenTally {
@@ -1845,6 +1893,102 @@ struct UnitCheck {
     let forward = both(whole, mirror)
     expectEqual("a message copied into a second transcript counts once", forward.output, 125)
     expectEqual("whichever transcript is read first", both(mirror, whole), forward)
+
+    section("FileIngest, skills")
+    let lines = [
+      claudeLine(id: "msg_a"),
+      skillToolLine(ids: ["toolu_1"], skills: ["code-health"]),
+      claudeLine(id: "msg_b", output: 70),
+      skillToolLine(ids: ["toolu_2"], skills: ["simplify"], uuid: "e2"),
+    ]
+    let mixed = ndjson(lines)
+    var tokenSeen: Set<UInt64> = []
+    var tokenCursor = IngestCursor()
+    let tokensAlone = sum(ingest([mixed], seen: &tokenSeen, cursor: &tokenCursor))
+
+    var freshCursor = IngestCursor()
+    var freshSkills = SkillCursor()
+    let fresh = skillIngest([mixed], cursor: &freshCursor, skills: &freshSkills)
+    check(
+      "a fresh read counts the same tokens as before",
+      fresh.tokens == tokensAlone
+        && fresh.tokens == TokenTally(fresh: 4, cacheWrite: 200, cacheRead: 2_000, output: 120))
+    expectEqual("and hands over each use once", fresh.uses, ["a:toolu_1", "a:toolu_2"])
+    check(
+      "both cursors end after the last whole line",
+      freshCursor.offset == Int64(mixed.count) && freshSkills.offset == Int64(mixed.count))
+
+    var backfillCursor = IngestCursor()
+    backfillCursor.offset = Int64(mixed.count)
+    var backfillSkills = SkillCursor()
+    let backfill = skillIngest([mixed], cursor: &backfillCursor, skills: &backfillSkills)
+    expectEqual("a backfill counts no tokens", backfill.sinks, 0)
+    expectEqual("but every use", backfill.uses, ["a:toolu_1", "a:toolu_2"])
+    expectEqual(
+      "and leaves the token cursor where it was", backfillCursor.offset, Int64(mixed.count))
+    expectEqual("the skill cursor catches up", backfillSkills.offset, Int64(mixed.count))
+    expectEqual("the folder is learnt on a backfill too", backfillCursor.cwd, "/work/armada")
+
+    var overlapCursor = IngestCursor()
+    overlapCursor.offset = Int64(ndjson(Array(lines.prefix(1))).count)
+    var overlapSkills = SkillCursor()
+    let overlap = skillIngest([mixed], cursor: &overlapCursor, skills: &overlapSkills)
+    expectEqual(
+      "tokens count only from the token cursor on", overlap.tokens,
+      TokenTally(fresh: 2, cacheWrite: 100, cacheRead: 1_000, output: 70))
+    expectEqual("skills from their own", overlap.uses, ["a:toolu_1", "a:toolu_2"])
+
+    var archiveCursor = IngestCursor()
+    var archiveSkills = SkillCursor()
+    let archive = skillIngest(
+      [mixed], cursor: &archiveCursor, skills: &archiveSkills, tokens: false)
+    expectEqual("with tokens off nothing is sunk", archive.sinks, 0)
+    check(
+      "and both cursors still advance",
+      archiveCursor.offset == Int64(mixed.count) && archiveSkills.offset == Int64(mixed.count))
+    expectEqual("the folder is still learnt", archiveCursor.cwd, "/work/armada")
+
+    let use = ndjson([skillToolLine(ids: ["toolu_1"], skills: ["code-health"])])
+    let pushback = ndjson([
+      humanLine(text: "loading skill", uuid: "m1").replacingOccurrences(
+        of: #""type":"user","#, with: #""type":"user","isMeta":true,"#),
+      humanLine(text: "no"),
+    ])
+    var replyCursor = IngestCursor()
+    var replySkills = SkillCursor()
+    let replied = skillIngest([use, pushback], cursor: &replyCursor, skills: &replySkills)
+    expectEqual(
+      "the person's next message is the use's reply, past a meta line", replied.replies,
+      [SkillReply(ids: ["a:toolu_1"], text: "no")])
+    expectEqual("and nothing waits after it", replySkills.awaiting, [])
+
+    var subagentCursor = IngestCursor()
+    var subagentSkills = SkillCursor()
+    let subagentRead = skillIngest(
+      [use, pushback], cursor: &subagentCursor, skills: &subagentSkills, subagent: true)
+    expectEqual("a subagent's use is counted", subagentRead.uses, ["a:toolu_1"])
+    expectEqual("but gets no reply", subagentRead.replies, [])
+
+    var unclaimedCursor = IngestCursor()
+    var unclaimedSkills = SkillCursor()
+    let unclaimed = skillIngest(
+      [use], cursor: &unclaimedCursor, skills: &unclaimedSkills, claimed: false)
+    check(
+      "a use counted before never waits for a reply",
+      unclaimed.uses == ["a:toolu_1"] && unclaimedSkills.awaiting.isEmpty)
+
+    let head = ndjson([claudeLine(id: "msg_a")])
+    let writing = skillToolLine(ids: ["toolu_9"], skills: ["code-health"])
+    var writingCursor = IngestCursor()
+    var writingSkills = SkillCursor()
+    let unfinished = skillIngest(
+      [head + Data(writing.utf8)], cursor: &writingCursor, skills: &writingSkills)
+    expectEqual("a Skill line still being written is not counted", unfinished.uses, [])
+    expectEqual("and the skill cursor stops before it", writingSkills.offset, Int64(head.count))
+    let finished = skillIngest(
+      [ndjson([writing])], base: writingSkills.offset, cursor: &writingCursor,
+      skills: &writingSkills)
+    expectEqual("once finished it counts once", finished.uses, ["a:toolu_9"])
 
     section("FileIngest, Codex")
     let meta =

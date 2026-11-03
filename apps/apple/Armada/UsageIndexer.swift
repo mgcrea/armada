@@ -375,6 +375,8 @@ actor UsageIndexer {
     try handle.seek(toOffset: UInt64(cursor.offset))
     var pending = Data()
     var sinceCommit: Int64 = 0
+    // Skills start where tokens do, so this reads exactly what it did before.
+    var skills = SkillCursor(offset: cursor.offset)
 
     while true {
       if Task.isCancelled { throw CancellationError() }
@@ -384,7 +386,9 @@ actor UsageIndexer {
         switch item.source.vendor {
         case .claude:
           FileIngest.claude(
-            pending, cursor: &cursor, calendar: calendar, claim: claim, sink: sink)
+            pending, base: cursor.offset, cursor: &cursor, skills: &skills, tokens: true,
+            subagent: item.parentSession != nil, calendar: calendar, claim: claim, sink: sink,
+            skill: { _ in false }, reply: { _, _ in })
         case .codex:
           FileIngest.codex(pending, cursor: &cursor, calendar: calendar, claim: claim, sink: sink)
         }
