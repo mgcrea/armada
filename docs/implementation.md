@@ -36,7 +36,7 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   (`ClaudeTrust`), so the session opens without the trust dialog; it is the one write to a
   vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
   builds in the background over every transcript and rollout (`usage-index.sqlite`).
-- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with eight read
+- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with nine read
   tools (one, `armada_wait`, a long poll) and, behind its Allow writes switch, `armada_start_session`, `armada_close_session`, `armada_send_message`, `armada_focus_session`, `armada_save_schedule` and `armada_delete_schedule`; and
   a Start Supervisor Session button that opens an ordinary Claude Code session with that
   server attached, its read tools pre-allowed (never the start or close tool), and a brief. The session is the chat: ask it
@@ -126,7 +126,7 @@ transcripts, separate rate limits.
 | `SessionClosing` / `SessionClosePolicy` | Close Session in the details, the row menus and the popover: asks before closing a session that is mid-turn, sends it through `SessionCloserBridge` as a person, and holds the refusal for whichever pane is up; the policy is the one difference from an agent's close, no throttle, and `make unit` checks it |
 | `SessionFocuser` (package) / `SessionFocuserBridge` | `armada_focus_session`'s door: finds the session's host on the main actor, runs the rows' `FocusSession.focus`, and falls back to LaunchServices when Armada, not frontmost, has its activation declined; one focus per two seconds |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
-| `ArmadaMCP` (package) | the fourteen tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, the transcript condenser; `make -C apps/apple test` |
+| `ArmadaMCP` (package) | the fifteen tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
@@ -460,7 +460,7 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
        "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
-  | jq -r '.result.tools[].name'                          # the armada_* tools: eight, fourteen with Allow writes on
+  | jq -r '.result.tools[].name'                          # the armada_* tools: nine, fifteen with Allow writes on
 
 # A tools/call needs the tool's name in an Mcp-Name header too, or the listener answers -32020.
 # Same headers as above plus -H 'Mcp-Name: armada_wait', and in the body

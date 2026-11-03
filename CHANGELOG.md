@@ -8,6 +8,19 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.11.1` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- Skill usage: Armada counts each Agent Skill and custom command used in Claude Code, whether
+  Claude loaded it or you typed it, per project and account. See it in the project pane or ask an
+  agent through `armada_get_skill_usage`. History goes back as far as the transcripts on this Mac,
+  and the transcript archive when one is set.
+
+### Internal
+
+- Ledger schema 2, with skill uses read behind a second per-file cursor.
+
 ## [1.11.1] - 2026-10-27
 
 **The right pane name on macOS 27, and a matching icon.** On macOS 27, Armada now sends you to

@@ -176,6 +176,49 @@ Measured in a pty on the default account, for `armada_start_session` and `armada
   start time meanwhile. A check for "still running" has to look at `p_stat` as well
   (`SessionCloserBridge.isSame`).
 
+## Skill uses
+
+Surveyed 2026-11-03 over every transcript on this Mac: 5,277 files, 9.5 GB, two accounts,
+2026-09-02 onwards, subagents included. A skill or custom command is used in one of two ways,
+and the transcript writes each differently. The two never overlap: typing `/name` writes no
+`Skill` tool_use. `ClaudeSkillLine` reads both.
+
+**Auto: Claude loaded it.** An `assistant` entry whose `message.content[]` holds a `tool_use`
+block with `name == "Skill"`:
+
+- the skill is `input.skill`, which may carry a plugin prefix (`superpowers:brainstorming`);
+- its arguments are `input.args`;
+- one line can hold two such blocks, and each is a use;
+- the `tool_use` id is the key, so a copy of the session in another folder counts once.
+
+**Slash: the person typed it.** A `user` entry whose `message.content` is a string whose
+first tag, after any whitespace, is one of the command tags:
+
+- The name is in `<command-name>/…</command-name>` and the arguments in `<command-args>`.
+  The entry's `uuid` is the key.
+- **Both tag orders occur.** In the survey, 1,619 lines open with `<command-message>`, which is
+  what skills and newer commands write. 274 open with `<command-name>`: `/compact` 252, `/model`
+  10, and `/commit` 9 and `/commit-task` 3 from an older Claude Code.
+- **Mid-text tags are not uses.** 5 lines carry `<command-name>` further in, all from workflow
+  harnesses relaying a request that quoted one. Only the opening tag counts.
+
+**Only `user` and `assistant` entries count.** `api-request-blob`, `api-request-shape`,
+`attachment` and `tools-used` entries repeat the same text, since they copy what was sent, and
+would count every use again.
+
+The survey's counts for five skills, deduped:
+
+| Skill | Total | Auto | Slash |
+|---|---:|---:|---:|
+| project-mail-archive | 304 | 7 | 297 |
+| superpowers:brainstorming | 237 | 236 | 1 |
+| code-health | 122 | 17 | 105 |
+| reply-as-olivier | 81 | 80 | 1 |
+| push-testflight-build | 95 | 22 | 73 |
+
+Which names are skills and which are built-ins like `/compact` is not in the transcript. Armada
+settles it from the config folder and the project's `.claude/` (`SkillStats`).
+
 ## Titles
 
 The title VS Code displays is an `ai-title` entry:

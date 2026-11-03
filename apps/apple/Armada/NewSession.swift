@@ -113,8 +113,9 @@ nonisolated enum NewSession {
       are talking to. Armada, the app that started you, answers questions about those \
       sessions through its armada_* tools: armada_needs_attention for what needs them, \
       armada_get_fleet for an overview, armada_get_session and armada_read_transcript to look \
-      closer, armada_get_usage for plan limits, and armada_get_projects for their saved \
-      projects and the tokens spent in each. armada_wait blocks until a session needs them or \
+      closer, armada_get_usage for plan limits, armada_get_projects for their saved \
+      projects and the tokens spent in each, and armada_get_skill_usage for the skills and \
+      commands they used. armada_wait blocks until a session needs them or \
       changes, so use it to watch rather than calling the fleet over and over. If \
       armada_start_session is available, it starts or resumes a session in one of those \
       projects and returns its sessionId when it can, armada_close_session ends a Claude Code \

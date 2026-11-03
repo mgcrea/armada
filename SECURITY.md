@@ -35,7 +35,7 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and eight of its fourteen tools are read-only. The other six are listed and callable only while
+  and nine of its fifteen tools are read-only. The other six are listed and callable only while
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
   opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
   that nothing has open, and that session asks you for every permission as usual.
@@ -132,7 +132,7 @@ attacker-influenced text meets something that acts on it:
   removed before the agent starts, and passed as one double-quoted word, and a message that
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves eight read-only tools on `127.0.0.1` to
+- **The MCP endpoint.** Switched on, Armada serves nine read-only tools on `127.0.0.1` to
   whoever presents the token, and six that start, close, bring forward and message a session,
   or save and delete a Codex schedule, only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow

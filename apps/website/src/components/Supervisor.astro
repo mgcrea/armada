@@ -39,6 +39,10 @@ const TOOLS = [
     body: "Each saved project's default agent and account, its live sessions, and the tokens spent in it over 7 days, 30 days and all time.",
   },
   {
+    title: "Skill usage",
+    body: "How often each Agent Skill and custom command was used in Claude Code, loaded by Claude or typed as /name, per project or account. Codex records none.",
+  },
+  {
     title: "Wait for a change",
     body: "Holds the call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling.",
   },
@@ -77,7 +81,7 @@ const WRITE_TOOLS = [
 ] as const;
 
 const GROUPS = [
-  { heading: "Eight tools, all read-only", tools: TOOLS },
+  { heading: "Nine tools, all read-only", tools: TOOLS },
   { heading: "Six more, only with Allow writes on", tools: WRITE_TOOLS },
 ] as const;
 ---

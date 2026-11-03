@@ -128,7 +128,7 @@ attached. That session is the chat: ask it which sessions need you, what one of 
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
-the Keychain. Eight tools read, among them `armada_wait`, which holds a call open until a session
+the Keychain. Nine tools read, among them `armada_wait`, which holds a call open until a session
 needs you, and `armada_list_schedules`, which lists every Codex automation and Claude desktop
 scheduled task on the Mac. Six more exist only while you turn on Allow writes: `armada_start_session`
 opens a fresh session in one of your saved projects, optionally with an opening message, or
@@ -235,23 +235,24 @@ empty usage strip, and neither crashes.
 
 Built and running:
 
-|                       |                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| **Sessions**          | live Claude Code sessions per config folder, with state read from the registry                    |
-| **Context**           | occupancy, the opening load, a growth series, a projection, and the last compaction               |
-| **Usage**             | 5-hour and 7-day windows per account, live through `get_usage`, with a badge saying what answered |
-| **Forecast**          | day-weighted pace against each window, declining any reading too old to be sound                  |
-| **Focus**             | a session row back to the application hosting it, and its own window where Accessibility allows   |
-| **Menu bar**          | accessory app, per-account popover, and a glyph that rings when a session wants attention         |
-| **New sessions**      | start `claude` or `codex` in a chosen folder on a chosen account, via a terminal                  |
-| **Fork**              | open a copy of a session from where it stands, through each vendor's own fork flag                |
-| **Mouse bindings**    | middle and extra buttons cycle the session list or send a keystroke, via an event tap             |
-| **Projects**          | saved folders across accounts, one-click sessions, and the tokens spent in each                   |
-| **Supervisor**        | an MCP endpoint on 127.0.0.1 that reads, and a Claude Code session started with it attached       |
-| **Voice**             | a global shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs           |
-| **Codex**             | sessions, plan limits and context per Codex home, as a spike                                      |
-| **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                              |
-| **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`     |
+|                       |                                                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Sessions**          | live Claude Code sessions per config folder, with state read from the registry                                             |
+| **Context**           | occupancy, the opening load, a growth series, a projection, and the last compaction                                        |
+| **Usage**             | 5-hour and 7-day windows per account, live through `get_usage`, with a badge saying what answered                          |
+| **Forecast**          | day-weighted pace against each window, declining any reading too old to be sound                                           |
+| **Focus**             | a session row back to the application hosting it, and its own window where Accessibility allows                            |
+| **Menu bar**          | accessory app, per-account popover, and a glyph that rings when a session wants attention                                  |
+| **New sessions**      | start `claude` or `codex` in a chosen folder on a chosen account, via a terminal                                           |
+| **Fork**              | open a copy of a session from where it stands, through each vendor's own fork flag                                         |
+| **Mouse bindings**    | middle and extra buttons cycle the session list or send a keystroke, via an event tap                                      |
+| **Projects**          | saved folders across accounts, one-click sessions, and the tokens spent in each                                            |
+| **Skills**            | each skill and command used in Claude Code, typed or loaded, per project, in the pane and through `armada_get_skill_usage` |
+| **Supervisor**        | an MCP endpoint on 127.0.0.1 that reads, and a Claude Code session started with it attached                                |
+| **Voice**             | a global shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs                                    |
+| **Codex**             | sessions, plan limits and context per Codex home, as a spike                                                               |
+| **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                                                       |
+| **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`                              |
 
 Deliberately not built: messaging, hooks, `hubctl`, the Unix socket, the messaging MCP surface, and
 anything that writes to a vendor's config beyond one flag. **`~/.claude*` and `~/.codex` are opened
