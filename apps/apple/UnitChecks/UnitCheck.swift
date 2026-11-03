@@ -1967,9 +1967,9 @@ struct UnitCheck {
         typed.replacingOccurrences(of: #""type":"user","#, with: #""type":"user","isMeta":true,"#),
         wantHuman: true), [])
     expectEqual(
-      "nor is a tool result",
+      "nor is a tool result, even with text beside it",
       parse(
-        #"{"type":"user","uuid":"h2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ok"}]}}"#,
+        #"{"type":"user","uuid":"h2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ok"},{"type":"text","text":"looks fine"}]}}"#,
         wantHuman: true), [])
     expectEqual(
       "nor a local command's output",
@@ -2000,10 +2000,18 @@ struct UnitCheck {
       parse(humanLine(text: "<task-notification>\n<status>completed</status>"), wantHuman: true),
       [])
     expectEqual(
-      "nor the file the editor has open",
+      "the editor's open-file block is dropped and the person's words beside it kept",
       parse(
         #"{"type":"user","uuid":"h4","message":{"role":"user","content":[{"type":"text","text":"<ide_opened_file>The user opened a file</ide_opened_file>"},{"type":"text","text":"fix it"}]}}"#,
+        wantHuman: true), [.human("fix it")])
+    expectEqual(
+      "a list of nothing but injected tags is not typed",
+      parse(
+        #"{"type":"user","uuid":"h5","message":{"role":"user","content":[{"type":"text","text":"<ide_opened_file>a file</ide_opened_file>"},{"type":"text","text":" <system-reminder>x</system-reminder>"}]}}"#,
         wantHuman: true), [])
+    expectEqual(
+      "a < that opens no tag is the person's",
+      parse(humanLine(text: "<3 thanks"), wantHuman: true), [.human("<3 thanks")])
     expectEqual(
       "pressing Esc is the person pushing back",
       parse(humanLine(text: "[Request interrupted by user]"), wantHuman: true),

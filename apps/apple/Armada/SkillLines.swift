@@ -36,18 +36,19 @@ nonisolated struct SkillUseEvent: Equatable, Sendable {
 /// an `api-request-blob` or `attachment` entry, which copies what was sent.
 ///
 /// **A typed message is the person's words, not what Claude Code put in their turn.** Claude
-/// Code writes a lot of its own text as user entries, and none of it is a reply to a skill.
-/// In 400 transcripts sampled on 2026-11-03, 4,181 user entries looked typed and only 2,466
-/// were: the rest were 1,433 background-task notifications, 116 compaction summaries, 28
-/// editor context blocks and some messages sent by other sessions. So a message is refused
-/// when any of these holds:
+/// Code writes a lot of its own text as user entries, and none of it is a reply to a skill
+/// (background-task notifications far outnumber typed messages in a busy session). So a
+/// message is refused when any of these holds:
 /// - it is `isMeta` or `isCompactSummary`;
 /// - it answers a tool (`tool_result`);
 /// - `origin.kind` or `turnOrigin` is present and is not `human`. That is how a task
 ///   notification, a coordinator, or a message from another session is marked;
-/// - its text opens with `<`. Every tag Claude Code injects starts that way: `<command-…>`,
-///   `<local-command-…>`, `<task-notification>`, `<ide_opened_file>`, `<system-reminder>`.
-///   This rule catches the ones that older versions wrote without an `origin`.
+/// - nothing is left once every text block that opens with a tag is dropped. Every tag
+///   Claude Code injects opens a block: `<command-…>`, `<local-command-…>`,
+///   `<task-notification>`, `<system-reminder>`, and VS Code's `<ide_opened_file>`. That last
+///   one shares an entry with the person's own block, which is why the rule works one block
+///   at a time. The rule also catches the tags older versions wrote without an `origin`. A
+///   `<` that is not followed by a letter, `/` or `!`, as in `<3`, opens no tag.
 ///
 /// `[Request interrupted by user]` stays: it is the person pressing Esc, the plainest
 /// pushback a skill gets.
@@ -144,20 +145,29 @@ nonisolated enum ClaudeSkillLine {
   }
 
   /// The text the person typed: a plain string, or the text blocks of a list that holds
-  /// no tool result. Nil when it opens with a tag Claude Code injected.
+  /// no tool result, with every block that opens with an injected tag left out. Nil when
+  /// nothing is left.
   private static func typedText(in message: [String: Any]) -> String? {
-    let text: String
+    let texts: [String]
     if let string = message["content"] as? String {
-      text = string
+      texts = [string]
     } else if let blocks = message["content"] as? [[String: Any]],
       !blocks.contains(where: { $0["type"] as? String == "tool_result" })
     {
-      text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-        .joined(separator: "\n")
+      texts = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
     } else {
       return nil
     }
-    return text.drop(while: \.isWhitespace).hasPrefix("<") ? nil : text
+    let typed = texts.filter { !opensWithTag($0) }
+    return typed.isEmpty ? nil : typed.joined(separator: "\n")
+  }
+
+  /// Whether `text`, after leading whitespace, opens with `<` and then a letter, `/` or `!`,
+  /// the way a tag does. `<3` or `<= 5` is something a person typed.
+  private static func opensWithTag(_ text: String) -> Bool {
+    let opening = text.drop(while: \.isWhitespace)
+    guard opening.first == "<", let next = opening.dropFirst().first else { return false }
+    return next.isLetter || next == "/" || next == "!"
   }
 
   /// `name` with whitespace and a leading `/` removed, or nil when nothing is left.
