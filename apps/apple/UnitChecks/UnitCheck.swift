@@ -1979,6 +1979,35 @@ struct UnitCheck {
     expectEqual(
       "nor a slash command", parse(slashLine(name: "compact", order: .nameFirst), wantHuman: true)
         .filter { if case .human = $0 { true } else { false } }, [])
+    func flagged(_ flag: String) -> String {
+      typed.replacingOccurrences(of: #""type":"user","#, with: #""type":"user",\#(flag),"#)
+    }
+    expectEqual(
+      "nor a compaction summary",
+      parse(flagged(#""isCompactSummary":true"#), wantHuman: true), [])
+    expectEqual(
+      "nor a turn whose origin is a task notification",
+      parse(flagged(#""origin":{"kind":"task-notification"}"#), wantHuman: true), [])
+    expectEqual(
+      "nor one another session sent",
+      parse(flagged(#""turnOrigin":"peer""#), wantHuman: true), [])
+    expectEqual(
+      "but one marked human is",
+      parse(flagged(#""origin":{"kind":"human"},"turnOrigin":"human""#), wantHuman: true),
+      [.human("no, that's wrong")])
+    expectEqual(
+      "a task notification is not typed, even without an origin",
+      parse(humanLine(text: "<task-notification>\n<status>completed</status>"), wantHuman: true),
+      [])
+    expectEqual(
+      "nor the file the editor has open",
+      parse(
+        #"{"type":"user","uuid":"h4","message":{"role":"user","content":[{"type":"text","text":"<ide_opened_file>The user opened a file</ide_opened_file>"},{"type":"text","text":"fix it"}]}}"#,
+        wantHuman: true), [])
+    expectEqual(
+      "pressing Esc is the person pushing back",
+      parse(humanLine(text: "[Request interrupted by user]"), wantHuman: true),
+      [.human("[Request interrupted by user]")])
     expectEqual(
       "a message sent as text blocks is read from them",
       parse(

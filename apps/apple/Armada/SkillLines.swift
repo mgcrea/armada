@@ -35,9 +35,22 @@ nonisolated struct SkillUseEvent: Equatable, Sendable {
 /// request, a person pasting a transcript) is not a use, and neither is the same text in
 /// an `api-request-blob` or `attachment` entry, which copies what was sent.
 ///
-/// **A typed message is the person's words, not what Claude Code put in their turn.** Meta
-/// entries, tool results, and command tags and output are all written as user entries, and
-/// none of them is a reply to a skill.
+/// **A typed message is the person's words, not what Claude Code put in their turn.** Claude
+/// Code writes a lot of its own text as user entries, and none of it is a reply to a skill.
+/// In 400 transcripts sampled on 2026-11-03, 4,181 user entries looked typed and only 2,466
+/// were: the rest were 1,433 background-task notifications, 116 compaction summaries, 28
+/// editor context blocks and some messages sent by other sessions. So a message is refused
+/// when any of these holds:
+/// - it is `isMeta` or `isCompactSummary`;
+/// - it answers a tool (`tool_result`);
+/// - `origin.kind` or `turnOrigin` is present and is not `human`. That is how a task
+///   notification, a coordinator, or a message from another session is marked;
+/// - its text opens with `<`. Every tag Claude Code injects starts that way: `<command-…>`,
+///   `<local-command-…>`, `<task-notification>`, `<ide_opened_file>`, `<system-reminder>`.
+///   This rule catches the ones that older versions wrote without an `origin`.
+///
+/// `[Request interrupted by user]` stays: it is the person pressing Esc, the plainest
+/// pushback a skill gets.
 nonisolated enum ClaudeSkillLine {
   enum Event: Equatable, Sendable {
     case use(SkillUseEvent)
@@ -65,8 +78,7 @@ nonisolated enum ClaudeSkillLine {
       return toolUses(in: message, of: object).map(Event.use)
     case "user":
       if let use = slashUse(in: message, of: object) { return [.use(use)] }
-      if wantHuman, object["isMeta"] as? Bool != true,
-        let text = typedText(in: message).flatMap(excerpt)
+      if wantHuman, isTyped(object), let text = typedText(in: message).flatMap(excerpt)
       {
         return [.human(text)]
       }
@@ -118,8 +130,21 @@ nonisolated enum ClaudeSkillLine {
       args: tag("command-args", in: content).flatMap(excerpt))
   }
 
+  /// Whether the entry's flags leave it as something the person typed.
+  private static func isTyped(_ object: [String: Any]) -> Bool {
+    guard object["isMeta"] as? Bool != true, object["isCompactSummary"] as? Bool != true
+    else { return false }
+    if let origin = object["origin"] as? [String: Any], let kind = origin["kind"] as? String,
+      kind != "human"
+    {
+      return false
+    }
+    if let turnOrigin = object["turnOrigin"] as? String, turnOrigin != "human" { return false }
+    return true
+  }
+
   /// The text the person typed: a plain string, or the text blocks of a list that holds
-  /// no tool result. Nil for command tags and a local command's output.
+  /// no tool result. Nil when it opens with a tag Claude Code injected.
   private static func typedText(in message: [String: Any]) -> String? {
     let text: String
     if let string = message["content"] as? String {
@@ -132,11 +157,7 @@ nonisolated enum ClaudeSkillLine {
     } else {
       return nil
     }
-    let opening = text.drop(while: \.isWhitespace)
-    guard !opening.hasPrefix("<command-"), !opening.hasPrefix("<local-command-") else {
-      return nil
-    }
-    return text
+    return text.drop(while: \.isWhitespace).hasPrefix("<") ? nil : text
   }
 
   /// `name` with whitespace and a leading `/` removed, or nil when nothing is left.
