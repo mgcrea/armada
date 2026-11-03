@@ -76,6 +76,11 @@ final class MainWindowRoute {
     open(.projects, session: id)
   }
 
+  /// Show the Skills pane with the skill `name` selected, parked as a project is.
+  func open(skill name: String) {
+    open(.skills, session: name)
+  }
+
   /// The session this route wants selected in `item`, if nobody has taken it yet.
   ///
   /// One-shot. A pane is rebuilt every time the sidebar moves to it, and a click

@@ -12,10 +12,10 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ### Added
 
-- Skill usage: Armada counts each Agent Skill and custom command used in Claude Code, whether
-  Claude loaded it or you typed it, per project and account. See it in the project pane or ask an
-  agent through `armada_get_skill_usage`. History goes back as far as the transcripts on this Mac,
-  and the transcript archive when one is set.
+- Skill usage: Armada counts each Agent Skill and custom command used in Claude Code, whether Claude
+  loaded it or you typed it, per project and account. See it in the Skills pane, across every
+  project, or in each project's pane, or ask an agent through `armada_get_skill_usage`. History goes
+  back as far as the transcripts on this Mac, and the transcript archive when one is set.
 
 ### Internal
 

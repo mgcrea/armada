@@ -19,6 +19,9 @@ enum SidebarItem: Hashable {
   /// Every saved project, in one pane of its own. The project selected in it is that
   /// pane's to keep, as a session is an account pane's.
   case projects
+  /// Every skill, custom command and plugin skill used on this Mac, across every project. The
+  /// skill selected in it is that pane's to keep, as a project is the Projects pane's.
+  case skills
   /// Every scheduled task on this Mac, read-only. Listed while there is a Codex home or the
   /// Claude app has scheduled tasks.
   case schedules
@@ -32,6 +35,7 @@ enum SidebarItem: Hashable {
 
   private static let usageToken = "usage"
   private static let projectsToken = "projects"
+  private static let skillsToken = "skills"
   private static let schedulesToken = "schedules"
   private static let voiceToken = "voice"
   private static let codexPrefix = "codex:"
@@ -44,6 +48,7 @@ enum SidebarItem: Hashable {
     case .codex(let id): Self.codexPrefix + id
     case .grok(let id): Self.grokPrefix + id
     case .projects: Self.projectsToken
+    case .skills: Self.skillsToken
     case .schedules: Self.schedulesToken
     case .voice: Self.voiceToken
     }
@@ -54,6 +59,8 @@ enum SidebarItem: Hashable {
       self = .usage
     } else if stored == Self.projectsToken {
       self = .projects
+    } else if stored == Self.skillsToken {
+      self = .skills
     } else if stored == Self.schedulesToken {
       self = .schedules
     } else if stored == Self.voiceToken {
@@ -75,6 +82,7 @@ struct MainWindowView: View {
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
   @State private var projects = ProjectStore.shared
+  @State private var index = UsageIndex.shared
   @State private var schedules = SchedulesModel.shared
   @State private var monitor = EntitlementMonitor.shared
   /// The agent an account is being added for, while the sheet is up.
@@ -143,6 +151,12 @@ struct MainWindowView: View {
           Label("Projects", systemImage: "folder")
             .badge(projects.projects.count)
             .tag(SidebarItem.projects)
+          // No badge: a count of skills says nothing to act on, and the totals beside each
+          // one are the pane's.
+          if hasSkills {
+            Label("Skills", systemImage: "wand.and.sparkles")
+              .tag(SidebarItem.skills)
+          }
           if showsSchedules {
             Label("Schedules", systemImage: "calendar.badge.clock")
               .badge(schedules.activeCount)
@@ -224,6 +238,8 @@ struct MainWindowView: View {
           }
         case .projects:
           ProjectsPaneView()
+        case .skills:
+          SkillsPaneView()
         case .schedules:
           SchedulesPaneView()
         case .voice:
@@ -279,6 +295,13 @@ struct MainWindowView: View {
   /// its tasks alone earn the row only once they are known to exist.
   private var showsSchedules: Bool { !codex.isEmpty || schedules.hasClaudeTasks }
 
+  /// Whether the ledger holds a skill use, built-ins included: the Skills row's condition.
+  ///
+  /// **Empty until the saved ledger loads at launch**, so a window opened that early on Skills
+  /// shows the first account instead. `resolved` never writes the stored selection, so it
+  /// comes back to Skills once the ledger is in.
+  private var hasSkills: Bool { !index.ledger.skills.isEmpty }
+
   /// The stored selection if it still resolves, otherwise the first account.
   ///
   /// An account that has gone away falls back rather than showing an empty pane;
@@ -290,6 +313,7 @@ struct MainWindowView: View {
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
     case .grok(let id) where grok.account(id: id) != nil: .grok(id)
     case .projects: .projects
+    case .skills where hasSkills: .skills
     case .schedules where showsSchedules: .schedules
     case .voice where voiceEnabled: .voice
     // A Codex home is a real fallback, not a consolation prize: someone may run

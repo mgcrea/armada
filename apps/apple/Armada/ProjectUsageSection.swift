@@ -11,8 +11,6 @@ struct ProjectUsageSection: View {
 
   @State private var index = UsageIndex.shared
   @State private var store = ProjectStore.shared
-  @State private var accounts = Accounts.shared
-  @State private var codex = CodexAccounts.shared
   @AppStorage(StatsWindow.defaultsKey) private var storedWindow = StatsWindow.week.rawValue
 
   private var window: StatsWindow { StatsWindow(rawValue: storedWindow) ?? .week }
@@ -76,7 +74,7 @@ struct ProjectUsageSection: View {
 
     if let usage, !tokens.isZero {
       slices("By model", usage.byModel) { $0.key }
-      slices("By account", usage.byAccount) { accountName($0) }
+      slices("By account", usage.byAccount) { usageAccountName($0.key, vendor: $0.vendor) }
       if usage.byFolder.count > 1 {
         slices("Folders", Array(usage.byFolder.prefix(8))) {
           $0.key.isEmpty ? "This folder" : $0.key
@@ -88,16 +86,25 @@ struct ProjectUsageSection: View {
     if !skills.isEmpty {
       Section {
         ForEach(skills) { skill in
-          LabeledContent(
-            skill.id,
-            value: skill.slash > 0
-              ? "\(skill.total.formatted()) (\(skill.slash.formatted()) typed)"
-              : skill.total.formatted())
+          // Every project's uses of it, with its recent ones, are the Skills pane's.
+          Button {
+            MainWindowRoute.shared.open(skill: skill.id)
+          } label: {
+            LabeledContent(
+              skill.id,
+              value: skill.slash > 0
+                ? "\(skill.total.formatted()) (\(skill.slash.formatted()) typed)"
+                : skill.total.formatted()
+            )
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .help("Show \(skill.id) in Skills")
         }
       } header: {
         Text("Skills")
       } footer: {
-        Text(skillsFooter)
+        Text(index.ledger.skillsFooter)
       }
     }
   }
@@ -139,23 +146,6 @@ struct ProjectUsageSection: View {
     }
   }
 
-  private func accountName(_ slice: ProjectUsage.Slice) -> String {
-    let vendor = slice.vendor?.name ?? ""
-    if let account = accounts.account(id: slice.key) {
-      return "\(vendor) on \(account.displayName)"
-    }
-    if let home = codex.account(id: slice.key) { return "\(vendor) on \(home.displayName)" }
-    let path = (slice.key as NSString).abbreviatingWithTildeInPath
-    return "\(vendor) on \(path), not on this Mac"
-  }
-
-  private var skillsFooter: String {
-    let text =
-      "Claude Code only. Typed means started with /name; the rest Claude loaded on its own."
-    return index.ledger.skillsPassDone
-      ? text : text + " Still reading older transcripts for skills, so counts are low."
-  }
-
   private var footer: String {
     var text =
       "Read from the transcripts on this Mac, each response counted once. Claude Code removes transcripts after 30 days by default; Armada keeps what it has read."
@@ -163,5 +153,33 @@ struct ProjectUsageSection: View {
       text += " History starts \(date.formatted(date: .abbreviated, time: .omitted))."
     }
     return text
+  }
+}
+
+/// An account a ledger row was counted for, by name: "Claude Code on Personal".
+///
+/// **Gone accounts are still named.** A config folder removed since leaves its uses in the
+/// ledger, so the row reads as its folder, "not on this Mac", rather than going missing.
+/// Shared by the project pane's By account and the Skills pane's.
+@MainActor func usageAccountName(_ id: String, vendor: UsageVendor?) -> String {
+  let vendor = vendor?.name ?? ""
+  if let account = Accounts.shared.account(id: id) {
+    return "\(vendor) on \(account.displayName)"
+  }
+  if let home = CodexAccounts.shared.account(id: id) {
+    return "\(vendor) on \(home.displayName)"
+  }
+  let path = (id as NSString).abbreviatingWithTildeInPath
+  return "\(vendor) on \(path), not on this Mac"
+}
+
+extension UsageLedgerSnapshot {
+  /// What the skill counts are, under each list of them: the project pane's and the Skills
+  /// pane's. Says the counts are low while the skills pass has not read every transcript.
+  var skillsFooter: String {
+    let text =
+      "Claude Code only. Typed means started with /name; the rest Claude loaded on its own."
+    return skillsPassDone
+      ? text : text + " Still reading older transcripts for skills, so counts are low."
   }
 }
