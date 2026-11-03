@@ -796,6 +796,8 @@ actor UsageIndexer {
   nonisolated static func recentSkillUses(
     at url: URL, skill: String, sinceDay: Int, limit: Int
   ) -> [SkillUseRecord] {
+    // No ledger yet is a fresh install, not a failure worth a log line on every read.
+    guard FileManager.default.fileExists(atPath: url.path) else { return [] }
     do {
       let db = try UsageDatabase(url: url, readOnly: true)
       defer { db.close() }
@@ -817,6 +819,8 @@ actor UsageIndexer {
       }
       return uses
     } catch {
+      Self.logger.error(
+        "recent skill uses unreadable: \(error.localizedDescription, privacy: .public)")
       return []
     }
   }

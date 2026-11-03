@@ -250,7 +250,7 @@ private struct RecentUseRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
       Text(
-        "\(use.at.formatted(.dateTime.day().month().hour().minute())) · \(use.kind == .slash ? "typed" : "loaded") · \(place)"
+        "\(use.at.formatted(when)) · \(use.kind == .slash ? "typed" : "loaded") · \(place)"
       )
       .lineLimit(1)
       .truncationMode(.middle)
@@ -271,11 +271,18 @@ private struct RecentUseRow: View {
     }
     .padding(.vertical, 2)
   }
+
+  /// Day, month and time, and the year too for a use in another year.
+  private var when: Date.FormatStyle {
+    let style = Date.FormatStyle.dateTime.day().month().hour().minute()
+    return Calendar.current.isDate(use.at, equalTo: AppClock.now, toGranularity: .year)
+      ? style : style.year()
+  }
 }
 
-/// "12", or "12 (3 typed)" when some were typed as `/name`: the project pane's skill rows'
-/// format.
-private func skillCount(total: Int, slash: Int) -> String {
+/// "12", or "12 (3 typed)" when some were typed as `/name`: the format of every skill count,
+/// here and in the project pane's skill rows.
+func skillCount(total: Int, slash: Int) -> String {
   slash > 0 ? "\(total.formatted()) (\(slash.formatted()) typed)" : total.formatted()
 }
 

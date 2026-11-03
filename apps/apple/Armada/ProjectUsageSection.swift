@@ -90,13 +90,8 @@ struct ProjectUsageSection: View {
           Button {
             MainWindowRoute.shared.open(skill: skill.id)
           } label: {
-            LabeledContent(
-              skill.id,
-              value: skill.slash > 0
-                ? "\(skill.total.formatted()) (\(skill.slash.formatted()) typed)"
-                : skill.total.formatted()
-            )
-            .contentShape(Rectangle())
+            LabeledContent(skill.id, value: skillCount(total: skill.total, slash: skill.slash))
+              .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
           .help("Show \(skill.id) in Skills")
