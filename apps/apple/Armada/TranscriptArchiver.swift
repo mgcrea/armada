@@ -275,6 +275,28 @@ final class TranscriptArchiver {
       }
   }
 
+  /// Each Claude account the archive holds, for the usage index to read its skill uses from.
+  ///
+  /// **Every account in the manifest, switched on or not:** one switched off still has the
+  /// history it was archived with. Nothing while the folder is not there, so an unmounted NAS
+  /// is listed by no source and folds nothing. Only read, like the rest of the index.
+  func skillSources() -> [UsageIndexer.Source] {
+    guard isOn, let target, let root, Self.isAvailable(target),
+      let manifest = try? TranscriptArchive.readManifest(at: root)
+    else { return [] }
+    return manifest.accounts.sorted { $0.key < $1.key }.compactMap { account, entry in
+      // The same folder names `prune` accepts: one name, inside the archive.
+      guard entry.vendor == .claude, !entry.folder.isEmpty, !entry.folder.contains("/"),
+        !entry.folder.hasPrefix(".")
+      else { return nil }
+      return UsageIndexer.Source(
+        account: account, vendor: .claude,
+        root: root.appending(path: entry.folder, directoryHint: .isDirectory)
+          .appending(path: "projects", directoryHint: .isDirectory),
+        skillsOnly: true)
+    }
+  }
+
   // MARK: - The destination
 
   /// The folder exists, and sits on the volume it was picked on: a share that is not mounted

@@ -101,6 +101,8 @@ final class UsageIndex {
       + CodexAccounts.shared.all.map {
         UsageIndexer.Source(account: $0.id, vendor: .codex, root: $0.home.base)
       }
+      // The archive's copies, for skill uses older than the transcripts on this Mac.
+      + TranscriptArchiver.shared.skillSources()
     let calendar = Calendar.current
     let work = Task.detached(priority: .background) {
       await indexer.runPass(

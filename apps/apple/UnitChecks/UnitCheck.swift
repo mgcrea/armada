@@ -2056,6 +2056,132 @@ struct UnitCheck {
     check(
       "a rewrite of a file read to its end reads its uses from the start",
       shorter?.skills.contains { $0.skill == "d" } == true && held == ["1"])
+
+    archiveSkills(root: root, calendar: calendar)
+  }
+
+  /// The transcript archive, read for its uses and never for its tokens.
+  static func archiveSkills(root: URL, calendar: Calendar) {
+    let fileManager = FileManager.default
+    func write(_ lines: [String], to relative: String, in home: URL) {
+      let url = home.appending(path: relative, directoryHint: .notDirectory)
+      try? fileManager.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? ndjson(lines).write(to: url)
+    }
+    func pass(_ indexer: UsageIndexer, _ sources: [UsageIndexer.Source]) -> UsageLedgerSnapshot? {
+      blocking {
+        await indexer.runPass(
+          sources: sources, calendar: calendar, progress: { _ in }, publish: { _ in })
+      }
+    }
+    func uses(_ snapshot: UsageLedgerSnapshot?) -> Int {
+      snapshot?.skills.reduce(0) { $0 + $1.count } ?? -1
+    }
+
+    let liveHome = root.appending(path: "archive-live", directoryHint: .isDirectory)
+    let archiveHome = root.appending(path: "Armada Archive/claude/projects")
+    let live = UsageIndexer.Source(account: "me", vendor: .claude, root: liveHome)
+    let archive = UsageIndexer.Source(
+      account: "me", vendor: .claude, root: archiveHome, skillsOnly: true)
+    let s1 = [
+      claudeLine(id: "m1"),
+      skillToolLine(ids: ["toolu_l1"], skills: ["code-health"]),
+      claudeLine(id: "m2", output: 70),
+      skillToolLine(ids: ["toolu_l2"], skills: ["simplify"], uuid: "e2"),
+    ]
+    write(s1, to: "-work-armada/s1.jsonl", in: liveHome)
+    write(s1, to: "-work-armada/s1.jsonl", in: archiveHome)
+    // Gone from this Mac, as Claude Code deletes a transcript after 30 days.
+    write(
+      [
+        claudeLine(id: "m0", output: 900, session: "s0"),
+        skillToolLine(ids: ["toolu_s0"], skills: ["code-health"], uuid: "e0"),
+      ], to: "-work-armada/s0.jsonl", in: archiveHome)
+
+    let liveOnlyURL = root.appending(path: "archive-live-only.sqlite")
+    _ = pass(UsageIndexer(url: liveOnlyURL), [live])
+    let liveTokens = ledgerColumn(liveOnlyURL, "SELECT SUM(output) FROM file_usage")
+
+    let bothURL = root.appending(path: "archive-both.sqlite")
+    let indexer = UsageIndexer(url: bothURL)
+    let both = pass(indexer, [live, archive])
+    expectEqual(
+      "a live copy and an archive copy count their uses once, with the archive's own",
+      uses(both), 3)
+    expectEqual(
+      "tokens never come from the archive",
+      ledgerColumn(bothURL, "SELECT SUM(output) FROM file_usage"), liveTokens)
+    expectEqual(
+      "an archive file adds no tokens and no session",
+      ledgerColumn(
+        bothURL,
+        """
+        SELECT (SELECT COUNT(*) FROM file_usage JOIN files USING(slot) WHERE key LIKE '~a:%')
+          || ' ' || (SELECT group_concat(session_id) FROM sessions)
+        """), ["0 s1"])
+    expectEqual(
+      "an archive file has its own row, beside the live copy's",
+      ledgerColumn(bothURL, "SELECT key FROM files ORDER BY key"), ["s1", "~a:s0", "~a:s1"])
+    expectEqual(
+      "a use both copies hold is the live copy's",
+      ledgerColumn(
+        bothURL,
+        """
+        SELECT DISTINCT IFNULL(f.key, 'none') FROM skill_uses u LEFT JOIN files f USING(slot)
+        WHERE u.use_id IN ('a:toolu_l1', 'a:toolu_l2')
+        """), ["s1"])
+    expectEqual(
+      "and a use only the archive holds is its session's",
+      ledgerColumn(bothURL, "SELECT session_id FROM skill_uses WHERE use_id = 'a:toolu_s0'"),
+      ["s0"])
+
+    // The NAS not mounted: the source's folder is not there.
+    let unmounted = UsageIndexer.Source(
+      account: "me", vendor: .claude, root: root.appending(path: "Unmounted/claude/projects"),
+      skillsOnly: true)
+    let away = pass(indexer, [live, unmounted])
+    expectEqual(
+      "an unmounted archive leaves every use on its file",
+      ledgerColumn(bothURL, "SELECT COUNT(*) FROM skill_uses WHERE slot IS NULL"), ["0"])
+    check(
+      "and the totals as they were",
+      uses(away) == 3 && Set(away?.rows ?? []) == Set(both?.rows ?? []))
+
+    // A rewrite the archive kept beside the new copy, and a subagent under the same session.
+    write(
+      [
+        claudeLine(id: "m00", session: "s0"),
+        skillToolLine(ids: ["toolu_s0_old"], skills: ["simplify"], uuid: "e00"),
+      ], to: "-work-armada/s0~1.jsonl", in: archiveHome)
+    write(
+      [skillToolLine(ids: ["toolu_s0_sub"], skills: ["code-health"], uuid: "e01")],
+      to: "-work-armada/s0/subagents/agent-x.jsonl", in: archiveHome)
+    let kept = pass(indexer, [live, archive])
+    expectEqual("an archive-only use counts", uses(kept), 5)
+    expectEqual(
+      "under its session, without the kept rewrite's number",
+      ledgerColumn(bothURL, "SELECT session_id FROM skill_uses WHERE use_id = 'a:toolu_s0_old'"),
+      ["s0"])
+    expectEqual(
+      "an archive subagent's use is its session's, in its session's folder",
+      ledgerColumn(
+        bothURL,
+        "SELECT session_id || ' ' || cwd FROM skill_uses WHERE use_id = 'a:toolu_s0_sub'"),
+      ["s0 /work/armada"])
+    expectEqual(
+      "and still no token from the archive",
+      ledgerColumn(bothURL, "SELECT SUM(output) FROM file_usage"), liveTokens)
+
+    let codexHome = root.appending(path: "Armada Archive/codex", directoryHint: .isDirectory)
+    write(
+      [codexTokens(10, cached: 0, output: 5, at: "2026-09-14T10:00:00.000Z")],
+      to: "sessions/2026/09/14/rollout-2026-09-14T10-00-00-c1.jsonl", in: codexHome)
+    let codexArchive = UsageIndexer.Source(
+      account: "codex", vendor: .codex, root: codexHome, skillsOnly: true)
+    check(
+      "an archived rollout is never read: it holds only tokens",
+      UsageIndexer.enumerate([codexArchive]).items.isEmpty)
   }
 
   static func usageLedger() {

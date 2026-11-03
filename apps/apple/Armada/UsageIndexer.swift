@@ -41,14 +41,35 @@ import os
 /// before the forks that replay it; then Claude transcripts newest first, so the 7-day and
 /// 30-day figures fill in long before the old ones; and a session's own transcript before its
 /// subagents', which take its folder.
+///
+/// **The transcript archive is read for skill uses only** (`Source.skillsOnly`), so skill
+/// history reaches back past the 30 days Claude Code keeps, and a token is never counted from
+/// a copy. Its files are keyed with `~a:` before their usual key, so a copy never shares a row
+/// with its live file, and go after every live file, so a use both hold is the live file's. An
+/// archive that cannot be listed, a NAS not mounted, folds nothing. The archive is only read.
 actor UsageIndexer {
   nonisolated struct Source: Hashable, Sendable {
     let account: String
     let vendor: UsageVendor
     /// Claude: the account's `projects/`. Codex: the home itself.
     let root: URL
+    /// The transcript archive's copy of an account: read for its skill uses, never its tokens.
+    let skillsOnly: Bool
 
-    var id: String { "\(vendor.rawValue)|\(account)" }
+    init(account: String, vendor: UsageVendor, root: URL, skillsOnly: Bool = false) {
+      self.account = account
+      self.vendor = vendor
+      self.root = root
+      self.skillsOnly = skillsOnly
+    }
+
+    var id: String {
+      skillsOnly ? "~a|\(vendor.rawValue)|\(account)" : "\(vendor.rawValue)|\(account)"
+    }
+
+    /// On an archive file's key and its `parentSession`, so it never shares a `files` row
+    /// with the live copy.
+    static let archiveKeyPrefix = "~a:"
   }
 
   nonisolated struct Progress: Equatable, Sendable {
@@ -70,8 +91,21 @@ actor UsageIndexer {
     /// A Claude subagent transcript's parent session, whose folder it takes.
     let parentSession: String?
 
-    var sessionID: String { parentSession ?? key }
-    var identity: String { "\(source.id)|\(key)" }
+    /// An archive file's is its live session's: the prefix comes off, and so does the
+    /// `~<n>` of a rewrite the archive kept beside the new copy.
+    var sessionID: String {
+      let id = parentSession ?? key
+      let prefix = Source.archiveKeyPrefix
+      guard id.hasPrefix(prefix) else { return id }
+      let bare = id.dropFirst(prefix.count)
+      guard let tilde = bare.lastIndex(of: "~") else { return String(bare) }
+      let number = bare[bare.index(after: tilde)...]
+      let isVersion = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber }
+      return String(isVersion ? bare[..<tilde] : bare)
+    }
+    /// The vendor and account, never `skillsOnly`: the key's prefix already tells an archive
+    /// file from the live copy, and a live file's identity stays what it always was.
+    var identity: String { "\(source.vendor.rawValue)|\(source.account)|\(key)" }
   }
 
   private nonisolated struct StoredFile {
@@ -92,6 +126,12 @@ actor UsageIndexer {
     /// Its uses were read by an older skill parser, and are read again from byte zero.
     let skillsStale: Bool
     let replaces: Int64?
+
+    /// The `Source.id` it was listed under, which the fold check looks for in `listed`: an
+    /// archive file is gone only when the archive could be listed, never when it is unmounted.
+    var listing: String {
+      key.hasPrefix(Source.archiveKeyPrefix) ? "~a|" + source : source
+    }
 
     /// Where a read of it starts: each half reads past its own cursor, and a Codex rollout
     /// has only tokens.
@@ -221,7 +261,7 @@ actor UsageIndexer {
       for (identity, file) in stored where !present.contains(identity) {
         // Only under a root this pass could list: a folder that failed to open says nothing
         // about whether the files in it are gone.
-        guard listed.contains(file.source) else { continue }
+        guard listed.contains(file.listing) else { continue }
         try fold(file, db)
       }
       try db.commit()
@@ -494,7 +534,8 @@ actor UsageIndexer {
         switch item.source.vendor {
         case .claude:
           FileIngest.claude(
-            pending, base: base, cursor: &cursor, skills: &skills, tokens: true,
+            pending, base: base, cursor: &cursor, skills: &skills,
+            tokens: !item.source.skillsOnly,
             subagent: item.parentSession != nil, calendar: calendar, claim: claim, sink: sink,
             skill: skill, reply: reply)
         case .codex:
@@ -770,6 +811,8 @@ actor UsageIndexer {
     var codex: [FileItem] = []
     var mains: [FileItem] = []
     var subagents: [FileItem] = []
+    var archiveMains: [FileItem] = []
+    var archiveSubagents: [FileItem] = []
     var listed: Set<String> = []
 
     for source in sources {
@@ -778,6 +821,9 @@ actor UsageIndexer {
         let root = source.root.path(percentEncoded: false)
         guard let folders = try? fileManager.contentsOfDirectory(atPath: root) else { continue }
         listed.insert(source.id)
+        // An archive copy is keyed apart from the live one, and read after every live file,
+        // so a use both hold is the live file's.
+        let prefix = source.skillsOnly ? Source.archiveKeyPrefix : ""
         for folder in folders {
           let folderURL = source.root.appending(path: folder, directoryHint: .isDirectory)
           guard
@@ -787,10 +833,12 @@ actor UsageIndexer {
           for name in names {
             if name.hasSuffix(".jsonl") {
               let item = file(
-                source, key: String(name.dropLast(".jsonl".count)),
+                source, key: prefix + name.dropLast(".jsonl".count),
                 url: folderURL.appending(path: name, directoryHint: .notDirectory),
                 relative: "\(folder)/\(name)", parent: nil)
-              if let item { mains.append(item) }
+              if let item {
+                if source.skillsOnly { archiveMains.append(item) } else { mains.append(item) }
+              }
             } else if !name.contains(".") {
               // A session's own folder, which holds its subagents' transcripts.
               let agentsURL = folderURL.appending(path: name, directoryHint: .isDirectory)
@@ -801,16 +849,24 @@ actor UsageIndexer {
               else { continue }
               for agent in agents where agent.hasPrefix("agent-") && agent.hasSuffix(".jsonl") {
                 let item = file(
-                  source, key: "\(name)/\(agent.dropLast(".jsonl".count))",
+                  source, key: "\(prefix)\(name)/\(agent.dropLast(".jsonl".count))",
                   url: agentsURL.appending(path: agent, directoryHint: .notDirectory),
-                  relative: "\(folder)/\(name)/subagents/\(agent)", parent: name)
-                if let item { subagents.append(item) }
+                  relative: "\(folder)/\(name)/subagents/\(agent)", parent: prefix + name)
+                if let item {
+                  if source.skillsOnly {
+                    archiveSubagents.append(item)
+                  } else {
+                    subagents.append(item)
+                  }
+                }
               }
             }
           }
         }
 
       case .codex:
+        // A rollout holds only tokens, which never come from the archive.
+        if source.skillsOnly { continue }
         let sessions = source.root.appending(path: "sessions", directoryHint: .isDirectory)
         var isDirectory: ObjCBool = false
         if fileManager.fileExists(
@@ -845,7 +901,11 @@ actor UsageIndexer {
     codex.sort { $0.url.lastPathComponent < $1.url.lastPathComponent }
     mains.sort { $0.mtime > $1.mtime }
     subagents.sort { $0.mtime > $1.mtime }
-    return (onePerIdentity(codex + mains + subagents), listed)
+    archiveMains.sort { $0.mtime > $1.mtime }
+    archiveSubagents.sort { $0.mtime > $1.mtime }
+    return (
+      onePerIdentity(codex + mains + subagents + archiveMains + archiveSubagents), listed
+    )
   }
 
   /// One file per identity, the largest, in the order given.
