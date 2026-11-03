@@ -131,6 +131,21 @@ nonisolated struct SkillUsageRow: Hashable, Sendable {
   let lastAt: Date
 }
 
+/// One use of a skill, as the ledger keeps it: for the Skills pane's recent list.
+nonisolated struct SkillUseRecord: Hashable, Sendable, Identifiable {
+  /// The ledger's `use_id`: `a:` and the `tool_use` id, or `s:` and the slash key.
+  let id: String
+  let at: Date
+  let cwd: String
+  let account: String
+  let kind: SkillKind
+  let sessionID: String
+  /// What the skill was asked, as stored: 500 characters at most, nil when empty.
+  let args: String?
+  /// The person's next message, as stored: 500 characters at most, nil when none was read.
+  let reply: String?
+}
+
 /// Everything the ledger holds, summed, as a value the main actor and the MCP bridge can
 /// hold without touching the database.
 nonisolated struct UsageLedgerSnapshot: Sendable {

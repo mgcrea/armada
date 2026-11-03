@@ -1805,6 +1805,42 @@ struct UnitCheck {
       ledgerColumn(mainURL, "SELECT DISTINCT session_id || ' ' || cwd FROM skill_uses"),
       ["s1 /work/armada"])
 
+    // Read on connections of their own while `indexer` keeps its own open: a passing
+    // check is two connections on one ledger, as the pane's read beside a running pass.
+    func recent(_ skill: String, since day: Int = .min, limit: Int = 20) -> [SkillUseRecord] {
+      UsageIndexer.recentSkillUses(at: mainURL, skill: skill, sinceDay: day, limit: limit)
+    }
+    expectEqual(
+      "recent uses are the skill's own, newest first", recent("code-health").map(\.kind),
+      [.auto, .slash])
+    expectEqual(
+      "the reply is carried", recent("simplify").first?.reply, "no, not that one")
+    write(
+      [
+        slashLine(
+          name: "push-testflight-build", uuid: "u9", args: "armada mac", cwd: "/work/armada",
+          session: "s9")
+      ],
+      to: "-work-armada/s9.jsonl", in: mainHome)
+    _ = pass(indexer, mainHome)
+    let typed = recent("push-testflight-build").first
+    check(
+      "and the args, with the use's session and folder",
+      typed?.args == "armada mac" && typed?.sessionID == "s9" && typed?.cwd == "/work/armada"
+        && typed?.account == "me")
+    let newest = recent("code-health", limit: 1)
+    check(
+      "limit holds, keeping the newest",
+      newest.count == 1 && newest.first?.kind == .auto && newest.first?.id == "a:toolu_1")
+    expectEqual(
+      "a day floor leaves older uses out", recent("code-health", since: 20_261_025).count, 0)
+    let absent = root.appending(path: "absent.sqlite")
+    let fromNothing = UsageIndexer.recentSkillUses(
+      at: absent, skill: "code-health", sinceDay: .min, limit: 20)
+    check(
+      "a missing ledger gives nothing and is not created",
+      fromNothing.isEmpty && !fileManager.fileExists(atPath: absent.path(percentEncoded: false)))
+
     write(
       session + [skillToolLine(ids: ["toolu_3"], skills: ["simplify"], uuid: "e3")],
       to: "-work-armada/s2.jsonl", in: mainHome)

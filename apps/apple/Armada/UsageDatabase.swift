@@ -9,8 +9,10 @@ import SQLite3
 /// One transaction commits all three or none, which is the whole of the recovery story.
 /// The library is the one macOS ships; nothing is added to the build.
 ///
-/// Not thread-safe and not `Sendable`: `UsageIndexer` owns the only instance and every
-/// call is on that actor.
+/// Not thread-safe and not `Sendable`: `UsageIndexer` owns the only writing instance and
+/// every call to it is on that actor. Readers beside it (`UsageIndexer.recentSkillUses`)
+/// open a read-only instance of their own, use it on one thread and close it; WAL lets them
+/// read while a pass writes.
 nonisolated final class UsageDatabase {
   nonisolated enum Value {
     case int(Int64)
@@ -41,9 +43,14 @@ nonisolated final class UsageDatabase {
   /// `SQLITE_TRANSIENT`, which the C header spells as a cast Swift does not import.
   private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-  init(url: URL) throws {
+  /// `readOnly` opens without CREATE and sets no pragmas: a reader beside the indexer's
+  /// connection, which never creates the file and never changes the journal mode.
+  init(url: URL, readOnly: Bool = false) throws {
     var opened: OpaquePointer?
-    let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX
+    let flags =
+      readOnly
+      ? SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+      : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX
     guard sqlite3_open_v2(url.path(percentEncoded: false), &opened, flags, nil) == SQLITE_OK,
       let opened
     else {
@@ -53,6 +60,7 @@ nonisolated final class UsageDatabase {
     }
     handle = opened
     sqlite3_busy_timeout(opened, 5_000)
+    if readOnly { return }
     // WAL so a reader never waits on the pass, and NORMAL because a power cut may lose the
     // last commit but never corrupts the file — and a lost commit is re-read next pass.
     try execute("PRAGMA journal_mode = WAL")

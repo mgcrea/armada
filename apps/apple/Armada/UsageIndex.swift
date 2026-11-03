@@ -137,6 +137,20 @@ final class UsageIndex {
     return value
   }
 
+  /// The Skills pane's recent uses, read off the main actor. 20 at most.
+  ///
+  /// **Beside the indexer, never through it**: a pass holds that actor for as long as it
+  /// runs, so this opens a read-only connection of its own (`UsageIndexer.recentSkillUses`).
+  /// Empty before the ledger exists, and reading never creates it.
+  func recentSkillUses(skill: String, window: StatsWindow) async -> [SkillUseRecord] {
+    guard let directory = AppInfo.supportDirectory else { return [] }
+    let url = directory.appending(path: Self.fileName)
+    let sinceDay = window.floor(today: AppClock.now, calendar: .current)
+    return await Task.detached(priority: .userInitiated) {
+      UsageIndexer.recentSkillUses(at: url, skill: skill, sinceDay: sinceDay, limit: 20)
+    }.value
+  }
+
   // MARK: - The loop
 
   private func run(_ indexer: UsageIndexer) async {

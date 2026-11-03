@@ -786,6 +786,41 @@ actor UsageIndexer {
       earliestSkillDay: skills.map(\.day).min())
   }
 
+  /// The newest `limit` uses of `skill` on or after `sinceDay`, newest first, read on a
+  /// connection of its own. Empty when the ledger is missing or unreadable.
+  ///
+  /// **Never through the actor.** A first pass holds the indexer for minutes, and the Skills
+  /// pane opened meanwhile still wants its list. A read-only connection reads the last
+  /// commit beside the pass, which WAL allows, and opening one never creates the file or
+  /// changes its journal mode. A row of a kind this build does not know is left out.
+  nonisolated static func recentSkillUses(
+    at url: URL, skill: String, sinceDay: Int, limit: Int
+  ) -> [SkillUseRecord] {
+    do {
+      let db = try UsageDatabase(url: url, readOnly: true)
+      defer { db.close() }
+      var uses: [SkillUseRecord] = []
+      try db.query(
+        """
+        SELECT use_id, at, cwd, account, kind, session_id, args, reply FROM skill_uses
+        WHERE skill = ? AND day >= ? ORDER BY at DESC, use_id LIMIT ?
+        """,
+        [.text(skill), .int(Int64(sinceDay)), .int(Int64(limit))]
+      ) { row in
+        guard let id = row.text(0), let cwd = row.text(2), let account = row.text(3),
+          let kind = SkillKind(rawValue: Int(row.int(4))), let sessionID = row.text(5)
+        else { return }
+        uses.append(
+          SkillUseRecord(
+            id: id, at: Date(timeIntervalSince1970: row.double(1)), cwd: cwd, account: account,
+            kind: kind, sessionID: sessionID, args: row.text(6), reply: row.text(7)))
+      }
+      return uses
+    } catch {
+      return []
+    }
+  }
+
   // MARK: - Storage
 
   private func open() -> UsageDatabase? {
