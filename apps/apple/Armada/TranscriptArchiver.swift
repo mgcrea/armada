@@ -275,46 +275,23 @@ final class TranscriptArchiver {
       }
   }
 
-  /// Each Claude account the archive holds, for the usage index to read its skill uses from.
-  ///
-  /// **Every account in the manifest, switched on or not:** one switched off still has the
-  /// history it was archived with. Nothing while the folder is not there, so an unmounted NAS
-  /// is listed by no source and folds nothing. Only read, like the rest of the index.
-  func skillSources() -> [UsageIndexer.Source] {
-    guard isOn, let target, let root, Self.isAvailable(target),
-      let manifest = try? TranscriptArchive.readManifest(at: root)
-    else { return [] }
-    return manifest.accounts.sorted { $0.key < $1.key }.compactMap { account, entry in
-      // The same folder names `prune` accepts: one name, inside the archive.
-      guard entry.vendor == .claude, !entry.folder.isEmpty, !entry.folder.contains("/"),
-        !entry.folder.hasPrefix(".")
-      else { return nil }
-      return UsageIndexer.Source(
-        account: account, vendor: .claude,
-        root: root.appending(path: entry.folder, directoryHint: .isDirectory)
-          .appending(path: "projects", directoryHint: .isDirectory),
-        skillsOnly: true)
-    }
+  /// What the usage index needs to find the archive, from stored values only: no disk is
+  /// touched here. `TranscriptArchive.skillSources` does the rest, off the main actor. Nil
+  /// while archiving is off.
+  var skillTarget: (target: URL, volume: String?)? {
+    guard isOn, let target else { return nil }
+    return (target, UserDefaults.standard.string(forKey: Self.volumeKey))
   }
 
   // MARK: - The destination
 
-  /// The folder exists, and sits on the volume it was picked on: a share that is not mounted
-  /// can leave an empty mount point on the startup disk, and copying there fills the Mac.
+  /// See `TranscriptArchive.isAvailable`, against the volume saved when it was picked.
   private static func isAvailable(_ target: URL) -> Bool {
-    var isDirectory: ObjCBool = false
-    guard
-      FileManager.default.fileExists(
-        atPath: target.path(percentEncoded: false), isDirectory: &isDirectory),
-      isDirectory.boolValue
-    else { return false }
-    guard let picked = UserDefaults.standard.string(forKey: volumeKey) else { return true }
-    return volume(of: target) == picked
+    TranscriptArchive.isAvailable(
+      target, volume: UserDefaults.standard.string(forKey: volumeKey))
   }
 
-  private static func volume(of url: URL) -> String? {
-    (try? url.resourceValues(forKeys: [.volumeURLKey]))?.volume?.path(percentEncoded: false)
-  }
+  private static func volume(of url: URL) -> String? { TranscriptArchive.volume(of: url) }
 
   private static var shouldDefer: Bool {
     let info = ProcessInfo.processInfo

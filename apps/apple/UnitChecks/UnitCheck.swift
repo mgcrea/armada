@@ -5012,6 +5012,40 @@ struct UnitCheck {
     check(
       "no manifest at all is none, which a new archive is",
       (try? TranscriptArchive.readManifest(at: archiveRoot)) == .some(nil))
+
+    archiveSkillSources(root: root)
+  }
+
+  /// What the usage index reads from the archive, worked out off the main actor.
+  static func archiveSkillSources(root: URL) {
+    let fileManager = FileManager.default
+    let picked = root.appending(path: "skills-nas", directoryHint: .isDirectory)
+    expectEqual(
+      "a picked folder that is not there gives no source",
+      TranscriptArchive.skillSources(target: picked, volume: nil), [])
+    try? fileManager.createDirectory(at: picked, withIntermediateDirectories: true)
+    expectEqual(
+      "nor does an archive with no manifest",
+      TranscriptArchive.skillSources(target: picked, volume: nil), [])
+    var manifest = TranscriptArchive.Manifest()
+    manifest.accounts["/home/.claude"] = .init(
+      folder: "claude", vendor: .claude, label: "Me", path: "/home/.claude")
+    manifest.accounts["/home/.codex"] = .init(
+      folder: "codex", vendor: .codex, label: "Codex", path: "/home/.codex")
+    let archiveRoot = TranscriptArchive.root(forPicked: picked)
+    try? fileManager.createDirectory(at: archiveRoot, withIntermediateDirectories: true)
+    try? TranscriptArchive.writeManifest(manifest, at: archiveRoot)
+    let sources = TranscriptArchive.skillSources(target: picked, volume: nil)
+    expectEqual(
+      "a manifest gives one skills-only source per Claude account, under its projects",
+      sources.map { "\($0.account) \($0.vendor) \($0.skillsOnly) \($0.root.path)" },
+      [
+        "/home/.claude claude true "
+          + archiveRoot.appending(path: "claude/projects", directoryHint: .isDirectory).path
+      ])
+    expectEqual(
+      "and none when the folder is not on the volume it was picked on",
+      TranscriptArchive.skillSources(target: picked, volume: "/Volumes/Elsewhere"), [])
   }
 
   // MARK: - StoreFile

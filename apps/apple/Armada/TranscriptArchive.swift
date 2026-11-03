@@ -203,6 +203,51 @@ nonisolated enum TranscriptArchive {
     return manifest
   }
 
+  /// The folder exists, and sits on the volume it was picked on (`volume`, nil when none was
+  /// saved): a share that is not mounted can leave an empty mount point on the startup disk,
+  /// and copying there fills the Mac.
+  static func isAvailable(_ target: URL, volume picked: String?) -> Bool {
+    var isDirectory: ObjCBool = false
+    guard
+      FileManager.default.fileExists(
+        atPath: target.path(percentEncoded: false), isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else { return false }
+    guard let picked else { return true }
+    return volume(of: target) == picked
+  }
+
+  static func volume(of url: URL) -> String? {
+    (try? url.resourceValues(forKeys: [.volumeURLKey]))?.volume?.path(percentEncoded: false)
+  }
+
+  // MARK: - What the usage index reads
+
+  /// Each Claude account the archive holds, for the usage index to read its skill uses from.
+  ///
+  /// **Off the main actor, always.** Every step is a round trip to the archive's disk, and a
+  /// hung SMB mount would stall whatever called it.
+  ///
+  /// **Every account in the manifest, switched on or not:** one switched off still has the
+  /// history it was archived with. Nothing while the folder is not there, so an unmounted NAS
+  /// is listed by no source and folds nothing. Only read, like the rest of the index.
+  static func skillSources(target: URL, volume: String?) -> [UsageIndexer.Source] {
+    guard isAvailable(target, volume: volume) else { return [] }
+    let root = root(forPicked: target)
+    guard let manifest = try? readManifest(at: root) else { return [] }
+    return manifest.accounts.sorted { $0.key < $1.key }.compactMap { account, entry in
+      // The same folder names `prune` accepts: one name, inside the archive.
+      guard entry.vendor == .claude, !entry.folder.isEmpty, !entry.folder.contains("/"),
+        !entry.folder.hasPrefix(".")
+      else { return nil }
+      return UsageIndexer.Source(
+        account: account, vendor: .claude,
+        root: root.appending(path: entry.folder, directoryHint: .isDirectory)
+          .appending(path: "projects", directoryHint: .isDirectory),
+        skillsOnly: true)
+    }
+  }
+
   // MARK: - Finding files
 
   static func enumerate(_ source: Source) -> [Item] {

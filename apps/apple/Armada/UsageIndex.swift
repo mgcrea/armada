@@ -31,6 +31,21 @@ final class UsageIndex {
   @ObservationIgnored private var activity = false
   @ObservationIgnored private var isPassing = false
   @ObservationIgnored private var memo: Memo?
+  /// When a pass last read the transcript archive through to its end.
+  @ObservationIgnored private var archiveReadAt: Date?
+
+  /// **The archive joins a pass at most once a day:** the first after launch, then the first
+  /// a day after the last that read it. A copy only adds a use once its live original is
+  /// gone, 30 days after its last write, so a day late costs nothing, and listing a NAS every
+  /// few minutes would. One that was not mounted, or a pass cancelled or failed, is tried
+  /// again next pass.
+  ///
+  /// **A pass without it folds none of its files.** The archive's sources are not in the
+  /// pass, so their listing is never in `listed`, and the indexer folds only what a listed
+  /// root no longer holds.
+  private var archiveIsDue: Bool {
+    archiveReadAt.map { Date().timeIntervalSince($0) >= 24 * 60 * 60 } ?? true
+  }
 
   private struct Memo {
     let generation: Int
@@ -101,20 +116,28 @@ final class UsageIndex {
       + CodexAccounts.shared.all.map {
         UsageIndexer.Source(account: $0.id, vendor: .codex, root: $0.home.base)
       }
-      // The archive's copies, for skill uses older than the transcripts on this Mac.
-      + TranscriptArchiver.shared.skillSources()
+    // Stored values only: whatever touches the archive's disk runs in the task below.
+    let archive = archiveIsDue ? TranscriptArchiver.shared.skillTarget : nil
     let calendar = Calendar.current
     let work = Task.detached(priority: .background) {
-      await indexer.runPass(
-        sources: sources, calendar: calendar,
+      // The archive's copies, for skill uses older than the transcripts on this Mac.
+      let archived =
+        archive.map {
+          TranscriptArchive.skillSources(target: $0.target, volume: $0.volume)
+        } ?? []
+      let snapshot = await indexer.runPass(
+        sources: sources + archived, calendar: calendar,
         progress: { progress in Task { @MainActor in UsageIndex.shared.receive(progress) } },
         publish: { snapshot in Task { @MainActor in UsageIndex.shared.receive(snapshot) } })
+      let readArchive = snapshot != nil && !archived.isEmpty && !Task.isCancelled
+      return (snapshot: snapshot, readArchive: readArchive)
     }
-    let snapshot = await withTaskCancellationHandler {
+    let (snapshot, readArchive) = await withTaskCancellationHandler {
       await work.value
     } onCancel: {
       work.cancel()
     }
+    if readArchive { archiveReadAt = Date() }
     if let snapshot { receive(snapshot) }
     isPassing = false
     progress = nil
