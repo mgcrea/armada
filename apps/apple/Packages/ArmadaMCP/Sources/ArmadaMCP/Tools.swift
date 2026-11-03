@@ -570,9 +570,7 @@ public enum Tools {
             "complete": .bool(snapshot.index.complete),
             "filesRead": snapshot.index.filesRead.map { .int($0) },
             "filesTotal": snapshot.index.filesTotal.map { .int($0) },
-            "since": snapshot.index.earliestDay.map {
-              .string($0.formatted(.iso8601.year().month().day()))
-            },
+            "since": snapshot.index.earliestDay.map { .string(localDay($0)) },
           ]),
           "tokenNote": .string(
             "total adds fresh input, cache writes, cache reads and output. Codex reasoning is "

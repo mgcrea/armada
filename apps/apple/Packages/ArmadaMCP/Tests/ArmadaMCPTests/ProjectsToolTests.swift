@@ -100,6 +100,13 @@ struct ProjectsToolTests {
     #expect(result.structuredContent?["index"]?["complete"] == .bool(false))
   }
 
+  @Test("The history's first day is this Mac's day, as armada_get_skill_usage gives it")
+  func sinceIsLocal() async throws {
+    let result = await call()
+    let since = try #require(result.structuredContent?["index"]?["since"]?.stringValue)
+    #expect(since == Tools.localDay(FakeFleetSource.now.addingTimeInterval(-40 * 86_400)))
+  }
+
   @Test("No saved projects is a success that says where projects are added")
   func none() async throws {
     let source = FakeFleetSource()
