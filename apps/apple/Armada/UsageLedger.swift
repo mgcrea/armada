@@ -119,6 +119,18 @@ nonisolated struct UsageSessionRow: Hashable, Sendable {
   let isChild: Bool
 }
 
+/// How often one skill ran on one day, in one folder, on one account, and how.
+nonisolated struct SkillUsageRow: Hashable, Sendable {
+  let day: Int
+  let cwd: String
+  let account: String
+  let vendor: UsageVendor
+  let skill: String
+  let kind: SkillKind
+  let count: Int
+  let lastAt: Date
+}
+
 /// Everything the ledger holds, summed, as a value the main actor and the MCP bridge can
 /// hold without touching the database.
 nonisolated struct UsageLedgerSnapshot: Sendable {
@@ -130,7 +142,14 @@ nonisolated struct UsageLedgerSnapshot: Sendable {
   let earliestDay: Int?
   /// True once one complete pass over every transcript has finished.
   let firstPassDone: Bool
+  let skills: [SkillUsageRow]
+  /// True once a complete pass has read every transcript for skills too. A ledger that
+  /// counted tokens before skills were counted has `firstPassDone` already, and this not yet.
+  let skillsPassDone: Bool
+  /// The oldest day a skill use was counted for.
+  let earliestSkillDay: Int?
 
   static let empty = UsageLedgerSnapshot(
-    generation: 0, rows: [], sessions: [], earliestDay: nil, firstPassDone: false)
+    generation: 0, rows: [], sessions: [], earliestDay: nil, firstPassDone: false, skills: [],
+    skillsPassDone: false, earliestSkillDay: nil)
 }

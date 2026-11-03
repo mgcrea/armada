@@ -21,6 +21,14 @@ import os
 ///   figures folded into `archive` and its dedupe keys kept, so a copy that turns up later
 ///   counts for nothing.
 ///
+/// **Skill uses are kept one row each, behind a second cursor.** A Claude transcript's
+/// `skill_offset` can trail its token cursor: a ledger that counted tokens before skills
+/// were counted, or one whose skill parser changed, reads its files again for skills alone.
+/// A read starts at the lesser of the two and each half reads only past its own, so the
+/// backfill rides the pass it is part of and never counts a token twice. A use is keyed by
+/// its own id, so a copy of it counts once; its row follows its file through a rewrite, and
+/// stays with no file once that file is gone, just as tokens go to `archive`.
+///
 /// **Order matters for the first pass.** Codex rollouts go first by name, so a parent is read
 /// before the forks that replay it; then Claude transcripts newest first, so the 7-day and
 /// 30-day figures fill in long before the old ones; and a session's own transcript before its
@@ -71,7 +79,14 @@ actor UsageIndexer {
     let headLength: Int64
     let cwd: String?
     let cursor: IngestCursor
+    let skillCursor: SkillCursor
     let replaces: Int64?
+
+    /// Where a read of it starts: each half reads past its own cursor, and a Codex rollout
+    /// has only tokens.
+    func start(_ vendor: UsageVendor) -> Int64 {
+      vendor == .claude ? min(cursor.offset, skillCursor.offset) : cursor.offset
+    }
   }
 
   private nonisolated struct DayModel: Hashable {
@@ -79,7 +94,9 @@ actor UsageIndexer {
     let model: String
   }
 
-  static let schemaVersion = 1
+  static let schemaVersion = 2
+  /// Bumped when the reading of skill uses changes: every use still on disk is read again.
+  static let skillParserVersion = 1
   static let chunkBytes = 1 << 20
   static let commitBytes: Int64 = 64 << 20
   static let headBytes: Int64 = 4_096
@@ -91,9 +108,17 @@ actor UsageIndexer {
       slot INTEGER PRIMARY KEY, account TEXT NOT NULL, vendor INTEGER NOT NULL,
       key TEXT NOT NULL, path TEXT NOT NULL, inode INTEGER NOT NULL, size INTEGER NOT NULL,
       mtime REAL NOT NULL, head_hash INTEGER NOT NULL, head_len INTEGER NOT NULL, cwd TEXT,
-      cursor TEXT NOT NULL, replaces INTEGER, superseded INTEGER NOT NULL DEFAULT 0);
+      cursor TEXT NOT NULL, replaces INTEGER, superseded INTEGER NOT NULL DEFAULT 0,
+      skill_offset INTEGER NOT NULL DEFAULT 0, skill_state TEXT);
     CREATE UNIQUE INDEX IF NOT EXISTS files_key ON files(vendor, account, key)
       WHERE superseded = 0;
+    CREATE TABLE IF NOT EXISTS skill_uses(
+      use_id TEXT PRIMARY KEY, slot INTEGER,
+      day INTEGER NOT NULL, cwd TEXT NOT NULL, account TEXT NOT NULL, vendor INTEGER NOT NULL,
+      skill TEXT NOT NULL, kind INTEGER NOT NULL,
+      session_id TEXT NOT NULL, at REAL NOT NULL, entry_uuid TEXT NOT NULL,
+      args TEXT, reply TEXT) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS skill_uses_slot ON skill_uses(slot);
     CREATE TABLE IF NOT EXISTS seen(hash INTEGER PRIMARY KEY, slot INTEGER NOT NULL)
       WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS file_usage(
@@ -122,13 +147,21 @@ actor UsageIndexer {
     """
 
   private let url: URL
+  private let commitBytes: Int64
+  private let chunkBytes: Int
   private var database: UsageDatabase?
   private var generation = 0
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
 
-  init(url: URL) {
+  /// The sizes are for tests, which need a file read in several commits to be small.
+  init(
+    url: URL, commitBytes: Int64 = UsageIndexer.commitBytes,
+    chunkBytes: Int = UsageIndexer.chunkBytes
+  ) {
     self.url = url
+    self.commitBytes = commitBytes
+    self.chunkBytes = chunkBytes
   }
 
   /// What the ledger already holds, before any pass: the figures from the last launch.
@@ -159,7 +192,7 @@ actor UsageIndexer {
         present.insert(item.identity)
         let file = stored[item.identity]
         if let file, file.inode == item.inode, file.size == item.size, file.mtime == item.mtime,
-          file.cursor.offset >= item.size, file.replaces == nil
+          file.start(item.source.vendor) >= item.size, file.replaces == nil
         {
           // Unchanged. A Codex rollout moved into `archived_sessions` keeps its inode and
           // arrives here under a new path, which is all that needs writing down.
@@ -190,7 +223,9 @@ actor UsageIndexer {
       let firstPass = try meta("first_pass_done", db) != "1"
       var report = Progress(
         filesDone: 0, filesTotal: work.count, bytesDone: 0,
-        bytesTotal: work.reduce(0) { $0 + max(0, $1.item.size - ($1.stored?.cursor.offset ?? 0)) },
+        bytesTotal: work.reduce(0) {
+          $0 + max(0, $1.item.size - ($1.stored?.start($1.item.source.vendor) ?? 0))
+        },
         firstPass: firstPass)
       progress(report)
       var lastProgress = Date.distantPast
@@ -233,7 +268,10 @@ actor UsageIndexer {
       }
       progress(report)
 
-      if !Task.isCancelled { try setMeta("first_pass_done", "1", db) }
+      if !Task.isCancelled {
+        try setMeta("first_pass_done", "1", db)
+        try setMeta("skills_pass_done", "1", db)
+      }
       let snapshot = try buildSnapshot(db)
       let seconds = Date().timeIntervalSince(started)
       Self.logger.info(
@@ -264,6 +302,7 @@ actor UsageIndexer {
 
     var slot: Int64
     var cursor: IngestCursor
+    var skills: SkillCursor
     var replaces: Int64?
 
     if let stored, item.size >= stored.cursor.offset, headHash == stored.headHash,
@@ -271,15 +310,19 @@ actor UsageIndexer {
     {
       slot = stored.slot
       cursor = stored.cursor
+      skills = stored.skillCursor
       replaces = stored.replaces
     } else {
+      var dropped: Int64?
       if let stored {
         if let older = stored.replaces {
           // Rewritten again before the last rewrite was read to the end: compare against
-          // the original, and drop the partial read in between.
+          // the original, and drop the partial read in between. Its uses happened, so they
+          // move to the new slot below rather than going with it.
           try db.run("DELETE FROM file_usage WHERE slot = ?", [.int(stored.slot)])
           try db.run("DELETE FROM seen WHERE slot = ?", [.int(stored.slot)])
           try db.run("DELETE FROM files WHERE slot = ?", [.int(stored.slot)])
+          dropped = stored.slot
           replaces = older
         } else {
           try db.run("UPDATE files SET superseded = 1 WHERE slot = ?", [.int(stored.slot)])
@@ -290,6 +333,7 @@ actor UsageIndexer {
         }
       }
       cursor = IngestCursor()
+      skills = SkillCursor()
       if item.parentSession != nil { cursor.cwd = parentFolder }
       try db.run(
         """
@@ -304,10 +348,15 @@ actor UsageIndexer {
           replaces.map { .int($0) } ?? .null,
         ])
       slot = db.lastInsertRowID
+      if let dropped {
+        try db.run(
+          "UPDATE skill_uses SET slot = ? WHERE slot = ?", [.int(slot), .int(dropped)])
+      }
     }
 
+    let vendor = Int64(item.source.vendor.rawValue)
     var tallies: [DayModel: TokenTally] = [:]
-    var claimError: Error?
+    var storeError: Error?
     let claim: (UInt64) -> Bool = { hash in
       do {
         try db.run(
@@ -315,7 +364,7 @@ actor UsageIndexer {
           [.int(Int64(bitPattern: hash)), .int(slot)])
         return db.changes > 0
       } catch {
-        claimError = error
+        storeError = error
         return false
       }
     }
@@ -323,18 +372,54 @@ actor UsageIndexer {
       tallies[DayModel(day: contribution.day, model: contribution.model), default: TokenTally()] +=
         contribution.tokens
     }
+    let skill: (SkillContribution) -> Bool = { contribution in
+      let use = contribution.event
+      do {
+        try db.run(
+          """
+          INSERT OR IGNORE INTO skill_uses(use_id, slot, day, cwd, account, vendor, skill, kind,
+            session_id, at, entry_uuid, args)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          """,
+          [
+            .text(use.useID), .int(slot), .int(Int64(contribution.day)),
+            .text(Self.storedFolder(contribution.cwd ?? "")), .text(item.source.account),
+            .int(vendor), .text(use.skill), .int(Int64(use.kind.rawValue)),
+            .text(item.sessionID), .double(use.at.timeIntervalSince1970), .text(use.entryUUID),
+            use.args.map { .text($0) } ?? .null,
+          ])
+        return db.changes > 0
+      } catch {
+        storeError = error
+        return false
+      }
+    }
+    let reply: ([String], String) -> Void = { ids, text in
+      for id in ids {
+        do {
+          try db.run(
+            "UPDATE skill_uses SET reply = ? WHERE use_id = ? AND reply IS NULL",
+            [.text(text), .text(id)])
+        } catch {
+          storeError = error
+        }
+      }
+    }
 
     func flush() throws {
       let folder = cursor.cwd.map(Self.storedFolder)
+      // A rollout has no skills: its skill cursor keeps up with its tokens.
+      let isClaude = item.source.vendor == .claude
       try db.run(
         """
         UPDATE files SET path = ?, inode = ?, size = ?, mtime = ?, head_hash = ?, head_len = ?,
-          cwd = ?, cursor = ? WHERE slot = ?
+          cwd = ?, cursor = ?, skill_offset = ?, skill_state = ? WHERE slot = ?
         """,
         [
           .text(item.relativePath), .int(item.inode), .int(item.size), .double(item.mtime),
           .int(headHash), .int(headLength), folder.map { .text($0) } ?? .null,
-          .text(try encode(cursor)), .int(slot),
+          .text(try encode(cursor)), .int(isClaude ? skills.offset : cursor.offset),
+          isClaude ? .text(try encode(skills)) : .null, .int(slot),
         ])
       for (key, tokens) in tallies where !tokens.isZero {
         try db.run(
@@ -370,33 +455,35 @@ actor UsageIndexer {
       }
     }
 
+    // The file offset of `pending`'s first byte.
+    var base =
+      item.source.vendor == .claude ? min(cursor.offset, skills.offset) : cursor.offset
     let handle = try FileHandle(forReadingFrom: item.url)
     defer { try? handle.close() }
-    try handle.seek(toOffset: UInt64(cursor.offset))
+    try handle.seek(toOffset: UInt64(base))
     var pending = Data()
     var sinceCommit: Int64 = 0
-    // Skills start where tokens do, so this reads exactly what it did before.
-    var skills = SkillCursor(offset: cursor.offset)
 
     while true {
       if Task.isCancelled { throw CancellationError() }
-      guard let chunk = try handle.read(upToCount: Self.chunkBytes), !chunk.isEmpty else { break }
+      guard let chunk = try handle.read(upToCount: chunkBytes), !chunk.isEmpty else { break }
       pending.append(chunk)
       let used =
         switch item.source.vendor {
         case .claude:
           FileIngest.claude(
-            pending, base: cursor.offset, cursor: &cursor, skills: &skills, tokens: true,
+            pending, base: base, cursor: &cursor, skills: &skills, tokens: true,
             subagent: item.parentSession != nil, calendar: calendar, claim: claim, sink: sink,
-            skill: { _ in false }, reply: { _, _ in })
+            skill: skill, reply: reply)
         case .codex:
           FileIngest.codex(pending, cursor: &cursor, calendar: calendar, claim: claim, sink: sink)
         }
-      if let claimError { throw claimError }
+      if let storeError { throw storeError }
       pending = Data(pending.dropFirst(used))
+      base += Int64(used)
       sinceCommit += Int64(chunk.count)
       onBytes(chunk.count)
-      if sinceCommit >= Self.commitBytes {
+      if sinceCommit >= commitBytes {
         try flush()
         try db.commit()
         onCommit()
@@ -429,11 +516,14 @@ actor UsageIndexer {
       \(Self.archiveConflict)
       """, [.int(new), .int(old)])
     try db.run("DELETE FROM file_usage WHERE slot = ?", [.int(old)])
+    // A use the new version no longer holds still happened: it stays, under the new slot.
+    try db.run("UPDATE skill_uses SET slot = ? WHERE slot = ?", [.int(new), .int(old)])
     try db.run("DELETE FROM files WHERE slot = ?", [.int(old)])
     try db.run("UPDATE files SET replaces = NULL WHERE slot = ?", [.int(new)])
   }
 
-  /// A file that is gone: its figures move to `archive`, and its dedupe keys stay.
+  /// A file that is gone: its figures move to `archive`, its dedupe keys stay, and its skill
+  /// uses stay with no file.
   private func fold(_ file: StoredFile, _ db: UsageDatabase) throws {
     if let old = file.replaces { try finishReplacement(old: old, new: file.slot, db) }
     try db.run(
@@ -447,6 +537,7 @@ actor UsageIndexer {
       \(Self.archiveConflict)
       """, [.int(file.slot)])
     try db.run("DELETE FROM file_usage WHERE slot = ?", [.int(file.slot)])
+    try db.run("UPDATE skill_uses SET slot = NULL WHERE slot = ?", [.int(file.slot)])
     try db.run("DELETE FROM files WHERE slot = ?", [.int(file.slot)])
   }
 
@@ -495,10 +586,29 @@ actor UsageIndexer {
           lastAt: Date(timeIntervalSince1970: row.double(5)), isChild: row.int(6) != 0))
     }
 
+    var skills: [SkillUsageRow] = []
+    try db.query(
+      """
+      SELECT day, cwd, account, vendor, skill, kind, COUNT(*), MAX(at) FROM skill_uses
+      GROUP BY day, cwd, account, vendor, skill, kind
+      """
+    ) { row in
+      guard let cwd = row.text(1), let account = row.text(2), let skill = row.text(4),
+        let vendor = UsageVendor(rawValue: Int(row.int(3))),
+        let kind = SkillKind(rawValue: Int(row.int(5)))
+      else { return }
+      skills.append(
+        SkillUsageRow(
+          day: Int(row.int(0)), cwd: cwd, account: account, vendor: vendor, skill: skill,
+          kind: kind, count: Int(row.int(6)), lastAt: Date(timeIntervalSince1970: row.double(7))))
+    }
+
     generation += 1
     return UsageLedgerSnapshot(
       generation: generation, rows: rows, sessions: sessions,
-      earliestDay: rows.map(\.day).min(), firstPassDone: try meta("first_pass_done", db) == "1")
+      earliestDay: rows.map(\.day).min(), firstPassDone: try meta("first_pass_done", db) == "1",
+      skills: skills, skillsPassDone: try meta("skills_pass_done", db) == "1",
+      earliestSkillDay: skills.map(\.day).min())
   }
 
   // MARK: - Storage
@@ -509,26 +619,50 @@ actor UsageIndexer {
       try FileManager.default.createDirectory(
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       var db = try UsageDatabase(url: url)
-      let version = try db.userVersion()
-      if version != 0, version != Self.schemaVersion {
+      var version = try db.userVersion()
+      if ![0, 1, Self.schemaVersion].contains(version) {
         db.close()
         db = try reopenAside(reason: "schema version \(version)")
+        version = 0
       }
-      try migrate(db)
+      try migrate(db, from: version)
       database = db
       return db
     } catch {
       Self.logger.error("index database unusable: \(error.localizedDescription, privacy: .public)")
       guard let db = try? reopenAside(reason: error.localizedDescription) else { return nil }
-      try? migrate(db)
+      try? migrate(db, from: 0)
       database = db
       return db
     }
   }
 
-  private func migrate(_ db: UsageDatabase) throws {
-    try db.execute(Self.schema)
-    try db.setUserVersion(Self.schemaVersion)
+  /// **Version 1 is upgraded in place.** It lacks only the skill cursor, which starts at
+  /// zero, so the next pass reads every file again for skills only. A new skill parser does
+  /// the same to a version 2 ledger; uses whose file is gone cannot be read again, so they
+  /// stay as they were read. One transaction, so a crash part way through leaves version 1
+  /// to upgrade again.
+  private func migrate(_ db: UsageDatabase, from version: Int) throws {
+    try db.begin()
+    do {
+      if version == 1 {
+        try db.execute("ALTER TABLE files ADD COLUMN skill_offset INTEGER NOT NULL DEFAULT 0")
+        try db.execute("ALTER TABLE files ADD COLUMN skill_state TEXT")
+      }
+      try db.execute(Self.schema)
+      let parser = String(Self.skillParserVersion)
+      if try meta("skill_parser", db) != parser {
+        try db.run("DELETE FROM skill_uses WHERE slot IS NOT NULL")
+        try db.run("UPDATE files SET skill_offset = 0, skill_state = NULL")
+        try db.run("DELETE FROM meta WHERE key = 'skills_pass_done'")
+        try setMeta("skill_parser", parser, db)
+      }
+      try db.setUserVersion(Self.schemaVersion)
+      try db.commit()
+    } catch {
+      try? db.rollback()
+      throw error
+    }
   }
 
   /// **Moved aside, never deleted.** The archive holds history no transcript on disk still
@@ -556,7 +690,7 @@ actor UsageIndexer {
     try db.query(
       """
       SELECT slot, account, vendor, key, path, inode, size, mtime, head_hash, head_len, cwd,
-        cursor, replaces
+        cursor, replaces, skill_offset, skill_state
       FROM files WHERE superseded = 0
       """
     ) { row in
@@ -564,11 +698,16 @@ actor UsageIndexer {
         let text = row.text(11),
         let cursor = try? decoder.decode(IngestCursor.self, from: Data(text.utf8))
       else { return }
+      // No state yet is nothing waiting for a reply.
+      var skills =
+        row.text(14).flatMap { try? decoder.decode(SkillCursor.self, from: Data($0.utf8)) }
+        ?? SkillCursor()
+      skills.offset = row.int(13)
       let source = "\(row.int(2))|\(account)"
       files["\(source)|\(key)"] = StoredFile(
         slot: row.int(0), source: source, account: account, key: key, path: path,
         inode: row.int(5), size: row.int(6), mtime: row.double(7), headHash: row.int(8),
-        headLength: row.int(9), cwd: row.text(10), cursor: cursor,
+        headLength: row.int(9), cwd: row.text(10), cursor: cursor, skillCursor: skills,
         replaces: row.isNull(12) ? nil : row.int(12))
     }
     return files
@@ -586,7 +725,7 @@ actor UsageIndexer {
       [.text(key), .text(value)])
   }
 
-  private func encode(_ cursor: IngestCursor) throws -> String {
+  private func encode(_ cursor: some Encodable) throws -> String {
     String(decoding: try encoder.encode(cursor), as: UTF8.self)
   }
 

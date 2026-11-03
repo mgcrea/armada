@@ -44,6 +44,9 @@ nonisolated struct SkillCursor: Codable, Hashable, Sendable {
 nonisolated struct SkillContribution: Equatable, Sendable {
   let event: SkillUseEvent
   let day: Int
+  /// The folder the session started in, as far as the read has learnt it. Handed over here
+  /// because the cursor that holds it is being written while `skill` runs.
+  let cwd: String?
 }
 
 /// Reads whole lines from a chunk of a transcript or rollout, and says what they spent.
@@ -72,6 +75,7 @@ nonisolated enum FileIngest {
     sink: (IngestContribution) -> Void, skill: (SkillContribution) -> Bool,
     reply: ([String], String) -> Void
   ) -> Int {
+    assert(base <= min(cursor.offset, skills.offset), "a read starts at or before both cursors")
     let consumed = wholeLines(in: buffer) { line, start in
       let position = base + Int64(start)
       if cursor.cwd == nil, let cwd = ClaudeUsageLine.cwd(in: line) { cursor.cwd = cwd }
@@ -80,8 +84,8 @@ nonisolated enum FileIngest {
       }
       if position >= skills.offset {
         claudeSkills(
-          line, skills: &skills, subagent: subagent, calendar: calendar, skill: skill,
-          reply: reply)
+          line, skills: &skills, cwd: cursor.cwd, subagent: subagent, calendar: calendar,
+          skill: skill, reply: reply)
       }
     }
     cursor.offset = max(cursor.offset, base + Int64(consumed))
@@ -105,14 +109,15 @@ nonisolated enum FileIngest {
   }
 
   private static func claudeSkills(
-    _ line: Data, skills: inout SkillCursor, subagent: Bool, calendar: Calendar,
+    _ line: Data, skills: inout SkillCursor, cwd: String?, subagent: Bool, calendar: Calendar,
     skill: (SkillContribution) -> Bool, reply: ([String], String) -> Void
   ) {
     for event in ClaudeSkillLine.parse(line, wantHuman: !skills.awaiting.isEmpty) {
       switch event {
       case .use(let use):
         let isNew = skill(
-          SkillContribution(event: use, day: LocalDay.key(use.at, calendar: calendar)))
+          SkillContribution(
+            event: use, day: LocalDay.key(use.at, calendar: calendar), cwd: cwd))
         if isNew, !subagent { skills.awaiting.append(use.useID) }
       case .human(let text):
         reply(skills.awaiting, text)

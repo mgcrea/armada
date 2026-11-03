@@ -791,7 +791,8 @@ import SwiftUI
       }
       let earliest = LocalDay.adding(-29, to: today, calendar: calendar)
       return UsageLedgerSnapshot(
-        generation: 1, rows: rows, sessions: sessions, earliestDay: earliest, firstPassDone: true)
+        generation: 1, rows: rows, sessions: sessions, earliestDay: earliest, firstPassDone: true,
+        skills: [], skillsPassDone: true, earliestSkillDay: nil)
     }
 
     // MARK: - The history

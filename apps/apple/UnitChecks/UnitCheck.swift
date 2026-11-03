@@ -47,6 +47,7 @@ struct UnitCheck {
     projects()
     usageLedger()
     usageIndexer()
+    skillIndexer()
     usageLines()
     usageIngest()
     skillLines()
@@ -1635,6 +1636,20 @@ struct UnitCheck {
     var snapshot: UsageLedgerSnapshot?
   }
 
+  /// Runs `body` off the main thread and waits for it: the checks are synchronous.
+  static func blocking(
+    _ body: @escaping @Sendable () async -> UsageLedgerSnapshot?
+  ) -> UsageLedgerSnapshot? {
+    let result = PassResult()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+      result.snapshot = await body()
+      done.signal()
+    }
+    done.wait()
+    return result.snapshot
+  }
+
   static func usageIndexer() {
     section("UsageIndexer")
     let fileManager = FileManager.default
@@ -1664,19 +1679,334 @@ struct UnitCheck {
     // Read here: `utc` is the main actor's, and the main thread is about to wait.
     let calendar = utc
     func pass() -> UsageLedgerSnapshot? {
-      let result = PassResult()
-      let done = DispatchSemaphore(value: 0)
-      Task.detached {
-        result.snapshot = await indexer.runPass(
+      blocking {
+        await indexer.runPass(
           sources: [source], calendar: calendar, progress: { _ in }, publish: { _ in })
-        done.signal()
       }
-      done.wait()
-      return result.snapshot
     }
     let outputs = (0..<4).map { _ in pass()?.rows.reduce(0) { $0 + $1.tokens.output } }
     expectEqual(
       "and pass after pass counts its two messages once", outputs, [100, 100, 100, 100])
+  }
+
+  /// The ledger as it stood at schema 1, before skills were counted.
+  static let ledgerSchemaV1 = """
+    CREATE TABLE files(
+      slot INTEGER PRIMARY KEY, account TEXT NOT NULL, vendor INTEGER NOT NULL,
+      key TEXT NOT NULL, path TEXT NOT NULL, inode INTEGER NOT NULL, size INTEGER NOT NULL,
+      mtime REAL NOT NULL, head_hash INTEGER NOT NULL, head_len INTEGER NOT NULL, cwd TEXT,
+      cursor TEXT NOT NULL, replaces INTEGER, superseded INTEGER NOT NULL DEFAULT 0);
+    CREATE UNIQUE INDEX files_key ON files(vendor, account, key) WHERE superseded = 0;
+    CREATE TABLE seen(hash INTEGER PRIMARY KEY, slot INTEGER NOT NULL) WITHOUT ROWID;
+    CREATE TABLE file_usage(
+      slot INTEGER NOT NULL, day INTEGER NOT NULL, model TEXT NOT NULL,
+      fresh INTEGER NOT NULL, cache_write INTEGER NOT NULL, cache_read INTEGER NOT NULL,
+      output INTEGER NOT NULL, reasoning INTEGER NOT NULL,
+      PRIMARY KEY(slot, day, model)) WITHOUT ROWID;
+    CREATE TABLE archive(
+      day INTEGER NOT NULL, cwd TEXT NOT NULL, account TEXT NOT NULL, vendor INTEGER NOT NULL,
+      model TEXT NOT NULL, fresh INTEGER NOT NULL, cache_write INTEGER NOT NULL,
+      cache_read INTEGER NOT NULL, output INTEGER NOT NULL, reasoning INTEGER NOT NULL,
+      PRIMARY KEY(day, cwd, account, vendor, model)) WITHOUT ROWID;
+    CREATE TABLE sessions(
+      account TEXT NOT NULL, vendor INTEGER NOT NULL, session_id TEXT NOT NULL,
+      cwd TEXT NOT NULL, first_at REAL NOT NULL, last_at REAL NOT NULL,
+      is_child INTEGER NOT NULL, PRIMARY KEY(account, vendor, session_id)) WITHOUT ROWID;
+    CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+    """
+
+  /// The first column of every row `sql` returns, read straight from the ledger file.
+  static func ledgerColumn(_ url: URL, _ sql: String) -> [String] {
+    guard let db = try? UsageDatabase(url: url) else { return [] }
+    defer { db.close() }
+    var values: [String] = []
+    try? db.query(sql) { values.append($0.text(0) ?? "NULL") }
+    return values
+  }
+
+  /// Writes to the ledger file behind the indexer's back, as an older build would have.
+  static func ledgerExecute(_ url: URL, _ sql: String) {
+    guard let db = try? UsageDatabase(url: url) else { return }
+    defer { db.close() }
+    do { try db.execute(sql) } catch { check("ledger edit: \(error.localizedDescription)", false) }
+  }
+
+  static func skillIndexer() {
+    section("UsageIndexer, skills")
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appending(
+      path: "armada-skills-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? fileManager.removeItem(at: root) }
+    // Read here: `utc` is the main actor's, and the main thread is about to wait.
+    let calendar = utc
+    func home(_ name: String) -> URL { root.appending(path: name, directoryHint: .isDirectory) }
+    func ledger(_ name: String) -> URL { root.appending(path: "\(name).sqlite") }
+    func write(_ lines: [String], to relative: String, in home: URL) {
+      let url = home.appending(path: relative, directoryHint: .notDirectory)
+      try? fileManager.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? ndjson(lines).write(to: url)
+    }
+    /// As Claude Code writes: onto the end of the same file.
+    func append(_ lines: [String], to relative: String, in home: URL) {
+      let url = home.appending(path: relative, directoryHint: .notDirectory)
+      guard let handle = try? FileHandle(forWritingTo: url) else { return }
+      defer { try? handle.close() }
+      _ = try? handle.seekToEnd()
+      try? handle.write(contentsOf: ndjson(lines))
+    }
+    func pass(
+      _ indexer: UsageIndexer, _ home: URL,
+      progress: @escaping @Sendable (UsageIndexer.Progress) -> Void = { _ in }
+    ) -> UsageLedgerSnapshot? {
+      let sources = [UsageIndexer.Source(account: "me", vendor: .claude, root: home)]
+      return blocking {
+        await indexer.runPass(
+          sources: sources, calendar: calendar, progress: progress, publish: { _ in })
+      }
+    }
+    func uses(_ snapshot: UsageLedgerSnapshot?, _ kind: SkillKind) -> Int {
+      snapshot?.skills.filter { $0.kind == kind }.reduce(0) { $0 + $1.count } ?? -1
+    }
+    func output(_ snapshot: UsageLedgerSnapshot?) -> Int {
+      snapshot?.rows.reduce(0) { $0 + $1.tokens.output } ?? -1
+    }
+
+    let mainHome = home("main")
+    let mainURL = ledger("main")
+    let session = [
+      claudeLine(id: "m1"),
+      slashLine(name: "code-health", uuid: "u1"),
+      skillToolLine(ids: ["toolu_1"], skills: ["code-health"]),
+      skillToolLine(ids: ["toolu_2"], skills: ["simplify"], uuid: "e2"),
+      humanLine(text: "no, not that one"),
+    ]
+    write(session, to: "-work-armada/s1.jsonl", in: mainHome)
+    let indexer = UsageIndexer(url: mainURL)
+    let first = pass(indexer, mainHome)
+    check(
+      "a transcript's uses are counted: two the model chose, one typed",
+      uses(first, .auto) == 2 && uses(first, .slash) == 1)
+    check(
+      "the skills pass is done, and starts on the day of the first use",
+      first?.skillsPassDone == true && first?.earliestSkillDay == 20_261_024)
+    let again = pass(indexer, mainHome)
+    check(
+      "a second pass changes nothing",
+      Set(again?.skills ?? []) == Set(first?.skills ?? []) && output(again) == output(first))
+    expectEqual(
+      "the person's next message is kept as the reply",
+      ledgerColumn(mainURL, "SELECT reply FROM skill_uses WHERE use_id = 'a:toolu_2'"),
+      ["no, not that one"])
+    expectEqual(
+      "each use is the file's session, in the stored folder",
+      ledgerColumn(mainURL, "SELECT DISTINCT session_id || ' ' || cwd FROM skill_uses"),
+      ["s1 /work/armada"])
+
+    write(
+      session + [skillToolLine(ids: ["toolu_3"], skills: ["simplify"], uuid: "e3")],
+      to: "-work-armada/s2.jsonl", in: mainHome)
+    let resumed = pass(indexer, mainHome)
+    expectEqual("a resumed copy adds only the use it is first to hold", uses(resumed, .auto), 3)
+
+    write(
+      [skillToolLine(ids: ["toolu_sub"], skills: ["code-health"], uuid: "e9")],
+      to: "-work-armada/s1/subagents/agent-x.jsonl", in: mainHome)
+    _ = pass(indexer, mainHome)
+    expectEqual(
+      "a subagent's use counts under its session, in its session's folder",
+      ledgerColumn(
+        mainURL, "SELECT session_id || ' ' || cwd FROM skill_uses WHERE use_id = 'a:toolu_sub'"),
+      ["s1 /work/armada"])
+
+    append(
+      [skillToolLine(ids: ["toolu_4"], skills: ["simplify"], uuid: "e4")],
+      to: "-work-armada/s1.jsonl", in: mainHome)
+    _ = pass(indexer, mainHome)
+    append([humanLine(text: "later", uuid: "h2")], to: "-work-armada/s1.jsonl", in: mainHome)
+    let beforeDeletion = pass(indexer, mainHome)
+    expectEqual(
+      "a use still waiting when a pass ends gets the reply the next one reads",
+      ledgerColumn(mainURL, "SELECT reply FROM skill_uses WHERE use_id = 'a:toolu_4'"),
+      ["later"])
+
+    try? fileManager.removeItem(
+      at: mainHome.appending(path: "-work-armada/s2.jsonl", directoryHint: .notDirectory))
+    let gone = pass(indexer, mainHome)
+    check(
+      "a deleted transcript's uses stay counted",
+      Set(gone?.skills ?? []) == Set(beforeDeletion?.skills ?? []) && uses(gone, .auto) == 5)
+    expectEqual(
+      "with no file holding them",
+      ledgerColumn(mainURL, "SELECT slot IS NULL FROM skill_uses WHERE use_id = 'a:toolu_3'"),
+      ["1"])
+
+    let rowsBefore = ledgerColumn(mainURL, "SELECT COUNT(*) FROM skill_uses")
+    let tokensBefore = ledgerColumn(mainURL, "SELECT SUM(output) FROM file_usage")
+    ledgerExecute(mainURL, "UPDATE meta SET value = '0' WHERE key = 'skill_parser'")
+    let reparsing = UsageIndexer(url: mainURL)
+    check(
+      "a new skill parser starts the skills pass over",
+      blocking { await reparsing.loadSnapshot() }?.skillsPassDone == false)
+    let reparsed = pass(reparsing, mainHome)
+    let replies = ledgerColumn(mainURL, "SELECT reply FROM skill_uses WHERE use_id = 'a:toolu_2'")
+    check(
+      "and the next pass reads every use still on disk again",
+      reparsed?.skillsPassDone == true
+        && ledgerColumn(mainURL, "SELECT COUNT(*) FROM skill_uses") == rowsBefore
+        && replies == ["no, not that one"])
+    expectEqual(
+      "without touching a token",
+      ledgerColumn(mainURL, "SELECT SUM(output) FROM file_usage"), tokensBefore)
+
+    let v1URL = ledger("v1")
+    if let v1 = try? UsageDatabase(url: v1URL) {
+      try? v1.execute(ledgerSchemaV1)
+      try? v1.setUserVersion(1)
+      try? v1.execute(
+        """
+        INSERT INTO archive VALUES (20260801, '/work', 'me', 0, 'claude-opus-5', 1, 2, 3, 4, 0);
+        INSERT INTO files(slot, account, vendor, key, path, inode, size, mtime, head_hash,
+          head_len, cwd, cursor)
+        VALUES (1, 'me', 0, 's0', '-work/s0.jsonl', 1, 10, 0, 0, 10, '/work', '{"offset":10}');
+        """)
+      v1.close()
+    }
+    let opened = blocking { await UsageIndexer(url: v1URL).loadSnapshot() }
+    expectEqual("a v1 ledger opens as v2", ledgerColumn(v1URL, "PRAGMA user_version"), ["2"])
+    expectEqual(
+      "with its archive intact", opened?.rows,
+      [
+        UsageRow(
+          day: 20_260_801, cwd: "/work", account: "me", vendor: .claude, model: "claude-opus-5",
+          tokens: TokenTally(fresh: 1, cacheWrite: 2, cacheRead: 3, output: 4))
+      ])
+    expectEqual(
+      "and its files given a skill cursor at zero",
+      ledgerColumn(v1URL, "SELECT skill_offset || ' ' || IFNULL(skill_state, '-') FROM files"),
+      ["0 -"])
+
+    let upgradeHome = home("upgrade")
+    let upgradeURL = ledger("upgrade")
+    write(
+      [
+        claudeLine(id: "m1", cwd: "/work"),
+        skillToolLine(ids: ["toolu_1"], skills: ["code-health"]),
+        claudeLine(id: "m2", output: 70, cwd: "/work"),
+        skillToolLine(ids: ["toolu_2"], skills: ["simplify"], uuid: "e2"),
+      ], to: "-work/s1.jsonl", in: upgradeHome)
+    let upgrading = UsageIndexer(url: upgradeURL)
+    let tokensRead = output(pass(upgrading, upgradeHome))
+    // What a v1 ledger holds once migrated: every token read, no use yet.
+    ledgerExecute(
+      upgradeURL, "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL")
+    let upgraded = pass(upgrading, upgradeHome)
+    expectEqual(
+      "a ledger read before skills were counted counts them on its next pass",
+      uses(upgraded, .auto), 2)
+    expectEqual("and its tokens stay what they were", output(upgraded), tokensRead)
+
+    // Past the commit size many times over, at a size a check can afford.
+    let small: Int64 = 4_096
+    let longHome = home("long")
+    let longLines =
+      [claudeLine(id: "m0", cwd: "/work")]
+      + (1...40).flatMap { n in
+        [
+          skillToolLine(ids: ["toolu_\(n)"], skills: ["skill-\(n % 3)"], uuid: "e\(n)"),
+          claudeLine(id: "m\(n)", cwd: "/work"),
+        ]
+      }
+    write(longLines, to: "-work/s1.jsonl", in: longHome)
+    let clean = pass(UsageIndexer(url: ledger("clean")), longHome)
+    let longURL = ledger("long")
+    let backfilling = UsageIndexer(url: longURL, commitBytes: small, chunkBytes: Int(small))
+    _ = pass(backfilling, longHome)
+    ledgerExecute(
+      longURL, "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL")
+    _ = pass(backfilling, longHome) { progress in
+      // The app quitting: the pass stops once its first commit is in.
+      if progress.bytesDone >= small { withUnsafeCurrentTask { $0?.cancel() } }
+    }
+    let stoppedAt = ledgerColumn(longURL, "SELECT skill_offset FROM files").first.flatMap {
+      Int($0)
+    }
+    check(
+      "a backfill cancelled after its first commit stops partway",
+      stoppedAt.map { $0 > 0 && $0 < ndjson(longLines).count } == true)
+    let finished = pass(backfilling, longHome)
+    check(
+      "the next pass resumes it and counts each use once",
+      uses(finished, .auto) == 40 && Set(finished?.skills ?? []) == Set(clean?.skills ?? []))
+    check(
+      "and the tokens match a clean read",
+      output(clean) > 0 && Set(finished?.rows ?? []) == Set(clean?.rows ?? []))
+
+    // Rewritten, read partway, then rewritten again: the partial read's slot is dropped.
+    write(
+      [
+        #"{"type":"summary","summary":"One"}"#,
+        skillToolLine(ids: ["toolu_p"], skills: ["p"], uuid: "ep"),
+      ] + longLines,
+      to: "-work/s1.jsonl", in: longHome)
+    _ = pass(backfilling, longHome) { progress in
+      if progress.bytesDone >= small { withUnsafeCurrentTask { $0?.cancel() } }
+    }
+    write(
+      [#"{"type":"summary","summary":"Two"}"#] + longLines.prefix(3), to: "-work/s1.jsonl",
+      in: longHome)
+    // Read first, so the slot the rewrite takes is not the one it drops.
+    write([claudeLine(id: "m99", cwd: "/work")], to: "-work/s9.jsonl", in: longHome)
+    let twice = pass(backfilling, longHome)
+    expectEqual(
+      "a use only a dropped partial read held moves to the file's new slot",
+      ledgerColumn(
+        longURL,
+        """
+        SELECT slot = (SELECT slot FROM files WHERE key = 's1') FROM skill_uses
+        WHERE use_id = 'a:toolu_p'
+        """), ["1"])
+    expectEqual("and still counts once", uses(twice, .auto), 41)
+
+    let rewriteHome = home("rewrite")
+    let rewriteURL = ledger("rewrite")
+    write(
+      [
+        claudeLine(id: "m1"),
+        skillToolLine(ids: ["toolu_a"], skills: ["a"]),
+        claudeLine(id: "m2"),
+        skillToolLine(ids: ["toolu_b"], skills: ["b"], uuid: "e2"),
+        claudeLine(id: "m3"),
+      ], to: "-work-armada/s1.jsonl", in: rewriteHome)
+    let rewriting = UsageIndexer(url: rewriteURL)
+    let oldTokens = output(pass(rewriting, rewriteHome))
+    // Skills lag tokens, as mid-backfill, when Claude Code rewrites the file shorter.
+    ledgerExecute(rewriteURL, "UPDATE files SET skill_offset = 0, skill_state = NULL")
+    write(
+      [
+        #"{"type":"summary","summary":"Resumed"}"#,
+        claudeLine(id: "m1"),
+        skillToolLine(ids: ["toolu_a"], skills: ["a"]),
+        skillToolLine(ids: ["toolu_c"], skills: ["c"], uuid: "e3"),
+      ], to: "-work-armada/s1.jsonl", in: rewriteHome)
+    let rewritten = pass(rewriting, rewriteHome)
+    expectEqual(
+      "a transcript rewritten during the backfill keeps both versions' uses, once each",
+      ledgerColumn(
+        rewriteURL,
+        "SELECT use_id FROM skill_uses WHERE slot = (SELECT slot FROM files) ORDER BY use_id"),
+      ["a:toolu_a", "a:toolu_b", "a:toolu_c"])
+    expectEqual(
+      "both cursors start again from zero and reach its end",
+      ledgerColumn(
+        rewriteURL,
+        "SELECT skill_offset = size AND skill_offset = json_extract(cursor, '$.offset') FROM files"
+      ),
+      ["1"])
+    expectEqual("its tokens follow the rewrite rule", output(rewritten), oldTokens)
+    expectEqual(
+      "what only the old version counted is kept in the archive",
+      ledgerColumn(rewriteURL, "SELECT SUM(output) FROM archive"), ["100"])
   }
 
   static func usageLedger() {
@@ -2210,7 +2540,8 @@ struct UnitCheck {
         session(
           "c1", "/work/armada", lastAt: "2026-09-14T09:00:00Z", vendor: .codex, isChild: true),
       ],
-      earliestDay: 20_260_801, firstPassDone: true)
+      earliestDay: 20_260_801, firstPassDone: true, skills: [], skillsPassDone: true,
+      earliestSkillDay: nil)
     let stats = ProjectStats.compute(
       projects: [
         ProjectPath.Candidate(id: "outer", keys: ["/work/armada"]),
