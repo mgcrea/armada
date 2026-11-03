@@ -95,7 +95,15 @@ to "`~/.claude*` and `~/.codex`":
   `~/.codex`, `CODEX_HOME`, `~/.grok`, `GROK_HOME` and any home added with Add Account, for
   session registries, transcripts, session logs and cached usage. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
   transcript and session log is read, Codex's `archived_sessions` included, for the tokens each
-  project spent; what is kept is counts per day, folder, account and model, never text.
+  project spent; what is kept of those is counts per day, folder, account and model, never text.
+  Claude Code transcripts are also read for the skills and custom commands used in them, and
+  those are kept one row per use, with text: the skill's name, when and in which folder and
+  session it ran, up to 500 characters of what it was asked (its arguments), and up to 500
+  characters of the next message you typed after it. They are kept in `usage-index.sqlite`
+  after Claude Code deletes the transcript they came from, until you delete that file.
+- **The `Armada Archive` folder, while Archive is on:** its copies of Claude Code transcripts,
+  for skill uses only and never for tokens, read through at most once a day and only while the
+  folder is there, so skill history reaches back past the 30 days Claude Code keeps.
 - **`~/.claude.json`**, watched for changes, for the plan usage Claude Code caches there.
 - **`~/.vscode/extensions`**, listed to find a `codex` binary bundled with the Codex extension.
 - **`.git`, up to four folders above each session's working folder**, checked for existence
@@ -108,9 +116,10 @@ to "`~/.claude*` and `~/.codex`":
 
 None of it leaves the Mac through Armada. The only requests Armada makes are the opt-in update
 check and the speech-model downloads, and the only thing it serves is the opt-in loopback MCP
-endpoint described above. Archive, when you turn it on, writes transcripts to a folder you chose;
-if that folder is a network share, it was mounted by you, and it is macOS that carries the files
-there, not a connection of Armada's.
+endpoint described above. Archive, when you turn it on, writes transcripts to a folder you chose,
+and the token ledger reads them back for skill uses, through to the end at most once a day; if
+that folder is a network share, it was mounted by you, and it is macOS that carries the files
+there and back, not a connection of Armada's.
 
 ## In scope
 
