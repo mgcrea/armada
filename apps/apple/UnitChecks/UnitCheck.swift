@@ -1843,20 +1843,44 @@ struct UnitCheck {
 
     let rowsBefore = ledgerColumn(mainURL, "SELECT COUNT(*) FROM skill_uses")
     let tokensBefore = ledgerColumn(mainURL, "SELECT SUM(output) FROM file_usage")
-    ledgerExecute(mainURL, "UPDATE meta SET value = '0' WHERE key = 'skill_parser'")
+    // Marks only a re-read can clear, on a use still on disk and on one whose file is gone.
+    ledgerExecute(
+      mainURL,
+      """
+      UPDATE skill_uses SET skill = 'stale' WHERE use_id = 'a:toolu_2';
+      UPDATE skill_uses SET skill = 'kept' WHERE use_id = 'a:toolu_3';
+      """)
+    // Gone just before the bump, so its uses are still on a slot when the pass starts.
+    try? fileManager.removeItem(
+      at: mainHome.appending(
+        path: "-work-armada/s1/subagents/agent-x.jsonl", directoryHint: .notDirectory))
+    // What a build with a newer parser finds: every file read by the one before.
+    ledgerExecute(
+      mainURL,
+      "UPDATE files SET skill_parser = 0; UPDATE meta SET value = '0' WHERE key = 'skill_parser'")
     let reparsing = UsageIndexer(url: mainURL)
     check(
       "a new skill parser starts the skills pass over",
       blocking { await reparsing.loadSnapshot() }?.skillsPassDone == false)
     let reparsed = pass(reparsing, mainHome)
     let replies = ledgerColumn(mainURL, "SELECT reply FROM skill_uses WHERE use_id = 'a:toolu_2'")
+    let names = ledgerColumn(mainURL, "SELECT skill FROM skill_uses WHERE use_id = 'a:toolu_2'")
     check(
-      "and the next pass reads every use still on disk again",
-      reparsed?.skillsPassDone == true
-        && ledgerColumn(mainURL, "SELECT COUNT(*) FROM skill_uses") == rowsBefore
+      "and the next pass reads each file's uses again",
+      reparsed?.skillsPassDone == true && names == ["simplify"]
         && replies == ["no, not that one"])
     expectEqual(
-      "without touching a token",
+      "a use whose file was gone before is left as it was",
+      ledgerColumn(mainURL, "SELECT skill FROM skill_uses WHERE use_id = 'a:toolu_3'"),
+      ["kept"])
+    expectEqual(
+      "one whose file went just before the bump is kept, with no file",
+      ledgerColumn(mainURL, "SELECT slot IS NULL FROM skill_uses WHERE use_id = 'a:toolu_sub'"),
+      ["1"])
+    expectEqual(
+      "so no use is lost", ledgerColumn(mainURL, "SELECT COUNT(*) FROM skill_uses"), rowsBefore)
+    expectEqual(
+      "and no token touched",
       ledgerColumn(mainURL, "SELECT SUM(output) FROM file_usage"), tokensBefore)
 
     let v1URL = ledger("v1")
@@ -1882,9 +1906,11 @@ struct UnitCheck {
           tokens: TokenTally(fresh: 1, cacheWrite: 2, cacheRead: 3, output: 4))
       ])
     expectEqual(
-      "and its files given a skill cursor at zero",
-      ledgerColumn(v1URL, "SELECT skill_offset || ' ' || IFNULL(skill_state, '-') FROM files"),
-      ["0 -"])
+      "and its files given a skill cursor at zero, read by no skill parser yet",
+      ledgerColumn(
+        v1URL,
+        "SELECT skill_offset || ' ' || IFNULL(skill_state, '-') || ' ' || skill_parser FROM files"
+      ), ["0 - 0"])
 
     let upgradeHome = home("upgrade")
     let upgradeURL = ledger("upgrade")
@@ -1899,12 +1925,18 @@ struct UnitCheck {
     let tokensRead = output(pass(upgrading, upgradeHome))
     // What a v1 ledger holds once migrated: every token read, no use yet.
     ledgerExecute(
-      upgradeURL, "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL")
+      upgradeURL,
+      "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL, skill_parser = 0"
+    )
     let upgraded = pass(upgrading, upgradeHome)
     expectEqual(
       "a ledger read before skills were counted counts them on its next pass",
       uses(upgraded, .auto), 2)
     expectEqual("and its tokens stay what they were", output(upgraded), tokensRead)
+    expectEqual(
+      "its file is marked read by this skill parser",
+      ledgerColumn(upgradeURL, "SELECT skill_parser FROM files"),
+      ["\(UsageIndexer.skillParserVersion)"])
 
     // Past the commit size many times over, at a size a check can afford.
     let small: Int64 = 4_096
@@ -1923,7 +1955,9 @@ struct UnitCheck {
     let backfilling = UsageIndexer(url: longURL, commitBytes: small, chunkBytes: Int(small))
     _ = pass(backfilling, longHome)
     ledgerExecute(
-      longURL, "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL")
+      longURL,
+      "DELETE FROM skill_uses; UPDATE files SET skill_offset = 0, skill_state = NULL, skill_parser = 0"
+    )
     _ = pass(backfilling, longHome) { progress in
       // The app quitting: the pass stops once its first commit is in.
       if progress.bytesDone >= small { withUnsafeCurrentTask { $0?.cancel() } }
@@ -1955,18 +1989,17 @@ struct UnitCheck {
     write(
       [#"{"type":"summary","summary":"Two"}"#] + longLines.prefix(3), to: "-work/s1.jsonl",
       in: longHome)
-    // Read first, so the slot the rewrite takes is not the one it drops.
-    write([claudeLine(id: "m99", cwd: "/work")], to: "-work/s9.jsonl", in: longHome)
     let twice = pass(backfilling, longHome)
     expectEqual(
-      "a use only a dropped partial read held moves to the file's new slot",
+      "a use only a dropped partial read held is kept, with no file",
+      ledgerColumn(longURL, "SELECT slot IS NULL FROM skill_uses WHERE use_id = 'a:toolu_p'"),
+      ["1"])
+    expectEqual(
+      "one the last version holds is that version's",
       ledgerColumn(
-        longURL,
-        """
-        SELECT slot = (SELECT slot FROM files WHERE key = 's1') FROM skill_uses
-        WHERE use_id = 'a:toolu_p'
-        """), ["1"])
-    expectEqual("and still counts once", uses(twice, .auto), 41)
+        longURL, "SELECT slot = (SELECT slot FROM files) FROM skill_uses WHERE use_id = 'a:toolu_1'"
+      ), ["1"])
+    expectEqual("and every use still counts once", uses(twice, .auto), 41)
 
     let rewriteHome = home("rewrite")
     let rewriteURL = ledger("rewrite")
@@ -1994,8 +2027,10 @@ struct UnitCheck {
       "a transcript rewritten during the backfill keeps both versions' uses, once each",
       ledgerColumn(
         rewriteURL,
-        "SELECT use_id FROM skill_uses WHERE slot = (SELECT slot FROM files) ORDER BY use_id"),
-      ["a:toolu_a", "a:toolu_b", "a:toolu_c"])
+        """
+        SELECT use_id || IIF(slot = (SELECT slot FROM files), ' here', ' gone') FROM skill_uses
+        ORDER BY use_id
+        """), ["a:toolu_a here", "a:toolu_b gone", "a:toolu_c here"])
     expectEqual(
       "both cursors start again from zero and reach its end",
       ledgerColumn(
@@ -2007,6 +2042,20 @@ struct UnitCheck {
     expectEqual(
       "what only the old version counted is kept in the archive",
       ledgerColumn(rewriteURL, "SELECT SUM(output) FROM archive"), ["100"])
+
+    // Read to its end for both, then rewritten shorter with a use before the old cursors.
+    write(
+      [
+        #"{"type":"summary","summary":"Again"}"#,
+        skillToolLine(ids: ["toolu_d"], skills: ["d"], uuid: "e4"),
+      ], to: "-work-armada/s1.jsonl", in: rewriteHome)
+    let shorter = pass(rewriting, rewriteHome)
+    let held = ledgerColumn(
+      rewriteURL,
+      "SELECT slot = (SELECT slot FROM files) FROM skill_uses WHERE use_id = 'a:toolu_d'")
+    check(
+      "a rewrite of a file read to its end reads its uses from the start",
+      shorter?.skills.contains { $0.skill == "d" } == true && held == ["1"])
   }
 
   static func usageLedger() {

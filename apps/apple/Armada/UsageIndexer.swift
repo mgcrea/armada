@@ -22,12 +22,20 @@ import os
 ///   counts for nothing.
 ///
 /// **Skill uses are kept one row each, behind a second cursor.** A Claude transcript's
-/// `skill_offset` can trail its token cursor: a ledger that counted tokens before skills
-/// were counted, or one whose skill parser changed, reads its files again for skills alone.
-/// A read starts at the lesser of the two and each half reads only past its own, so the
-/// backfill rides the pass it is part of and never counts a token twice. A use is keyed by
-/// its own id, so a copy of it counts once; its row follows its file through a rewrite, and
-/// stays with no file once that file is gone, just as tokens go to `archive`.
+/// `skill_offset` can trail its token cursor. A read starts at the lesser of the two and each
+/// half reads only past its own, so a backfill rides the pass it is part of and never counts
+/// a token twice. A use is keyed by its own id, so a copy of it counts once.
+///
+/// **A slot holds only the uses its file still holds**, which is what lets a file be read
+/// again for them. While a rewrite is read, each use the new version still holds moves to
+/// its slot; once the read reaches the end, what the old version alone held stays with no
+/// file, like the uses of a file that is gone. A use with no file is never deleted.
+///
+/// **A file read by an older skill parser (`skill_parser`) is read again when the pass
+/// reaches it.** That includes every file of a ledger that counted tokens before skills. Its
+/// own slot's uses are deleted and read back in the same transaction, from byte zero for
+/// skills only. Nothing else is touched, so a file that is gone, or under an account no
+/// longer read, keeps the uses it had.
 ///
 /// **Order matters for the first pass.** Codex rollouts go first by name, so a parent is read
 /// before the forks that replay it; then Claude transcripts newest first, so the 7-day and
@@ -79,7 +87,10 @@ actor UsageIndexer {
     let headLength: Int64
     let cwd: String?
     let cursor: IngestCursor
+    /// Restarted at zero when `skillsStale`, so a stale file is never skipped as unchanged.
     let skillCursor: SkillCursor
+    /// Its uses were read by an older skill parser, and are read again from byte zero.
+    let skillsStale: Bool
     let replaces: Int64?
 
     /// Where a read of it starts: each half reads past its own cursor, and a Codex rollout
@@ -95,7 +106,8 @@ actor UsageIndexer {
   }
 
   static let schemaVersion = 2
-  /// Bumped when the reading of skill uses changes: every use still on disk is read again.
+  /// Bumped when the reading of skill uses changes: every file still on disk is read again
+  /// for its uses, one at a time as each is reached.
   static let skillParserVersion = 1
   static let chunkBytes = 1 << 20
   static let commitBytes: Int64 = 64 << 20
@@ -109,7 +121,8 @@ actor UsageIndexer {
       key TEXT NOT NULL, path TEXT NOT NULL, inode INTEGER NOT NULL, size INTEGER NOT NULL,
       mtime REAL NOT NULL, head_hash INTEGER NOT NULL, head_len INTEGER NOT NULL, cwd TEXT,
       cursor TEXT NOT NULL, replaces INTEGER, superseded INTEGER NOT NULL DEFAULT 0,
-      skill_offset INTEGER NOT NULL DEFAULT 0, skill_state TEXT);
+      skill_offset INTEGER NOT NULL DEFAULT 0, skill_state TEXT,
+      skill_parser INTEGER NOT NULL DEFAULT 0);
     CREATE UNIQUE INDEX IF NOT EXISTS files_key ON files(vendor, account, key)
       WHERE superseded = 0;
     CREATE TABLE IF NOT EXISTS skill_uses(
@@ -312,17 +325,22 @@ actor UsageIndexer {
       cursor = stored.cursor
       skills = stored.skillCursor
       replaces = stored.replaces
+      if stored.skillsStale {
+        // Read back from byte zero below, in this transaction. Uses still on the slot being
+        // replaced are not this file's yet, and stay.
+        try db.run("DELETE FROM skill_uses WHERE slot = ?", [.int(slot)])
+      }
     } else {
-      var dropped: Int64?
       if let stored {
         if let older = stored.replaces {
           // Rewritten again before the last rewrite was read to the end: compare against
           // the original, and drop the partial read in between. Its uses happened, so they
-          // move to the new slot below rather than going with it.
+          // go back to the original's slot, to move on as the new version holds them.
           try db.run("DELETE FROM file_usage WHERE slot = ?", [.int(stored.slot)])
           try db.run("DELETE FROM seen WHERE slot = ?", [.int(stored.slot)])
+          try db.run(
+            "UPDATE skill_uses SET slot = ? WHERE slot = ?", [.int(older), .int(stored.slot)])
           try db.run("DELETE FROM files WHERE slot = ?", [.int(stored.slot)])
-          dropped = stored.slot
           replaces = older
         } else {
           try db.run("UPDATE files SET superseded = 1 WHERE slot = ?", [.int(stored.slot)])
@@ -338,20 +356,16 @@ actor UsageIndexer {
       try db.run(
         """
         INSERT INTO files(account, vendor, key, path, inode, size, mtime, head_hash, head_len,
-          cwd, cursor, replaces)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          cwd, cursor, replaces, skill_parser)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
           .text(item.source.account), .int(Int64(item.source.vendor.rawValue)), .text(item.key),
           .text(item.relativePath), .int(item.inode), .int(item.size), .double(item.mtime),
           .int(headHash), .int(headLength), .null, .text(try encode(cursor)),
-          replaces.map { .int($0) } ?? .null,
+          replaces.map { .int($0) } ?? .null, .int(Int64(Self.skillParserVersion)),
         ])
       slot = db.lastInsertRowID
-      if let dropped {
-        try db.run(
-          "UPDATE skill_uses SET slot = ? WHERE slot = ?", [.int(slot), .int(dropped)])
-      }
     }
 
     let vendor = Int64(item.source.vendor.rawValue)
@@ -388,7 +402,14 @@ actor UsageIndexer {
             .text(item.sessionID), .double(use.at.timeIntervalSince1970), .text(use.entryUUID),
             use.args.map { .text($0) } ?? .null,
           ])
-        return db.changes > 0
+        if db.changes > 0 { return true }
+        if let replaces {
+          // The new version still holds it, so it is this file's now.
+          try db.run(
+            "UPDATE skill_uses SET slot = ? WHERE use_id = ? AND slot = ?",
+            [.int(slot), .text(use.useID), .int(replaces)])
+        }
+        return false
       } catch {
         storeError = error
         return false
@@ -413,13 +434,14 @@ actor UsageIndexer {
       try db.run(
         """
         UPDATE files SET path = ?, inode = ?, size = ?, mtime = ?, head_hash = ?, head_len = ?,
-          cwd = ?, cursor = ?, skill_offset = ?, skill_state = ? WHERE slot = ?
+          cwd = ?, cursor = ?, skill_offset = ?, skill_state = ?, skill_parser = ? WHERE slot = ?
         """,
         [
           .text(item.relativePath), .int(item.inode), .int(item.size), .double(item.mtime),
           .int(headHash), .int(headLength), folder.map { .text($0) } ?? .null,
           .text(try encode(cursor)), .int(isClaude ? skills.offset : cursor.offset),
-          isClaude ? .text(try encode(skills)) : .null, .int(slot),
+          isClaude ? .text(try encode(skills)) : .null, .int(Int64(Self.skillParserVersion)),
+          .int(slot),
         ])
       for (key, tokens) in tallies where !tokens.isZero {
         try db.run(
@@ -516,8 +538,9 @@ actor UsageIndexer {
       \(Self.archiveConflict)
       """, [.int(new), .int(old)])
     try db.run("DELETE FROM file_usage WHERE slot = ?", [.int(old)])
-    // A use the new version no longer holds still happened: it stays, under the new slot.
-    try db.run("UPDATE skill_uses SET slot = ? WHERE slot = ?", [.int(new), .int(old)])
+    // What the new version holds moved over as it was read. The rest only the old version
+    // held: it happened, and stays with no file, like a gone file's uses.
+    try db.run("UPDATE skill_uses SET slot = NULL WHERE slot = ?", [.int(old)])
     try db.run("DELETE FROM files WHERE slot = ?", [.int(old)])
     try db.run("UPDATE files SET replaces = NULL WHERE slot = ?", [.int(new)])
   }
@@ -637,23 +660,23 @@ actor UsageIndexer {
     }
   }
 
-  /// **Version 1 is upgraded in place.** It lacks only the skill cursor, which starts at
-  /// zero, so the next pass reads every file again for skills only. A new skill parser does
-  /// the same to a version 2 ledger; uses whose file is gone cannot be read again, so they
-  /// stay as they were read. One transaction, so a crash part way through leaves version 1
-  /// to upgrade again.
+  /// **Version 1 is upgraded in place.** It lacks only the skill columns, and its files
+  /// arrive with `skill_parser` 0, so each is read again for skills only when the pass
+  /// reaches it, as after a new skill parser. Nothing is deleted here: a file that is never
+  /// read again keeps its uses. One transaction, so a crash part way through leaves
+  /// version 1 to upgrade again.
   private func migrate(_ db: UsageDatabase, from version: Int) throws {
     try db.begin()
     do {
       if version == 1 {
         try db.execute("ALTER TABLE files ADD COLUMN skill_offset INTEGER NOT NULL DEFAULT 0")
         try db.execute("ALTER TABLE files ADD COLUMN skill_state TEXT")
+        try db.execute("ALTER TABLE files ADD COLUMN skill_parser INTEGER NOT NULL DEFAULT 0")
       }
       try db.execute(Self.schema)
+      // Each file is read again as the pass reaches it; this only says the pass has not.
       let parser = String(Self.skillParserVersion)
       if try meta("skill_parser", db) != parser {
-        try db.run("DELETE FROM skill_uses WHERE slot IS NOT NULL")
-        try db.run("UPDATE files SET skill_offset = 0, skill_state = NULL")
         try db.run("DELETE FROM meta WHERE key = 'skills_pass_done'")
         try setMeta("skill_parser", parser, db)
       }
@@ -690,7 +713,7 @@ actor UsageIndexer {
     try db.query(
       """
       SELECT slot, account, vendor, key, path, inode, size, mtime, head_hash, head_len, cwd,
-        cursor, replaces, skill_offset, skill_state
+        cursor, replaces, skill_offset, skill_state, skill_parser
       FROM files WHERE superseded = 0
       """
     ) { row in
@@ -698,17 +721,21 @@ actor UsageIndexer {
         let text = row.text(11),
         let cursor = try? decoder.decode(IngestCursor.self, from: Data(text.utf8))
       else { return }
-      // No state yet is nothing waiting for a reply.
-      var skills =
-        row.text(14).flatMap { try? decoder.decode(SkillCursor.self, from: Data($0.utf8)) }
-        ?? SkillCursor()
-      skills.offset = row.int(13)
+      // No state yet is nothing waiting for a reply. A stale read starts over from zero.
+      let stale = row.int(15) < Int64(Self.skillParserVersion)
+      var skills = SkillCursor()
+      if !stale {
+        skills =
+          row.text(14).flatMap { try? decoder.decode(SkillCursor.self, from: Data($0.utf8)) }
+          ?? SkillCursor()
+        skills.offset = row.int(13)
+      }
       let source = "\(row.int(2))|\(account)"
       files["\(source)|\(key)"] = StoredFile(
         slot: row.int(0), source: source, account: account, key: key, path: path,
         inode: row.int(5), size: row.int(6), mtime: row.double(7), headHash: row.int(8),
         headLength: row.int(9), cwd: row.text(10), cursor: cursor, skillCursor: skills,
-        replaces: row.isNull(12) ? nil : row.int(12))
+        skillsStale: stale, replaces: row.isNull(12) ? nil : row.int(12))
     }
     return files
   }
