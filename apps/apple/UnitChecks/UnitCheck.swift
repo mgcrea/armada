@@ -3104,6 +3104,49 @@ struct UnitCheck {
       tallies.filter { $0.skill == "compact" }.map(\.window), [.all])
     expectEqual(
       "one per project, account, skill and window", tallies.count, 3 + 3 + 3 + 3 + 1)
+
+    section("SkillStats summaries and shares")
+    func summary(_ window: StatsWindow, _ skill: String = "tdd") -> SkillSummary? {
+      SkillStats.summaries(tallies, window: window).first { $0.skill == skill }
+    }
+    expectEqual(
+      "every skill in the window, built-ins left out",
+      SkillStats.summaries(tallies, window: .all).map(\.skill), ["tdd"])
+    // Week: auto 1 (outer) + 1 (inner) + 1 (armada-old); slash 4 (/b, outer) + 2 (~tmp).
+    expectEqual(
+      "summed across projects and accounts", summary(.week).map { [$0.auto, $0.slash] }, [3, 6])
+    expectEqual(
+      "last used is the newest across projects", summary(.all)?.lastAt,
+      date("2026-11-03T09:00:00Z"))
+    func handTally(_ skill: String, _ total: Int) -> SkillTally {
+      SkillTally(
+        projectID: "p", account: "/a", skill: skill, source: .skill, window: .week, auto: 0,
+        slash: total, lastAt: today)
+    }
+    let hand = [handTally("b", 3), handTally("a", 3), handTally("c", 5)]
+    expectEqual(
+      "most used first, then by name", SkillStats.summaries(hand, window: .week).map(\.skill),
+      ["c", "a", "b"])
+    check(
+      "a skill with no use in the window has no summary",
+      !SkillStats.summaries(tallies, window: .week).contains { $0.skill == "compact" })
+    expectEqual(
+      "nor does a window with no use at all", SkillStats.summaries(hand, window: .month), [])
+    let byProject = SkillStats.byProject(tallies, skill: "tdd", window: .week)
+    expectEqual(
+      "per project, most first, outside saved projects last", byProject.map(\.key),
+      ["outer", "inner", nil])
+    expectEqual(
+      "a project's share sums its accounts",
+      byProject.first { $0.key == "outer" }?.total,
+      [tally("outer", .week), tally("outer", .week, account: "/b")].compactMap { $0?.total }
+        .reduce(0, +))
+    expectEqual(
+      "and carries what was typed", byProject.map(\.slash), [4, 0, 2])
+    expectEqual(
+      "per account, most first",
+      SkillStats.byAccount(tallies, skill: "tdd", window: .week).map { [$0.key, "\($0.total)"] },
+      [["/Users/x/.claude", "5"], ["/b", "4"]])
   }
 
   // MARK: - RecentSessions

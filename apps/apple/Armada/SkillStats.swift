@@ -157,3 +157,83 @@ nonisolated enum SkillStats {
     }
   }
 }
+
+/// One skill in one window, summed across projects and accounts.
+nonisolated struct SkillSummary: Hashable, Sendable, Identifiable {
+  let skill: String
+  let source: SkillSource
+  let auto: Int
+  let slash: Int
+  let lastAt: Date
+
+  var total: Int { auto + slash }
+  var id: String { skill }
+}
+
+/// One project's or one account's share of a skill's uses.
+nonisolated struct SkillShare: Hashable, Sendable {
+  /// A project id, nil for a use outside every saved project, or an account id.
+  let key: String?
+  let total: Int
+  let slash: Int
+}
+
+extension SkillStats {
+  /// Every skill used in `window`, built-ins left out, most used first, then by name.
+  ///
+  /// **A skill with no use in `window` has no summary.** `compute` makes no tally for a
+  /// window without a use, so a view holding a skill picked in another window finds nothing
+  /// here and can say so, rather than keep the last figures.
+  static func summaries(_ tallies: [SkillTally], window: StatsWindow) -> [SkillSummary] {
+    var sums: [String: SkillSummary] = [:]
+    for tally in tallies where tally.window == window && tally.source != .builtin {
+      let sum = sums[tally.skill]
+      sums[tally.skill] = SkillSummary(
+        skill: tally.skill, source: tally.source, auto: (sum?.auto ?? 0) + tally.auto,
+        slash: (sum?.slash ?? 0) + tally.slash,
+        lastAt: max(sum?.lastAt ?? .distantPast, tally.lastAt))
+    }
+    return sums.values.sorted {
+      if $0.total != $1.total { return $0.total > $1.total }
+      return $0.skill < $1.skill
+    }
+  }
+
+  /// `skill`'s uses in `window` per project, most first; ties by key, nil last.
+  ///
+  /// **Nil last, whatever its count.** Uses outside every saved project are a remainder,
+  /// not a project, so they close the list even when they outnumber every project's.
+  static func byProject(_ tallies: [SkillTally], skill: String, window: StatsWindow)
+    -> [SkillShare]
+  {
+    shares(tallies, skill: skill, window: window) { $0.projectID }
+  }
+
+  /// `skill`'s uses in `window` per account, most first; ties by key.
+  static func byAccount(_ tallies: [SkillTally], skill: String, window: StatsWindow)
+    -> [SkillShare]
+  {
+    shares(tallies, skill: skill, window: window) { $0.account }
+  }
+
+  private static func shares(
+    _ tallies: [SkillTally], skill: String, window: StatsWindow,
+    key: (SkillTally) -> String?
+  ) -> [SkillShare] {
+    var sums: [String?: (total: Int, slash: Int)] = [:]
+    for tally in tallies where tally.skill == skill && tally.window == window {
+      let sum = sums[key(tally), default: (0, 0)]
+      sums[key(tally)] = (sum.total + tally.total, sum.slash + tally.slash)
+    }
+    return sums.map { SkillShare(key: $0.key, total: $0.value.total, slash: $0.value.slash) }
+      .sorted {
+        switch ($0.key, $1.key) {
+        case (nil, .some): return false
+        case (.some, nil): return true
+        default: break
+        }
+        if $0.total != $1.total { return $0.total > $1.total }
+        return ($0.key ?? "") < ($1.key ?? "")
+      }
+  }
+}
