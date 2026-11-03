@@ -49,6 +49,7 @@ struct UnitCheck {
     usageIndexer()
     usageLines()
     usageIngest()
+    skillLines()
     projectStats()
     recentSessions()
     sessionHistory()
@@ -1580,6 +1581,49 @@ struct UnitCheck {
       #"{"type":"assistant","cwd":"\#(cwd)","sessionId":"\#(session)","timestamp":"\#(at)","message":{"id":"\#(id)","model":"\#(model)","usage":{\#(usage)}}}"#
   }
 
+  /// `text` as a JSON string literal, slashes left alone the way Claude Code writes them.
+  static func quoted(_ text: String) -> String {
+    let data = try? JSONSerialization.data(
+      withJSONObject: text, options: [.fragmentsAllowed, .withoutEscapingSlashes])
+    return data.map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
+  }
+
+  /// An assistant line calling the `Skill` tool once per id, as Claude Code writes an
+  /// automatic use.
+  static func skillToolLine(
+    ids: [String], skills: [String], uuid: String = "e1",
+    at: String = "2026-10-24T21:51:53.591Z"
+  ) -> String {
+    let blocks = zip(ids, skills).map { id, skill in
+      #"{"type":"tool_use","id":\#(quoted(id)),"name":"Skill","input":{"skill":\#(quoted(skill)),"args":"go"}}"#
+    }
+    return
+      #"{"type":"assistant","uuid":\#(quoted(uuid)),"sessionId":"s1","timestamp":"\#(at)","message":{"content":[\#(blocks.joined(separator: ","))]}}"#
+  }
+
+  enum SlashOrder { case messageFirst, nameFirst }
+
+  /// A user line for a typed `/name`, in either of the two tag orders Claude Code writes.
+  static func slashLine(
+    name: String, uuid: String = "u1", args: String? = nil, order: SlashOrder = .messageFirst
+  ) -> String {
+    let content =
+      switch order {
+      case .messageFirst:
+        "<command-message>\(name)</command-message>\n<command-name>/\(name)</command-name>"
+          + (args.map { "\n<command-args>\($0)</command-args>" } ?? "")
+      case .nameFirst:
+        "<command-name>/\(name)</command-name>\n            <command-message>\(name)</command-message>\n            <command-args>\(args ?? "")</command-args>"
+      }
+    return
+      #"{"type":"user","uuid":\#(quoted(uuid)),"sessionId":"s1","timestamp":"2026-10-24T21:50:00.000Z","message":{"role":"user","content":\#(quoted(content))}}"#
+  }
+
+  /// A user line holding a message the person typed.
+  static func humanLine(text: String, uuid: String = "h1") -> String {
+    #"{"type":"user","uuid":\#(quoted(uuid)),"sessionId":"s1","timestamp":"2026-10-24T21:52:00.000Z","message":{"role":"user","content":\#(quoted(text))}}"#
+  }
+
   static func codexTokens(
     _ input: Int, cached: Int, output: Int, reasoning: Int = 0, at: String
   ) -> String {
@@ -1856,6 +1900,97 @@ struct UnitCheck {
     expectEqual(
       "each delta goes to the model of the turn it came from", models,
       ["gpt-5.4": 1_000, "gpt-5.4-mini": 600])
+  }
+
+  static func skillLines() {
+    section("Skill lines")
+    func parse(_ line: String, wantHuman: Bool = false) -> [ClaudeSkillLine.Event] {
+      ClaudeSkillLine.parse(Data(line.utf8), wantHuman: wantHuman)
+    }
+    func uses(_ line: String) -> [SkillUseEvent] {
+      parse(line).compactMap { if case .use(let use) = $0 { use } else { nil } }
+    }
+
+    let auto = uses(skillToolLine(ids: ["toolu_1"], skills: ["superpowers:brainstorming"]))
+    check(
+      "a Skill tool_use is one automatic use, keyed on its tool_use id",
+      auto.count == 1 && auto.first?.useID == "a:toolu_1" && auto.first?.kind == .auto
+        && auto.first?.skill == "superpowers:brainstorming" && auto.first?.entryUUID == "e1")
+    expectEqual(
+      "and is stamped with the line's time", auto.first?.at,
+      date("2026-10-24T21:51:53.591Z"))
+    expectEqual(
+      "two Skill calls in one line are two uses",
+      uses(skillToolLine(ids: ["toolu_1", "toolu_2"], skills: ["a", "b"])).map(\.useID),
+      ["a:toolu_1", "a:toolu_2"])
+    check(
+      "a Skill call without a timestamp is skipped",
+      uses(skillToolLine(ids: ["t"], skills: ["a"], at: "")).isEmpty)
+
+    let slash = uses(slashLine(name: "code-health", uuid: "u1", args: "src/"))
+    check(
+      "a typed /name is one slash use, keyed on the entry uuid, with its args",
+      slash.count == 1 && slash.first?.useID == "s:u1" && slash.first?.kind == .slash
+        && slash.first?.skill == "code-health" && slash.first?.args == "src/"
+        && slash.first?.entryUUID == "u1")
+    let nameFirst = uses(slashLine(name: "compact", order: .nameFirst))
+    check(
+      "the name-first order of built-ins and old commands is read too, empty args as nil",
+      nameFirst.count == 1 && nameFirst.first?.skill == "compact"
+        && nameFirst.first?.args == nil)
+    check(
+      "a message quoting <command-name> past its start is not a use",
+      uses(
+        humanLine(
+          text:
+            "[Workflow harness — user request] … <command-name>/code-health</command-name>"
+        )
+      ).isEmpty)
+    for type in ["api-request-blob", "attachment", "api-request-shape"] {
+      check(
+        "nor is the slash text inside an \(type) entry",
+        uses(
+          slashLine(name: "code-health").replacingOccurrences(
+            of: #""type":"user""#, with: #""type":"\#(type)""#)
+        ).isEmpty)
+    }
+    expectEqual("invalid JSON is nothing", parse(#"{"type":"user","Skill"#, wantHuman: true), [])
+
+    let typed = humanLine(text: "no, that's wrong")
+    expectEqual(
+      "a typed message is reported when asked for", parse(typed, wantHuman: true),
+      [.human("no, that's wrong")])
+    expectEqual("and only then", parse(typed, wantHuman: false), [])
+    expectEqual(
+      "a meta entry is not something the person typed",
+      parse(
+        typed.replacingOccurrences(of: #""type":"user","#, with: #""type":"user","isMeta":true,"#),
+        wantHuman: true), [])
+    expectEqual(
+      "nor is a tool result",
+      parse(
+        #"{"type":"user","uuid":"h2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ok"}]}}"#,
+        wantHuman: true), [])
+    expectEqual(
+      "nor a local command's output",
+      parse(
+        humanLine(text: "<local-command-stdout>done</local-command-stdout>"), wantHuman: true),
+      [])
+    expectEqual(
+      "nor a slash command", parse(slashLine(name: "compact", order: .nameFirst), wantHuman: true)
+        .filter { if case .human = $0 { true } else { false } }, [])
+    expectEqual(
+      "a message sent as text blocks is read from them",
+      parse(
+        #"{"type":"user","uuid":"h3","message":{"role":"user","content":[{"type":"text","text":"try again"}]}}"#,
+        wantHuman: true), [.human("try again")])
+
+    let long = ClaudeSkillLine.excerpt(String(repeating: "é", count: 499) + "😀😀")
+    check(
+      "an excerpt is cut at 500 characters on a character boundary, still valid UTF-8",
+      long?.count == 500 && long.map { String(decoding: Data($0.utf8), as: UTF8.self) } == long
+        && long?.hasSuffix("é😀") == true)
+    check("an excerpt of only whitespace is nil", ClaudeSkillLine.excerpt("   ") == nil)
   }
 
   static func projectStats() {

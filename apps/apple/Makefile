@@ -265,6 +265,7 @@ UNIT_SRC := \
 	Armada/UsageIndexer.swift \
 	Armada/UsageLines.swift \
 	Armada/UsageIngest.swift \
+	Armada/SkillLines.swift \
 	Armada/ProjectStats.swift \
 	Armada/RecentSessions.swift \
 	Armada/SessionHistory.swift \
