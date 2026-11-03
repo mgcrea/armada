@@ -25,6 +25,13 @@ nonisolated enum StatsWindow: String, CaseIterable, Hashable, Sendable {
     case .all: nil
     }
   }
+
+  /// The oldest day key the window counts, today's included; `.min` for all time.
+  func floor(today: Date, calendar: Calendar) -> Int {
+    guard let days else { return .min }
+    return LocalDay.adding(
+      -(days - 1), to: LocalDay.key(today, calendar: calendar), calendar: calendar)
+  }
 }
 
 /// What has been spent in one project.
@@ -60,11 +67,9 @@ nonisolated enum ProjectStats {
   ) -> [String: ProjectUsage] {
     guard !projects.isEmpty else { return [:] }
 
-    let todayKey = LocalDay.key(today, calendar: calendar)
     var floors: [StatsWindow: Int] = [:]
     for window in StatsWindow.allCases {
-      floors[window] =
-        window.days.map { LocalDay.adding(-($0 - 1), to: todayKey, calendar: calendar) } ?? .min
+      floors[window] = window.floor(today: today, calendar: calendar)
     }
     let keysByProject = Dictionary(
       projects.map { ($0.id, $0.keys) }, uniquingKeysWith: { first, _ in first })

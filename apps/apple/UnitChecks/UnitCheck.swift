@@ -52,6 +52,7 @@ struct UnitCheck {
     usageIngest()
     skillLines()
     projectStats()
+    skillStats()
     recentSessions()
     sessionHistory()
     launchScript()
@@ -2745,6 +2746,153 @@ struct UnitCheck {
     expectEqual(
       "and by folder, relative to the project", stats["outer"]?.byFolder.map(\.key).sorted(),
       ["", "apps/apple"])
+  }
+
+  // MARK: - SkillStats
+
+  static func skillStats() {
+    func use(
+      _ skill: String, _ kind: SkillKind, _ cwd: String = "/p/canopy", day: Int = 20_261_103,
+      account: String = "/Users/x/.claude", count: Int = 1,
+      lastAt: String = "2026-11-03T09:00:00Z"
+    ) -> SkillUsageRow {
+      SkillUsageRow(
+        day: day, cwd: cwd, account: account, vendor: .claude, skill: skill, kind: kind,
+        count: count, lastAt: date(lastAt))
+    }
+
+    section("SkillCatalog.classify")
+    let onDisk: Set<String> = [
+      "/Users/x/.claude/commands/distill.md",
+      "/Users/x/.claude/skills/code-health/SKILL.md",
+      "/Users/x/.claude-work/commands/review.md",
+      "/p/canopy/.claude/skills/caresheet/SKILL.md",
+      "/p/canopy/.claude/commands/deploy.md",
+      "/q/.claude/commands/outside.md",
+      // Above home, which the walk never reaches.
+      "/p/.claude/skills/above/SKILL.md",
+      // Relative to wherever the app runs: a `~tmp` row has no folder to walk.
+      "~tmp/.claude/skills/scratch/SKILL.md",
+    ]
+    var probed: [String] = []
+    let sources = SkillCatalog.classify(
+      [
+        use("marketing:seo-audit", .slash),
+        use("brainstorm", .slash),
+        use("brainstorm", .auto),
+        use("distill", .slash),
+        use("code-health", .slash),
+        use("review", .slash),
+        use("caresheet", .slash, "/p/canopy/sub"),
+        use("deploy", .slash, "/p/canopy/sub/deeper"),
+        use("outside", .slash, "/q/deep"),
+        use("above", .slash, "/p/canopy/sub"),
+        use("scratch", .slash, "~tmp"),
+        use("compact", .slash, "/p/canopy/sub"),
+        use("nowhere", .slash, "/elsewhere/deep"),
+      ],
+      configs: [
+        URL(filePath: "/Users/x/.claude", directoryHint: .isDirectory),
+        URL(filePath: "/Users/x/.claude-work", directoryHint: .isDirectory),
+      ],
+      home: "/p/canopy/",
+      fileExists: { path in
+        probed.append(path)
+        return onDisk.contains(path)
+      })
+    expectEqual("a name with a colon is a plugin", sources["marketing:seo-audit"], .plugin)
+    expectEqual("a name the model called is a skill", sources["brainstorm"], .skill)
+    expectEqual("a command in the config folder", sources["distill"], .command)
+    expectEqual("a skill in the config folder", sources["code-health"], .skill)
+    expectEqual("in any account's config folder", sources["review"], .command)
+    expectEqual("a skill in a parent's .claude", sources["caresheet"], .skill)
+    expectEqual("a command two folders up", sources["deploy"], .command)
+    expectEqual("a folder outside home walks to the root", sources["outside"], .command)
+    expectEqual("nothing above home is looked at", sources["above"], .builtin)
+    expectEqual("a temp folder is not walked", sources["scratch"], .builtin)
+    expectEqual("anything else is built in", sources["compact"], .builtin)
+    expectEqual("outside home too", sources["nowhere"], .builtin)
+    expectEqual(
+      "looked for in each config, then each folder up to the root, the root left out",
+      probed.filter { $0.contains("nowhere") },
+      [
+        "/Users/x/.claude/skills/nowhere/SKILL.md", "/Users/x/.claude/commands/nowhere.md",
+        "/Users/x/.claude-work/skills/nowhere/SKILL.md",
+        "/Users/x/.claude-work/commands/nowhere.md",
+        "/elsewhere/deep/.claude/skills/nowhere/SKILL.md",
+        "/elsewhere/deep/.claude/commands/nowhere.md",
+        "/elsewhere/.claude/skills/nowhere/SKILL.md", "/elsewhere/.claude/commands/nowhere.md",
+      ])
+    expectEqual("every name gets a source", sources.count, 12)
+    check(
+      "a plugin or an auto use never touches the disk",
+      !probed.contains { $0.contains("seo-audit") || $0.contains("brainstorm") })
+    check(
+      "nor does a folder above home, the root, or a temp folder",
+      !probed.contains {
+        $0.hasPrefix("/p/.claude/") || $0.hasPrefix("/.claude/") || $0.hasPrefix("~")
+      })
+
+    section("StatsWindow.floor")
+    let today = date("2026-11-03T12:00:00Z")
+    expectEqual(
+      "seven days starts six days back", StatsWindow.week.floor(today: today, calendar: utc),
+      20_261_028)
+    expectEqual(
+      "thirty days", StatsWindow.month.floor(today: today, calendar: utc), 20_261_005)
+    expectEqual("all time has no floor", StatsWindow.all.floor(today: today, calendar: utc), .min)
+
+    section("SkillStats.compute")
+    let tallies = SkillStats.compute(
+      [
+        use("tdd", .auto, "/work/armada", lastAt: "2026-11-03T09:00:00Z"),
+        use(
+          "tdd", .slash, "/work/armada/apps/apple", day: 20_261_024,
+          lastAt: "2026-10-24T10:00:00Z"),
+        use("tdd", .auto, "/work/armada", day: 20_260_924, lastAt: "2026-09-24T10:00:00Z"),
+        use("tdd", .slash, "/work/armada", account: "/b", count: 4),
+        use("tdd", .auto, "/work/armada/apps/website"),
+        use("tdd", .auto, "/work/armada-old"),
+        use("tdd", .slash, "~tmp", count: 2),
+        use("compact", .slash, "/work/armada", day: 20_260_901),
+      ],
+      projects: [
+        ProjectPath.Candidate(id: "outer", keys: ["/work/armada"]),
+        ProjectPath.Candidate(id: "inner", keys: ["/work/armada/apps/website"]),
+      ],
+      sources: ["tdd": .skill, "compact": .builtin], today: today, calendar: utc)
+    func tally(
+      _ project: String?, _ window: StatsWindow, _ skill: String = "tdd",
+      account: String = "/Users/x/.claude"
+    ) -> SkillTally? {
+      tallies.first {
+        $0.projectID == project && $0.account == account && $0.skill == skill
+          && $0.window == window
+      }
+    }
+    expectEqual(
+      "7d, 30d and all time, as ProjectStats counts them",
+      [StatsWindow.week, .month, .all].map { tally("outer", $0)?.total }, [1, 2, 3])
+    expectEqual(
+      "split into the model's and the person's",
+      tally("outer", .month).map { [$0.auto, $0.slash] },
+      [1, 1])
+    expectEqual(
+      "last used is the newest in the window, whatever the row order",
+      tally("outer", .all)?.lastAt, date("2026-11-03T09:00:00Z"))
+    expectEqual("the source is carried", tally("outer", .all)?.source, .skill)
+    expectEqual(
+      "each account its own, with its count", tally("outer", .week, account: "/b")?.slash, 4)
+    expectEqual(
+      "a nested folder goes to the deepest project", tally("inner", .week)?.total, 1)
+    expectEqual(
+      "outside every project, or in a temp folder, is no project's",
+      tally(nil, .week)?.total, 3)
+    expectEqual(
+      "a window with no use has no tally",
+      tallies.filter { $0.skill == "compact" }.map(\.window), [.all])
+    expectEqual(
+      "one per project, account, skill and window", tallies.count, 3 + 3 + 3 + 3 + 1)
   }
 
   // MARK: - RecentSessions
