@@ -34,9 +34,10 @@ is lower: auto uses keep their `tool_use` id in every copy.
   `<command-message>`; 274 open with `<command-name>` (`/compact` 252, `/model` 10, and `/commit`
   9 and `/commit-task` 3 from an older Claude Code). 5 lines carry `<command-name>` mid-text —
   workflow-harness relays quoting a request — and are not uses. The name is
-  `<command-name>/(…)</command-name>`, the args `<command-args>`. Dedupe on the raw
-  `timestamp`, the entry's own `cwd` (empty when missing) and the name, and also on the entry
-  `uuid`: a use counts once when either was seen before. **Amended 2026-11-03:** first keyed on
+  `<command-name>/(…)</command-name>`, the args `<command-args>`. Dedupe on the
+  `timestamp` as an instant in whole milliseconds (so `…:00.000Z` and `…:00Z` agree), the
+  entry's own `cwd` through `ProjectPath.normalize` (empty when missing) and the name, and also
+  on the entry `uuid`: a use counts once when either was seen before, in any read order. **Amended 2026-11-03:** first keyed on
   the `uuid` alone, but a fork or branch copies the line with the same timestamp, folder and
   `promptId` under a new `uuid` and `sessionId` (live transcripts: 1,640 slash uuids, 1,329
   distinct (timestamp, cwd, name)). The `uuid` stays as a second key because 25 entries come back
@@ -53,7 +54,7 @@ ledger aside, which is the existing rule.
 
 ```sql
 CREATE TABLE skill_uses(
-  use_id TEXT PRIMARY KEY,      -- "a:" + tool_use id, or "s:" + timestamp|cwd|name
+  use_id TEXT PRIMARY KEY,      -- "a:" + tool_use id, or "s:" + ms|cwd|name
   slot INTEGER,                 -- the file holding it; NULL once that file is gone
   day INTEGER NOT NULL, cwd TEXT NOT NULL, account TEXT NOT NULL, vendor INTEGER NOT NULL,
   skill TEXT NOT NULL, kind INTEGER NOT NULL,   -- 0 auto, 1 slash
@@ -64,8 +65,11 @@ CREATE TABLE skill_uses(
 One row per use; counts are a `GROUP BY` of (day, folder, account, vendor, skill, kind). A gone
 file sets `slot = NULL` and the row stays. A rewrite re-owns rows to the new slot.
 
-`skill_slash_seen(entry_uuid TEXT PRIMARY KEY, use_id TEXT NOT NULL)` maps each slash entry
-`uuid` the indexer has read to the use it counted as, which is the second key above.
+`skill_slash_alias(alias TEXT PRIMARY KEY, use_id TEXT NOT NULL)` maps both identities of every
+slash line read, `"u:" + uuid` and `"k:" + use_id`, to the use it counted as. An alias counts only
+while its use is in `skill_uses`, and aliases are never deleted. A line whose two identities lead
+to two uses, each counted from copies that shared neither, folds the later id into the earlier.
+That keeps the count the same in any read order.
 
 **Decided 2026-11-03:** each use keeps `args` and `reply`, the next human message after it in the
 same main transcript, each at most 500 characters. Subagent uses get no reply.

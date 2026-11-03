@@ -195,14 +195,17 @@ block with `name == "Skill"`:
 first tag, after any whitespace, is one of the command tags:
 
 - The name is in `<command-name>/…</command-name>` and the arguments in `<command-args>`.
-- **The key is the raw `timestamp`, the entry's own `cwd` and the name, not the `uuid`.** A
+- **The key is the `timestamp`, the entry's own `cwd` and the name, not the `uuid`.** The
+  timestamp is taken as an instant in whole milliseconds, so `…:00.000Z` and `…:00Z` agree, and
+  the `cwd` is normalised, or empty when the line has none (`ClaudeSkillLine.slashID`). A
   fork or branch copies the line into another session file with the same timestamp, folder
   and `promptId`, but a new `uuid` and `sessionId`. Over the live transcripts there were 1,640
   slash uuids and only 1,329 distinct (timestamp, cwd, name). `promptId` won't do either: 196
   of them span several commands.
 - **The same entry can also come back with another `cwd`.** 25 uuids appear under two folders at
   the same timestamp. In the ten sampled, one is a subfolder of the other. So the indexer
-  also counts a use once when its `uuid` was already seen under another key.
+  also counts a use once when its `uuid` was already seen under another key, and remembers
+  both identities of every line, so the count is the same in any read order.
 - **Both tag orders occur.** In the survey, 1,619 lines open with `<command-message>`, which is
   what skills and newer commands write. 274 open with `<command-name>`: `/compact` 252, `/model`
   10, and `/commit` 9 and `/commit-task` 3 from an older Claude Code.

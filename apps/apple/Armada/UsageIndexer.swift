@@ -25,13 +25,15 @@ import os
 /// `skill_offset` can trail its token cursor. A read starts at the lesser of the two and each
 /// half reads only past its own, so a backfill rides the pass it is part of and never counts
 /// a token twice. A use is keyed by its own id, so a copy of it counts once. A typed use is
-/// also found by every entry uuid it was seen under (`skill_slash_seen`), because a copy of
-/// the line can carry another folder, and so another key.
+/// also found by every entry uuid and every key it was seen under (`skill_slash_alias`):
+/// a fork copies the key under a new uuid, and an entry can come back with another folder,
+/// and so another key.
 ///
 /// **A slot holds only the uses its file still holds**, which is what lets a file be read
 /// again for them. While a rewrite is read, each use the new version still holds moves to
 /// its slot; once the read reaches the end, what the old version alone held stays with no
-/// file, like the uses of a file that is gone. A use with no file is never deleted.
+/// file, like the uses of a file that is gone. A use with no file is never deleted, unless a
+/// later line shows it is the same typed use as another row (`countedSlashUse`).
 ///
 /// **A file read by an older skill parser (`skill_parser`) is read again when the pass
 /// reaches it.** That includes every file of a ledger that counted tokens before skills. Its
@@ -174,8 +176,8 @@ actor UsageIndexer {
       session_id TEXT NOT NULL, at REAL NOT NULL, entry_uuid TEXT NOT NULL,
       args TEXT, reply TEXT) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS skill_uses_slot ON skill_uses(slot);
-    CREATE TABLE IF NOT EXISTS skill_slash_seen(
-      entry_uuid TEXT PRIMARY KEY, use_id TEXT NOT NULL) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS skill_slash_alias(
+      alias TEXT PRIMARY KEY, use_id TEXT NOT NULL) WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS seen(hash INTEGER PRIMARY KEY, slot INTEGER NOT NULL)
       WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS file_usage(
@@ -433,19 +435,12 @@ actor UsageIndexer {
     let skill: (SkillContribution) -> Bool = { contribution in
       let use = contribution.event
       do {
-        // A slash use whose entry uuid already counted under another key is that use: the
+        // A slash use is known by its key and by its entry uuid. Either one seen before
+        // means the use counted already: a fork copies the key under a new uuid, and the
         // same entry is sometimes written again with another `cwd`, which changes the key.
         // An automatic use has its own id, and one line can hold two, so its uuid says
         // nothing.
-        var counted: String?
-        if use.kind == .slash {
-          try db.query(
-            """
-            SELECT s.use_id FROM skill_slash_seen s JOIN skill_uses u ON u.use_id = s.use_id
-            WHERE s.entry_uuid = ?
-            """, [.text(use.entryUUID)]
-          ) { counted = $0.text(0) }
-        }
+        let counted = try use.kind == .slash ? Self.countedSlashUse(use, db) : nil
         var isNew = false
         if counted == nil {
           try db.run(
@@ -462,11 +457,15 @@ actor UsageIndexer {
               .text(use.entryUUID), use.args.map { .text($0) } ?? .null,
             ])
           isNew = db.changes > 0
-          if use.kind == .slash {
-            // Every uuid the use was seen under, the first copy's and each fork's.
+        }
+        let countedID = counted ?? use.useID
+        if use.kind == .slash {
+          // Both of the line's identities, whichever branch it took, so a later copy that
+          // shares either one finds this use.
+          for alias in Self.slashAliases(use) {
             try db.run(
-              "INSERT OR REPLACE INTO skill_slash_seen(entry_uuid, use_id) VALUES (?, ?)",
-              [.text(use.entryUUID), .text(use.useID)])
+              "INSERT OR REPLACE INTO skill_slash_alias(alias, use_id) VALUES (?, ?)",
+              [.text(alias), .text(countedID)])
           }
         }
         if isNew { return true }
@@ -474,7 +473,7 @@ actor UsageIndexer {
           // The new version still holds it, so it is this file's now.
           try db.run(
             "UPDATE skill_uses SET slot = ? WHERE use_id = ? AND slot = ?",
-            [.int(slot), .text(counted ?? use.useID), .int(replaces)])
+            [.int(slot), .text(countedID), .int(replaces)])
         }
         return false
       } catch {
@@ -611,6 +610,47 @@ actor UsageIndexer {
     try db.run("UPDATE skill_uses SET slot = NULL WHERE slot = ?", [.int(old)])
     try db.run("DELETE FROM files WHERE slot = ?", [.int(old)])
     try db.run("UPDATE files SET replaces = NULL WHERE slot = ?", [.int(new)])
+  }
+
+  /// A typed use's two identities in `skill_slash_alias`: its entry uuid and its key.
+  private nonisolated static func slashAliases(_ use: SkillUseEvent) -> [String] {
+    ["u:" + use.entryUUID, "k:" + use.useID]
+  }
+
+  /// The use a typed line already counted as, through either identity, or nil when neither
+  /// was seen.
+  ///
+  /// **The same in any read order.** An alias counts only while its use is still in
+  /// `skill_uses`, so one whose row a stale re-read deleted is passed over. When the line's
+  /// two identities lead to two uses, each counted from copies that shared neither, the line
+  /// shows they are one: the later id is folded into the earlier one, which keeps any reply
+  /// or args the other had, and its aliases follow.
+  private nonisolated static func countedSlashUse(_ use: SkillUseEvent, _ db: UsageDatabase)
+    throws -> String?
+  {
+    let aliases = slashAliases(use)
+    var found: Set<String> = []
+    try db.query(
+      """
+      SELECT s.use_id FROM skill_slash_alias s JOIN skill_uses u ON u.use_id = s.use_id
+      WHERE s.alias IN (?, ?)
+      UNION SELECT use_id FROM skill_uses WHERE use_id = ?
+      """, [.text(aliases[0]), .text(aliases[1]), .text(use.useID)]
+    ) { if let id = $0.text(0) { found.insert(id) } }
+    guard let kept = found.min() else { return nil }
+    for other in found where other != kept {
+      try db.run(
+        """
+        UPDATE skill_uses SET
+          reply = COALESCE(reply, (SELECT reply FROM skill_uses WHERE use_id = ?1)),
+          args = COALESCE(args, (SELECT args FROM skill_uses WHERE use_id = ?1))
+        WHERE use_id = ?2
+        """, [.text(other), .text(kept)])
+      try db.run("DELETE FROM skill_uses WHERE use_id = ?", [.text(other)])
+      try db.run(
+        "UPDATE skill_slash_alias SET use_id = ? WHERE use_id = ?", [.text(kept), .text(other)])
+    }
+    return kept
   }
 
   /// A file that is gone: its figures move to `archive`, its dedupe keys stay, and its skill

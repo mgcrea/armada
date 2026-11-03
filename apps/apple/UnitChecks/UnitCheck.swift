@@ -1609,7 +1609,7 @@ struct UnitCheck {
   /// `cwd` is the entry's own field, left out when nil, as older lines have none.
   static func slashLine(
     name: String, uuid: String = "u1", args: String? = nil, order: SlashOrder = .messageFirst,
-    cwd: String? = nil, session: String = "s1"
+    cwd: String? = nil, session: String = "s1", at: String = "2026-10-24T21:50:00.000Z"
   ) -> String {
     let content =
       switch order {
@@ -1621,7 +1621,7 @@ struct UnitCheck {
       }
     let folder = cwd.map { #""cwd":\#(quoted($0)),"# } ?? ""
     return
-      #"{"type":"user","uuid":\#(quoted(uuid)),\#(folder)"sessionId":\#(quoted(session)),"timestamp":"2026-10-24T21:50:00.000Z","message":{"role":"user","content":\#(quoted(content))}}"#
+      #"{"type":"user","uuid":\#(quoted(uuid)),\#(folder)"sessionId":\#(quoted(session)),"timestamp":"\#(at)","message":{"role":"user","content":\#(quoted(content))}}"#
   }
 
   /// A user line holding a message the person typed.
@@ -2082,6 +2082,27 @@ struct UnitCheck {
     expectEqual(
       "and so does one uuid written again with another folder, beside a new use",
       uses(pass(forking, forkHome), .slash), 2)
+
+    // One typed use in three files: C has the entry under a subfolder, A under the folder, and
+    // D, a fork of A, has A's key under a new uuid. C and D share nothing; A links them.
+    let copies = [
+      "C": slashLine(name: "code-health", uuid: "u1", cwd: "/work/armada/sub", session: "c"),
+      "A": slashLine(name: "code-health", uuid: "u1", cwd: "/work/armada", session: "a"),
+      "D": slashLine(name: "code-health", uuid: "u2", cwd: "/work/armada", session: "d"),
+    ]
+    for order in [["C", "A", "D"], ["A", "C", "D"], ["D", "C", "A"]] {
+      let name = "order-" + order.joined()
+      let orderHome = home(name)
+      let ordered = UsageIndexer(url: ledger(name))
+      var last: UsageLedgerSnapshot?
+      for file in order {
+        write([copies[file]!], to: "-work-armada/\(file).jsonl", in: orderHome)
+        last = pass(ordered, orderHome)
+      }
+      expectEqual(
+        "read \(order.joined(separator: ", ")) in three passes, it counts once",
+        uses(last, .slash), 1)
+    }
 
     archiveSkills(root: root, calendar: calendar)
   }
@@ -2604,8 +2625,8 @@ struct UnitCheck {
 
     let slash = uses(slashLine(name: "code-health", uuid: "u1", args: "src/", cwd: "/w/a"))
     check(
-      "a typed /name is one slash use, keyed on its time, folder and name, with its args",
-      slash.count == 1 && slash.first?.useID == "s:2026-10-24T21:50:00.000Z|/w/a|code-health"
+      "a typed /name is one slash use, keyed on its instant, folder and name, with its args",
+      slash.count == 1 && slash.first?.useID == "s:1792878600000|/w/a|code-health"
         && slash.first?.kind == .slash && slash.first?.skill == "code-health"
         && slash.first?.args == "src/" && slash.first?.entryUUID == "u1")
     expectEqual(
@@ -2613,9 +2634,13 @@ struct UnitCheck {
       uses(slashLine(name: "code-health", uuid: "u2", cwd: "/w/a", session: "s2")).map(\.useID),
       slash.map(\.useID))
     expectEqual(
+      "two spellings of one instant, and a folder with a trailing slash, give the same key",
+      uses(slashLine(name: "code-health", cwd: "/w/a/", at: "2026-10-24T21:50:00Z"))
+        .map(\.useID), slash.map(\.useID))
+    expectEqual(
       "a line with no cwd of its own keys on an empty folder",
       uses(slashLine(name: "code-health")).map(\.useID),
-      ["s:2026-10-24T21:50:00.000Z||code-health"])
+      ["s:1792878600000||code-health"])
     let nameFirst = uses(slashLine(name: "compact", order: .nameFirst))
     check(
       "the name-first order of built-ins and old commands is read too, empty args as nil",
