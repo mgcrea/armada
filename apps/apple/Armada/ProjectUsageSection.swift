@@ -90,12 +90,14 @@ struct ProjectUsageSection: View {
         ForEach(skills) { skill in
           LabeledContent(
             skill.id,
-            value: skill.slash > 0 ? "\(skill.total) (\(skill.slash) typed)" : "\(skill.total)")
+            value: skill.slash > 0
+              ? "\(skill.total.formatted()) (\(skill.slash.formatted()) typed)"
+              : skill.total.formatted())
         }
       } header: {
         Text("Skills")
       } footer: {
-        Text("Claude Code only. Typed means started with /name; the rest Claude loaded on its own.")
+        Text(skillsFooter)
       }
     }
   }
@@ -145,6 +147,13 @@ struct ProjectUsageSection: View {
     if let home = codex.account(id: slice.key) { return "\(vendor) on \(home.displayName)" }
     let path = (slice.key as NSString).abbreviatingWithTildeInPath
     return "\(vendor) on \(path), not on this Mac"
+  }
+
+  private var skillsFooter: String {
+    let text =
+      "Claude Code only. Typed means started with /name; the rest Claude loaded on its own."
+    return index.ledger.skillsPassDone
+      ? text : text + " Still reading older transcripts for skills, so counts are low."
   }
 
   private var footer: String {
