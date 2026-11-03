@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What has been spent in a project: tokens by kind over a chosen window, then the same by
-/// model, by account and by subfolder.
+/// model, by account and by subfolder, then the skills used there.
 ///
 /// **Tokens, never money.** Transcripts record what was used, not what it cost, and a price
 /// table would be a guess that goes stale — the app's rule is to read figures, not estimate
@@ -83,6 +83,43 @@ struct ProjectUsageSection: View {
         }
       }
     }
+
+    let skills = topSkills(index.projectSkills(store: store))
+    if !skills.isEmpty {
+      Section {
+        ForEach(skills) { skill in
+          LabeledContent(
+            skill.id,
+            value: skill.slash > 0 ? "\(skill.total) (\(skill.slash) typed)" : "\(skill.total)")
+        }
+      } header: {
+        Text("Skills")
+      } footer: {
+        Text("Claude Code only. Typed means started with /name; the rest Claude loaded on its own.")
+      }
+    }
+  }
+
+  /// One skill's uses in this project and window, summed across accounts.
+  private struct SkillRow: Identifiable {
+    /// The skill's name.
+    let id: String
+    var total = 0
+    var slash = 0
+  }
+
+  /// The ten skills used most here in `window`, built-ins like `/compact` left out.
+  private func topSkills(_ tallies: [SkillTally]) -> [SkillRow] {
+    var rows: [String: SkillRow] = [:]
+    for tally in tallies
+    where tally.projectID == project.id && tally.window == window && tally.source != .builtin {
+      rows[tally.skill, default: SkillRow(id: tally.skill)].total += tally.total
+      rows[tally.skill, default: SkillRow(id: tally.skill)].slash += tally.slash
+    }
+    let ranked = rows.values.sorted {
+      $0.total != $1.total ? $0.total > $1.total : $0.id < $1.id
+    }
+    return Array(ranked.prefix(10))
   }
 
   @ViewBuilder

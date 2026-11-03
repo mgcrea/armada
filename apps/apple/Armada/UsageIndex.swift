@@ -34,6 +34,10 @@ final class UsageIndex {
   @ObservationIgnored private var activity = false
   @ObservationIgnored private var isPassing = false
   @ObservationIgnored private var memo: Memo?
+  @ObservationIgnored private var skillMemo: SkillMemo?
+  /// Bumped each time `skillSources` is replaced, so `projectSkills` can memoise on it.
+  @ObservationIgnored private var skillSourcesVersion = 0
+  @ObservationIgnored private var classifying: Task<Void, Never>?
   /// When a pass last read the transcript archive through to its end.
   @ObservationIgnored private var archiveReadAt: Date?
 
@@ -55,6 +59,14 @@ final class UsageIndex {
     let candidates: [ProjectPath.Candidate]
     let day: Int
     let value: [String: ProjectUsage]
+  }
+
+  private struct SkillMemo {
+    let generation: Int
+    let candidates: [ProjectPath.Candidate]
+    let day: Int
+    let sourcesVersion: Int
+    let value: [SkillTally]
   }
 
   private init() {}
@@ -98,10 +110,30 @@ final class UsageIndex {
     return value
   }
 
+  /// Every skill tally, per project, account and window, recomputed only when the ledger,
+  /// the projects, the day or what each name is changed. Called from view bodies.
+  func projectSkills(store: ProjectStore) -> [SkillTally] {
+    let candidates = store.candidates
+    let now = AppClock.now
+    let day = LocalDay.key(now, calendar: .current)
+    if let skillMemo, skillMemo.generation == ledger.generation, skillMemo.day == day,
+      skillMemo.sourcesVersion == skillSourcesVersion, skillMemo.candidates == candidates
+    {
+      return skillMemo.value
+    }
+    let value = SkillStats.compute(
+      ledger.skills, projects: candidates, sources: skillSources, today: now,
+      calendar: .current)
+    skillMemo = SkillMemo(
+      generation: ledger.generation, candidates: candidates, day: day,
+      sourcesVersion: skillSourcesVersion, value: value)
+    return value
+  }
+
   // MARK: - The loop
 
   private func run(_ indexer: UsageIndexer) async {
-    if let saved = await indexer.loadSnapshot() { ledger = saved }
+    if let saved = await indexer.loadSnapshot() { receive(saved) }
     try? await Task.sleep(for: .seconds(60))
     while !Task.isCancelled {
       if !Self.shouldDefer { await pass(indexer) }
@@ -157,6 +189,31 @@ final class UsageIndex {
   private func receive(_ snapshot: UsageLedgerSnapshot) {
     guard snapshot.generation > ledger.generation else { return }
     ledger = snapshot
+    classify(snapshot)
+  }
+
+  /// Settles what each name in a new ledger is, off the main actor: names only ever typed
+  /// are looked for on disk. The config folders are read here, before the hop.
+  ///
+  /// **The newest ledger wins.** A result lands only while its ledger is still the one
+  /// shown, so a slow classify of an older ledger never overwrites a newer one's.
+  private func classify(_ snapshot: UsageLedgerSnapshot) {
+    let rows = snapshot.skills
+    let generation = snapshot.generation
+    let configs = Accounts.shared.all.map(\.folder.base)
+    let home = NSHomeDirectory()
+    classifying?.cancel()
+    classifying = Task.detached(priority: .background) { [weak self] in
+      let sources = SkillCatalog.classify(rows, configs: configs, home: home)
+      guard !Task.isCancelled else { return }
+      await self?.install(sources, generation: generation)
+    }
+  }
+
+  private func install(_ sources: [String: SkillSource], generation: Int) {
+    guard generation == ledger.generation else { return }
+    skillSources = sources
+    skillSourcesVersion += 1
   }
 
   private func idle() async {
