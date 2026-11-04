@@ -5,21 +5,39 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.11.1` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.12.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.12.0] - 2026-11-04
+
+**See which skills you use, and where.** Armada now counts every Agent Skill and custom command
+you use in Claude Code, per project and account. A new Skills pane shows them across all your
+projects.
 
 ### Added
 
-- Skill usage: Armada counts each Agent Skill and custom command used in Claude Code, whether Claude
-  loaded it or you typed it, per project and account. See it across every project in the Skills
-  pane and in each project's pane, or ask an agent through `armada_get_skill_usage`. History goes
-  back as far as the transcripts on this Mac, and the transcript archive when one is set.
+- **Skill usage.** Armada counts each Agent Skill and custom command used in Claude Code, whether
+  Claude loaded it or you typed it, per project and account. History goes back as far as the
+  transcripts on this Mac, and the transcript archive when one is set.
+- **A Skills pane.** The sidebar's new Skills row lists every skill used in the chosen window,
+  most used first. Select one to see its totals, the projects and accounts that used it, and its
+  last 20 uses, each with what you typed next. Each project's pane lists its own top ten, and
+  clicking a skill there opens it in the Skills pane.
+- **MCP tools:** `armada_get_skill_usage` gives an agent the same counts, for every project or
+  one, over 7 days, 30 days or all time.
+
+### Fixed
+
+- **No empty 5h row in the menu bar panel.** Max 20x stopped reporting a five-hour limit in
+  November 2026, but the panel still showed "5h —" under the account, which looked like a missing
+  figure. It now shows only the limits an account reports, as the sidebar and the Usage pane
+  already did.
 
 ### Internal
 
 - Ledger schema 2, with skill uses read behind a second per-file cursor.
+- The website lists Drakar among the sibling apps, and its tour loop now opens the gallery instead
+  of sitting under the hero.
 
 ## [1.11.1] - 2026-10-27
 

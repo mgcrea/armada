@@ -212,7 +212,48 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_11_1, v1_11_0, v1_10_0, v1_9_0, v1_8_0]
+  static let releases: [Release] = [v1_12_0, v1_11_1, v1_11_0, v1_10_0, v1_9_0]
+
+  // swift-format-ignore
+  private static let v1_12_0: Release = Release(
+    version: "1.12.0",
+    date: "2026-11-04",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Skill usage.",
+            body: [
+              "Armada counts each Agent Skill and custom command used in Claude Code, whether Claude loaded it or you typed it, per project and account. History goes back as far as the transcripts on this Mac, and the transcript archive when one is set.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A Skills pane.",
+            body: [
+              "The sidebar's new Skills row lists every skill used in the chosen window, most used first. Select one to see its totals, the projects and accounts that used it, and its last 20 uses, each with what you typed next. Each project's pane lists its own top ten, and clicking a skill there opens it in the Skills pane.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "MCP tools:",
+            body: [
+              "`armada_get_skill_usage` gives an agent the same counts, for every project or one, over 7 days, 30 days or all time.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "No empty 5h row in the menu bar panel.",
+            body: [
+              "Max 20x stopped reporting a five-hour limit in November 2026, but the panel still showed \"5h —\" under the account, which looked like a missing figure. It now shows only the limits an account reports, as the sidebar and the Usage pane already did.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_11_1: Release = Release(
@@ -514,59 +555,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_8_0: Release = Release(
-    version: "1.8.0",
-    date: "2026-09-25",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Keep your transcripts past Claude Code's cleanup.",
-            body: [
-              "Settings ▸ Archive copies an account's transcripts into a folder you pick, such as one on a NAS or an external disk, and keeps them there after Claude Code deletes its own after 30 days. It is off until you switch it on for an account, there or on the account's overview. Claude Code accounts copy everything under `projects/`, Codex homes their session rollouts. A transcript is added to as it grows, a rewritten one keeps its earlier copy, and nothing is deleted unless you set how long copies stay. Armada mounts nothing and sends nothing: the copies go only as far as the folder you chose, and it waits for a share that is not mounted rather than writing to the Mac.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "A transcript window opens under its session's name.",
-            body: [
-              "The first transcript opened after launch could come up titled Transcript, and only some opens corrected it afterwards.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: nil,
-            body: [
-              "Skill usage: Armada counts each Agent Skill and custom command used in Claude Code, whether Claude loaded it or you typed it, per project and account. See it across every project in the Skills pane and in each project's pane, or ask an agent through `armada_get_skill_usage`. History goes back as far as the transcripts on this Mac, and the transcript archive when one is set.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
