@@ -212,7 +212,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_12_0, v1_11_1, v1_11_0, v1_10_0, v1_9_0]
+  static let releases: [Release] = [v1_12_1, v1_12_0, v1_11_1, v1_11_0, v1_10_0]
+
+  // swift-format-ignore
+  private static let v1_12_1: Release = Release(
+    version: "1.12.1",
+    date: "2026-11-09",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Less CPU with a window open.",
+            body: [
+              "The week's usage chart, in an account's overview and in the Usage pane, was redrawn every second from all of the week's readings, about 5,000 per account, and harder still while sessions were busy. It now draws one reading per quarter hour and redraws once a minute, or as soon as a new reading arrives. With an account window open, Armada went from around 10% CPU to under 5%.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_12_0: Release = Release(
@@ -475,82 +493,6 @@ nonisolated enum Changelog {
             headline: "Connecting an MCP client keeps a symlinked config.",
             body: [
               "A client whose config file is a symlink, such as one kept in a dotfiles repository, used to have the link replaced with a plain file.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_9_0: Release = Release(
-    version: "1.9.0",
-    date: "2026-09-28",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Move several sessions to another account at once.",
-            body: [
-              "Select more than one session in an account's list with ⌘-click or ⇧-click, or click a project's header to select all of its sessions. The pane then shows what they add up to, with Move, Continue and Close for all of them. Move copies each conversation to the other account, opens it there, and closes it here only once the copy is in place. Armada asks once if any of them is working, and afterwards says in one message which sessions did not go and why.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Session history for each account.",
-            body: [
-              "An account's pane has a Live and History switch in the toolbar. History lists the account's Claude Code sessions that are no longer running, by day and searchable by title or folder, including VS Code tabs restored with nothing behind them. Pick one to see where it stopped, then resume it, continue it on another account, or read it. Select several to continue them all on another account at once.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Continue an ended session on another account.",
-            body: [
-              "Right-click a session under a project's Recently ended to continue it on another Claude account, as you already could while it ran. This includes a VS Code tab restored with no session behind it. Armada copies the conversation across and opens a fork of it there, so the original stays where it was.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "A session continued on another account keeps its name.",
-            body: [
-              "The copy used to arrive as an untitled row.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Usage moved to the sidebar and the account's overview.",
-            body: [
-              "Each account in the sidebar shows its plan windows as the menu bar panel shows them, pace marker and reset included, with the session count under its icon. They stay in view whichever session is selected, and fade when the figures are old. With no session selected, the account's pane shows every window with its pace and projection above the week's chart, where the list of recent folders was. Above the session list, where the usage strip was, tiles count its sessions by state, with how many projects they span and how much context they hold.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "The main window has a toolbar.",
-            body: [
-              "A button beside the window controls hides and shows the sidebar, also on ⌃⌘S, so the session list and its details can have the whole width. On an account's pane, New Session is at its trailing edge and stays there whichever session is selected: click it or press ⌘N to pick a folder, or on Claude Code open its menu for a supervisor session. Grok Build accounts get it too. A session's right-click still starts another one in its folder. Beside it, Focus, Read Transcript, Fork and Continue on act on the session you have selected, on ⌘O, ⌘T and ⌘D; Codex and Grok Build get Fork. They stay in the session's details too, with what each is about to do, and Close stays there alone. Add Account moved from under the sidebar to beside the sidebar button, so it stays reachable with the sidebar hidden.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "The sessions list shows how long each prompt cache stays warm.",
-            body: [
-              "A clock beside a stopped Claude Code session's token count counts down to when its cache expires. A mark after the count gives the cache's state: a flame while it is warm or the session is working, red once the session holds 500K tokens or more, an orange timer in the last quarter of its life, and a blue snowflake once it has expired. The countdown and the count take the same colour, since the count is what the next turn reads from the cache or writes back. On a selected row the whole column turns white so it stays readable. The session's context panel uses the same marks and colours.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 7,
-            headline: "Reading an account's usage no longer starts your MCP servers or runs your hooks.",
-            body: [
-              "Armada checks each Claude Code account's limits every few minutes by running `claude` in the background, and each check used to start every MCP server you have set up and run your hooks, including any `SessionEnd` hook that saves sessions. The check now runs with neither and gets the same figures.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "A plugin's background summaries no longer show up as sessions.",
-            body: [
-              "A plugin that runs `claude -p` from the temporary folder, as the remember plugin does, used to add a short-lived row named like `t-fc` to the sessions list.",
             ]),
         ]),
     ])

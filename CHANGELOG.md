@@ -5,8 +5,27 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.12.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.12.1` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.12.1] - 2026-11-09
+
+**Armada uses much less CPU with a window open.** The week's usage chart was redrawn every second
+from every reading of the week. It now redraws once a minute, and an open window costs Armada
+a few percent of a core instead of around ten.
+
+### Fixed
+
+- **Less CPU with a window open.** The week's usage chart, in an account's overview and in the
+  Usage pane, was redrawn every second from all of the week's readings, about 5,000 per account,
+  and harder still while sessions were busy. It now draws one reading per quarter hour and redraws
+  once a minute, or as soon as a new reading arrives. With an account window open, Armada went
+  from around 10% CPU to under 5%.
+
+### Internal
+
+- Each transcript archive pass is logged at notice level, with its duration, files checked, files
+  copied, grown and versioned, and bytes written, so a pass that keeps the NAS busy leaves a record.
 
 ## [1.12.0] - 2026-11-04
 
