@@ -1,19 +1,7 @@
 import Foundation
 import os
 
-/// One reading of an account's windows, at the moment Claude Code took it.
-///
-/// Short keys because this file is appended to for as long as the app is installed
-/// and every byte is repeated per sample. `t` is the cache's `fetchedAt`, never the
-/// time Armada noticed it — that is what makes the same sample recognisable across
-/// launches, and what the dedupe below compares.
-nonisolated struct UsageSample: Codable, Sendable, Hashable {
-  let t: Date
-  /// Five-hour and seven-day percentages. Optional because a window can be absent
-  /// from the cache, and a sample missing one should not be a sample missing both.
-  let h: Int?
-  let w: Int?
-}
+// `UsageSample` lives in UsageChartSeries.swift, which the unit checks compile alone.
 
 nonisolated private struct UsageHistoryFile: Codable {
   var version = 1

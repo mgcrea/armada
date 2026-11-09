@@ -358,7 +358,29 @@ struct WindowRow: View {
 /// Drawn only from samples inside the current cycle — a reset is a discontinuity, and
 /// a line that falls from 90% to 2% between two points is a chart lying about a drop
 /// that never happened.
+///
+/// **Redrawn once a minute, not on every tick of the pane's clock.** The panes hold a
+/// one-second clock for their session rows, and passing it straight through rebuilt the
+/// whole chart every second. The content compares its inputs with `now` floored to the
+/// minute, so a tick that changes nothing it draws is skipped; a new sample still redraws
+/// it at once, through `UsageHistory`'s observation. See `UsageChartSeries`.
 struct WeeklyChart: View {
+  let accountID: String
+  let window: UsageWindow?
+  let profile: PaceProfile
+  let fetchedAt: Date?
+  let now: Date
+
+  var body: some View {
+    WeeklyChartContent(
+      accountID: accountID, window: window, profile: profile, fetchedAt: fetchedAt,
+      now: UsageChartSeries.minute(now)
+    )
+    .equatable()
+  }
+}
+
+private struct WeeklyChartContent: View, Equatable {
   let accountID: String
   let window: UsageWindow?
   let profile: PaceProfile
@@ -384,8 +406,11 @@ struct WeeklyChart: View {
       {
         VStack(alignment: .leading, spacing: 4) {
           Text("This week so far").font(.caption).foregroundStyle(.secondary)
-          chart(samples: samples, start: start, resetsAt: resetsAt, window: window)
-            .frame(height: 110)
+          chart(
+            samples: UsageChartSeries.thin(samples), start: start, resetsAt: resetsAt,
+            window: window
+          )
+          .frame(height: 110)
         }
         .padding(.top, 4)
       } else {

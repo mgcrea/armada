@@ -241,6 +241,7 @@ UNIT_SRC := \
 	Armada/TranscriptQuota.swift \
 	Armada/UsageSnapshot.swift \
 	Armada/UsageForecast.swift \
+	Armada/UsageChartSeries.swift \
 	Armada/DayWeights.swift \
 	Armada/PaceProfile.swift \
 	Armada/ContextWindow.swift \

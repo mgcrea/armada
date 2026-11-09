@@ -221,6 +221,7 @@ final class TranscriptArchiver {
     let cutoff = TranscriptArchive.cutoff(days: retentionDays, now: Date())
     let worker = self.worker
     let mine = generation
+    let began = Date()
     let work = Task.detached(priority: .background) {
       await worker.run(
         sources: sources, root: root, cutoff: cutoff,
@@ -250,8 +251,10 @@ final class TranscriptArchiver {
       } else {
         status = .failed(report.firstFailure ?? "Some files could not be copied.")
       }
-      Self.logger.info(
-        "archive pass: \(report.filesCopied) new, \(report.filesAppended) grown, \(report.filesPruned) pruned, \(report.failures) failed"
+      // `.notice`, which the unified log keeps: a pass is a burst of disk work on somebody's
+      // NAS, and at `.info` the only trace of one was the CPU it cost.
+      Self.logger.notice(
+        "archive pass in \(Date().timeIntervalSince(began), format: .fixed(precision: 1))s: \(report.filesSeen) seen, \(report.filesCopied) new, \(report.filesAppended) grown, \(report.filesVersioned) versioned, \(report.bytesWritten) bytes, \(report.filesPruned) pruned, \(report.failures) failed"
       )
     case .failure(let error):
       status = Task.isCancelled ? .idle : .failed(error.localizedDescription)

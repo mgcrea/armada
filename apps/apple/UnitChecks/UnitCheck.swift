@@ -31,6 +31,7 @@ struct UnitCheck {
     transcriptQuota()
     contextWindow()
     usageForecast()
+    usageChartSeries()
     dayWeights()
     workingHours()
     sessionOrder()
@@ -841,6 +842,52 @@ struct UnitCheck {
     check(
       "and past 1M, to the reading itself",
       beyond.limit == 1_200_000 && beyond.source == .observed)
+  }
+
+  // MARK: - UsageChartSeries
+
+  static func usageChartSeries() {
+    section("UsageChartSeries")
+    let start = date("2026-11-02T00:00:00Z")
+    func sample(_ minutes: Double, _ w: Int) -> UsageSample {
+      UsageSample(t: start.addingTimeInterval(minutes * 60), h: nil, w: w)
+    }
+
+    // A week read every two minutes is what the history holds: thousands of points for
+    // a chart a few hundred points wide.
+    let week = (0..<5_040).map { sample(Double($0) * 2, $0 / 60) }
+    let thinned = UsageChartSeries.thin(week)
+    check(
+      "a week of two-minute readings comes down to one per quarter hour",
+      thinned.count <= 7 * 24 * 4 + 1)
+    check("and is still a line", thinned.count >= 7 * 24 * 4 - 1)
+    expectEqual("the first reading is kept, where the line starts", thinned.first, week.first)
+    expectEqual("the latest reading is kept, where the projection starts", thinned.last, week.last)
+    check("still oldest first", zip(thinned, thinned.dropFirst()).allSatisfy { $0.t < $1.t })
+    check("only readings that were taken", thinned.allSatisfy { Set(week).contains($0) })
+
+    // Each quarter hour keeps its latest reading, the one the next quarter climbs from.
+    let quarter = [sample(0, 1), sample(5, 2), sample(14, 3), sample(16, 4), sample(29, 5)]
+    expectEqual(
+      "one per quarter hour, its last", UsageChartSeries.thin(quarter).map(\.w),
+      [1, 3, 5])
+
+    let few = [sample(0, 1), sample(1, 2)]
+    expectEqual("nothing to thin is left alone", UsageChartSeries.thin(few), few)
+    expectEqual("empty stays empty", UsageChartSeries.thin([]), [])
+
+    // The chart compares its inputs by the minute, so the pane's one-second clock does not
+    // rebuild it.
+    let at = date("2026-11-09T14:29:07Z")
+    expectEqual(
+      "a time is floored to its minute", UsageChartSeries.minute(at),
+      date("2026-11-09T14:29:00Z"))
+    expectEqual(
+      "seconds later, the same minute", UsageChartSeries.minute(at.addingTimeInterval(52)),
+      UsageChartSeries.minute(at))
+    check(
+      "a minute later, another",
+      UsageChartSeries.minute(at.addingTimeInterval(53)) != UsageChartSeries.minute(at))
   }
 
   // MARK: - UsageForecast
