@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SupportKitDriving
 import SupportKitSettings
 import SupportKitUI
 import SwiftUI
@@ -180,6 +181,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     contentSize: NSSize(width: 900, height: 560)
   ) { MainWindowView() }
 
+  // A Debug build launched with `-DrivingChannel YES` takes clicks, keys and shortcuts
+  // through a file, delivered to its own windows, so an agent drives it without taking
+  // the Mac's focus. Nil, and no code at all, in Release.
+  private var driving: Driving?
+
   private lazy var settingsWindow = HostedWindow(
     title: "Armada Settings",
     // "settings-panes", not "settings": cupertino renamed away from the bare
@@ -192,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
+    // Before the screenshot branch, so a staged capture can be driven too.
+    driving = Driving.startIfRequested()
     // A screenshot capture, instead of everything below. Nothing real starts: no
     // watcher, no probe, no MCP server, no hotkey, no event tap, no updater, and
     // nothing written to the person's folders. `DockPresence` still observes, because

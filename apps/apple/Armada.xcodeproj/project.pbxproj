@@ -17,6 +17,7 @@
 		0FA8DA00000000000000004C /* MCPKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA00000000000000004B /* MCPKitUI */; };
 		0FA8DA000000000000000031 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FA8DA000000000000000030 /* Sparkle.framework */; };
 		0FA8DA000000000000000032 /* Sparkle.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 0FA8DA000000000000000030 /* Sparkle.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		58492DB759297801637F1D5A /* SupportKitDriving in Frameworks */ = {isa = PBXBuildFile; productRef = 0FF89C7DA6AB1DC5F43F28B4 /* SupportKitDriving */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -60,6 +61,7 @@
 				0FA8DA000000000000000048 /* ArmadaSpeech in Frameworks */,
 				0FA8DA00000000000000004C /* MCPKitUI in Frameworks */,
 				0FA8DA000000000000000031 /* Sparkle.framework in Frameworks */,
+				58492DB759297801637F1D5A /* SupportKitDriving in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +121,7 @@
 				0FA8DA000000000000000044 /* ArmadaSupervisor */,
 				0FA8DA000000000000000047 /* ArmadaSpeech */,
 				0FA8DA00000000000000004B /* MCPKitUI */,
+				0FF89C7DA6AB1DC5F43F28B4 /* SupportKitDriving */,
 			);
 			productName = Armada;
 			productReference = 0FA8DA000000000000000004 /* Armada.app */;
@@ -428,7 +431,7 @@
 			repositoryURL = "https://github.com/mgcrea/swift-support-kit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 1.5.0;
+				minimumVersion = 1.23.0;
 			};
 		};
 		0FA8DA00000000000000004A /* XCRemoteSwiftPackageReference "swift-mcp-kit" */ = {
@@ -473,6 +476,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0FA8DA00000000000000004A /* XCRemoteSwiftPackageReference "swift-mcp-kit" */;
 			productName = MCPKitUI;
+		};
+		0FF89C7DA6AB1DC5F43F28B4 /* SupportKitDriving */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0FA8DA000000000000000016 /* XCRemoteSwiftPackageReference "swift-support-kit" */;
+			productName = SupportKitDriving;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

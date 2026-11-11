@@ -1,5 +1,5 @@
 {
-  "originHash" : "2528362acf001c5792e6bbf91a2e40dbf15aefa90b6f4648c58472402ddf1bfa",
+  "originHash" : "76f0708ae7ea1dbffe01932aa52389a290697b37ab6de38984247490ccef295f",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-support-kit.git",
       "state" : {
-        "revision" : "93c5a2bd076895a28cb4ac718117fd61b0605da5",
-        "version" : "1.5.0"
+        "revision" : "2ec1eda43a5f54655cfa31fb2113ac95cc27126f",
+        "version" : "1.23.0"
       }
     }
   ],
