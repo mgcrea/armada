@@ -43,18 +43,21 @@ nonisolated struct AccountIdentity: Sendable, Hashable {
     return organizationName
   }
 
-  /// The plan, as a person would say it: "Max 20x", "Team".
+  /// The plan, as a person would say it: "Ultra", "Team".
   ///
   /// Built from the rate-limit tier rather than `organizationType`, because the
   /// tier is what actually differs between the two orgs here — both would read
   /// simply "Max" otherwise. The tiers are internal strings
   /// (`default_claude_max_20x`, `default_raven`), so anything unrecognised falls
   /// back to the type and then to nothing rather than showing a code name.
+  ///
+  /// Anthropic renamed the plans on 2026-10-30, Max 20x to Ultra and Max 5x to
+  /// plain Max, but kept the tier strings: `max_20x` still means Ultra.
   var planLabel: String? {
     let tier = organizationRateLimitTier ?? userRateLimitTier
     if let tier {
-      if tier.contains("max_20x") { return "Max 20x" }
-      if tier.contains("max_5x") { return "Max 5x" }
+      if tier.contains("max_20x") { return "Ultra" }
+      if tier.contains("max_5x") { return "Max" }
       if tier.contains("pro") { return "Pro" }
     }
     switch organizationType {

@@ -548,8 +548,8 @@ struct AccountSummary: View {
         let seven = usage.window(.sevenDay, correctedBy: account.quotaHit, now: now)
         let fiveHour = forecast(five, .fiveHour, usage.fetchedAt)
         let sevenDay = forecast(seven, .sevenDay, usage.fetchedAt)
-        // A window the account does not report has no row, not an em dash: Max 20x
-        // stopped sending `five_hour` in November 2026, and "5h —" read as a missing
+        // A window the account does not report has no row, not an em dash: Ultra
+        // (then Max 20x) stopped sending `five_hour` in November 2026, and "5h —" read as a missing
         // figure rather than as a limit that no longer exists. The sidebar and the
         // Usage pane already list only the windows that arrive.
         VStack(alignment: .leading, spacing: 3) {

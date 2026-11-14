@@ -157,7 +157,8 @@ Consequences for anything displaying this:
 - **`<email>'s Organization` is generated**, not chosen. Armada rewrites exactly that shape
   to "Personal" and leaves any other name alone.
 - **The plan lives in the tier, not the type.** Both orgs are "Max"-ish by
-  `organizationType`; only `organizationRateLimitTier` separates Max 20x from the Team seat.
+  `organizationType`; only `organizationRateLimitTier` separates Ultra (Max 20x
+  until Anthropic renamed it on 2026-10-30; the tier string kept `max_20x`) from the Team seat.
 - `oauthAccount` sits at the **top level** of `.claude.json`, beside
   `cachedUsageUtilization` — one parse gets both.
 
