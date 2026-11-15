@@ -18,6 +18,7 @@ and how does it know which agent sent one?
 | Long-poll (a tool call that blocks) | Works; held 300s, no ceiling found | Works; **hard-fails at exactly 300s**; woke in 7.5s |
 | MCP `notifications/message` | Never reaches the model | Never reaches the model |
 | MCP `instructions` field ("check the board every turn") | Ignored 4 of 4 times when the prompt needed no tools | Ignored |
+| Queue from outside (`codex queue`, added 2026-11-15) | n/a | **An idle TUI runs the message as a turn at once; a busy one after its turn.** codex-cli 0.163. See codex-sessions.md |
 
 | Sender identity | Claude Code | Codex |
 | --- | --- | --- |

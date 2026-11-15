@@ -11,6 +11,7 @@ struct GrokToolsTests {
   static let open = "01a0af67-f521-75d2-b771-920a03e5fdf9"
   static let headless = "01a0af59-ee50-7b73-a473-2f2bcf56012e"
   static let ended = "01a0aed0-c99b-7cd1-a1ac-b6fd20ac67a6"
+  static let headlessDone = "01a0aed1-1111-7cd1-a1ac-b6fd20ac67a6"
 
   static func session(
     _ id: String, name: String, state: String, pid: Int32?, headless: Bool = false
@@ -43,6 +44,8 @@ struct GrokToolsTests {
               session(
                 headless, name: "Read the README", state: "working", pid: nil, headless: true),
               session(ended, name: "Old one", state: "ended", pid: nil),
+              session(
+                headlessDone, name: "Answered", state: "ended", pid: nil, headless: true),
             ])
         ]))
   }
@@ -67,7 +70,7 @@ struct GrokToolsTests {
     #expect(result.structuredContent?["accounts"]?[0]?["vendor"] == "grok")
 
     let all = await call("armada_get_fleet", ["vendor": "grok", "include_ended": true])
-    #expect(all.structuredContent?["sessions"]?.arrayValue?.count == 3)
+    #expect(all.structuredContent?["sessions"]?.arrayValue?.count == 4)
     let none = await call("armada_get_fleet", ["vendor": "codex"])
     #expect(none.structuredContent?["sessions"]?.arrayValue?.isEmpty == true)
   }
@@ -109,6 +112,48 @@ struct GrokToolsTests {
 
     let focused = await call("armada_focus_session", ["session": .string(Self.open)])
     #expect(focused.isError && focused.text.contains("Grok Build"))
+  }
+
+  @Test("A headless session between turns gets the message as a Grok one; mid-turn it waits")
+  func headlessMessage() async {
+    let sender = FakeMessageSender()
+    let sent = await call(
+      "armada_send_message", ["session": .string(Self.headlessDone), "text": " go on "],
+      sender: sender)
+    #expect(!sent.isError)
+    #expect(
+      sender.requests == [
+        SendMessageRequest(sessionID: Self.headlessDone, text: "go on", vendor: .grok)
+      ])
+
+    let busy = FakeMessageSender()
+    let midTurn = await call(
+      "armada_send_message", ["session": .string(Self.headless), "text": "hi"], sender: busy)
+    #expect(midTurn.isError && midTurn.text.contains("armada_wait"))
+    #expect(busy.requests.isEmpty)
+  }
+
+  @Test("A headless turn is stopped only with force, and reaches the closer as Grok")
+  func headlessClose() async {
+    let closer = FakeSessionCloser()
+    let unforced = await call(
+      "armada_close_session", ["session": .string(Self.headless)], closer: closer)
+    #expect(unforced.isError && unforced.text.contains("force"))
+    #expect(closer.requests.isEmpty)
+
+    let forced = await call(
+      "armada_close_session", ["session": .string(Self.headless), "force": true], closer: closer)
+    #expect(!forced.isError)
+    #expect(
+      closer.requests == [
+        CloseSessionRequest(sessionID: Self.headless, force: true, vendor: "grok")
+      ])
+
+    let done = await call(
+      "armada_close_session", ["session": .string(Self.headlessDone), "force": true],
+      closer: closer)
+    #expect(done.isError && done.text.contains("already ended"))
+    #expect(closer.requests.count == 1)
   }
 
   @Test("armada_wait watches live Grok Build sessions, never as wanting attention")

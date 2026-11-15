@@ -18,6 +18,10 @@ in the app — the detail is in the sections below:
 ## The binary
 
 - `/Applications/ChatGPT.app/Contents/Resources/codex` (`codex-cli 0.152.0`). Not on `PATH`.
+  By ChatGPT 26.1103 it had moved to
+  `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex` (`0.167.0-alpha.3.2`), and the
+  old path was gone. Homebrew's `codex` (`/opt/homebrew/bin`, 0.163.0) and the VS Code extension's
+  (0.169.0-alpha) are the other copies on this Mac.
 - `codex exec` runs non-interactively. It **waits on stdin** unless given `< /dev/null`.
 - `-c key=value` overrides config for one run without touching `config.toml`, for example
   `-c 'mcp_servers.board={command="node",args=["/abs/board-server.mjs"],env={BOARD_FILE="/abs/board.json"}}'`.
@@ -249,6 +253,39 @@ nothing to hedge: the number is recorded.
   read yields both the current occupancy and a growth series.
 - **No compaction record.** Nothing in a rollout marks one; the only occurrences of the word
   on this Mac are inside system-prompt text. Claude's `compact_boundary` has no counterpart.
+
+## Queueing a message (`codex queue`, codex-cli 0.163.0, measured 2026-11-15)
+
+`codex queue --thread <id or exact name> --message <text>` puts a message in front of an existing
+thread. It is how `armada_send_message` reaches a Codex thread (`CodexQueue.swift`). Measured on a
+scratch thread, with the TUI run in a detached tmux session:
+
+- It **returns at once** (0.27 s) and prints `Queued message <item uuid> for thread <thread>.`
+- The message becomes a row in `queued_items` of `$CODEX_HOME/queue_1.sqlite` (`id`, `thread_id`,
+  `payload_json` holding a `UserInput`, `queue_order`). `queued_thread_revisions` is bumped by
+  triggers on every change, and the app-server tells its clients with a `thread/queue/changed`
+  notification. **The client, not the server, takes the row and starts the turn.**
+- **No client holding the thread:** the row stays. Nothing expires it, and there is no CLI to
+  remove one.
+- **A client that opens the thread later runs what is waiting as soon as it opens it.** Resuming
+  the thread in the TUI ran the queued message with no keypress. This is why Armada refuses to
+  queue to a thread that has ended: the message would fire whenever someone next opened it.
+- **An idle TUI holding the thread takes the row at once** (Armada's watch saw it gone on its first
+  read, under 200 ms) and runs it as a turn.
+- **A busy one runs it when its turn ends.** Two queued back-to-back during a 20-second turn ran in
+  order, one turn each.
+- The VS Code extension (26.1111) subscribes to `thread/queue/changed` in its webview, so its
+  threads very likely drain the same way. Not measured, and neither is the ChatGPT app. Armada
+  reports `delivered` only when it sees the row go.
+- All three binaries on this Mac (brew 0.163, ChatGPT 0.167, VS Code 0.169) have the queue. An
+  older CLI has no `queue` subcommand; its interactive CLI takes `queue` as a prompt and should
+  refuse `--thread` as an unknown flag (clap's wording, not measured).
+- Pass the text as `--message=<text>`, so a message that starts with `-` is not read as a flag.
+
+Two traps in testing: `codex resume` runs in the **thread's original folder**, whatever `-C`
+says, so a scratch thread asks for folder trust (accepting writes a `[projects."…"]` entry to
+`config.toml`, which a `-c projects…` override does not avoid); and the TUI stops on an update
+prompt first when a newer Codex is out.
 
 ## As an MCP client
 

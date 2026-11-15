@@ -4,21 +4,34 @@ import Foundation
 ///
 /// **Only reachable past the kit's write gate**, like `SessionStarter` and `SessionCloser`, and
 /// in the app only while Settings ▸ Supervisor delivers messages, which installs the hook that
-/// picks them up. The tool has already found the session, refused Codex and vetted the text; the
-/// app checks all three again, because it is the side that writes the message.
+/// picks them up in Claude Code. The tool has already found the session, refused a Grok Build TUI
+/// session or one mid-turn and a Codex thread that is closed or a subagent, and vetted the text; the app checks again, because
+/// it is the side that writes the message.
 public protocol MessageSender: Sendable {
   func sendMessage(_ request: SendMessageRequest) async -> SendMessageOutcome
 }
 
 public struct SendMessageRequest: Sendable, Equatable {
-  /// A Claude Code session id, exact: the tool has already resolved any prefix or name.
+  /// Which vendor's session `sessionID` names, and so which way the message travels: Claude
+  /// Code's through Armada's own hook and inbox, Codex's through `codex queue`, and a headless
+  /// Grok Build session's as the next headless turn, which Armada runs itself.
+  public enum Vendor: String, Sendable, Equatable {
+    case claude
+    case codex
+    case grok
+  }
+
+  /// A Claude Code session id or a Codex thread id, exact: the tool has already resolved any
+  /// prefix or name.
   public let sessionID: String
   /// Trimmed and vetted by `Tools.messageRefusal`. The app adds the label the recipient sees.
   public let text: String
+  public let vendor: Vendor
 
-  public init(sessionID: String, text: String) {
+  public init(sessionID: String, text: String, vendor: Vendor = .claude) {
     self.sessionID = sessionID
     self.text = text
+    self.vendor = vendor
   }
 }
 

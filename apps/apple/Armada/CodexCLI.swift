@@ -24,7 +24,11 @@ import Foundation
 /// are installed here, so the newest name wins; any of them would work, and the newest
 /// is the one the editor itself is running.
 nonisolated enum CodexCLI {
-  static func executable() -> URL? {
+  static func executable() -> URL? { executables().first }
+
+  /// Every copy found, in the order `executable` prefers them, each path once. For a command
+  /// only newer copies have (`codex queue`), so an old one early on the path is not the end.
+  static func executables() -> [URL] {
     let fileManager = FileManager.default
     let home = fileManager.homeDirectoryForCurrentUser
 
@@ -41,14 +45,25 @@ nonisolated enum CodexCLI {
     ]
     // Read on the main actor's behalf but not from it — `NSWorkspace` is safe to ask
     // from any thread, and this whole enum is called off the UI's critical path.
+    // By ChatGPT 26.1103 (codex-cli 0.167) the copy had moved into a helper app inside
+    // Resources, and `Contents/Resources/codex` was gone. The old path stays for earlier builds.
     if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: CodexIcon.bundleID) {
-      candidates.append(
-        app.appending(path: "Contents/Resources/codex", directoryHint: .notDirectory))
+      candidates += [
+        app.appending(
+          path: "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+          directoryHint: .notDirectory),
+        app.appending(path: "Contents/Resources/codex", directoryHint: .notDirectory),
+      ]
     }
 
     candidates += extensionCopies(home: home)
 
-    return candidates.first { fileManager.isExecutableFile(atPath: $0.path(percentEncoded: false)) }
+    var seen: Set<String> = []
+    return candidates.filter {
+      let path = $0.resolvingSymlinksInPath().path(percentEncoded: false)
+      return fileManager.isExecutableFile(atPath: $0.path(percentEncoded: false))
+        && seen.insert(path).inserted
+    }
   }
 
   /// Every `codex` shipped inside an installed OpenAI VS Code extension, newest first.

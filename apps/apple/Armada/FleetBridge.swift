@@ -168,6 +168,11 @@ nonisolated struct FleetBridge: FleetSource {
         cacheRead: 0, cacheCreation: 0, freshInput: 0, output: 0, at: session.lastEventAt,
         hasCompacted: false)
     }
+    // The watcher can only guess at a headless session from how recently it wrote, and lets it
+    // go after a quiet spell; a turn Armada is running is working for as long as its process is,
+    // so the close, message and wait tools see what Armada knows.
+    let state: GrokSessionState =
+      GrokHeadless.shared.isRunning(session.id) ? .working : session.state
     return FleetSnapshot.GrokSession(
       id: session.id,
       pid: session.pid,
@@ -175,9 +180,9 @@ nonisolated struct FleetBridge: FleetSource {
       title: session.summary.title,
       project: session.summary.projectName,
       cwd: session.summary.cwd,
-      state: session.state.rawValue,
-      stateLabel: session.state.label,
-      isLive: session.state.isLive,
+      state: state.rawValue,
+      stateLabel: state.label,
+      isLive: state.isLive,
       isHeadless: session.isHeadless,
       startedAt: session.summary.createdAt,
       lastActivity: session.lastEventAt ?? session.summary.updatedAt,

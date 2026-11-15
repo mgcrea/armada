@@ -190,7 +190,7 @@ enum VSCodeLaunch {
   ///
   /// Measured at 70ms on this Mac. Cut off after five seconds, so a profile that waits on
   /// something turns into a sentence rather than a launch that never happens.
-  private static func loginShellEnvironment() async -> [String: String]? {
+  static func loginShellEnvironment() async -> [String: String]? {
     let shell = getpwuid(getuid()).flatMap { String(cString: $0.pointee.pw_shell) } ?? "/bin/zsh"
     let command = "printf %s \(EditorLaunch.environmentMarker); /usr/bin/env -0"
     guard

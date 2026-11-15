@@ -80,13 +80,45 @@ struct SendMessageToolTests {
     #expect(Tools.messageRefusal("- first, run the tests") == nil)
   }
 
-  @Test("Codex, an unknown session and a missing text are refused")
+  @Test("An open Codex thread is sent to, marked as Codex")
+  func codexOpen() async {
+    let sender = FakeMessageSender()
+    sender.outcome = .delivered(name: "Codex thread", project: "armada")
+    let result = await call(
+      ["session": .string(FakeFleetSource.codexOpen), "text": " run the tests "], sender: sender)
+    #expect(!result.isError)
+    #expect(
+      sender.requests == [
+        SendMessageRequest(
+          sessionID: FakeFleetSource.codexOpen, text: "run the tests", vendor: .codex)
+      ])
+    #expect(result.text.hasPrefix("Delivered to Codex thread"))
+  }
+
+  @Test("A Codex thread that ended, or a Codex subagent, is refused before the sender")
+  func codexRefused() async {
+    let sender = FakeMessageSender()
+    let ended = await call(
+      ["session": .string(FakeFleetSource.codexEnded), "text": "hi"], sender: sender)
+    #expect(ended.isError)
+    #expect(ended.text.contains("ended"))
+    let subagent = await call(
+      ["session": .string(FakeFleetSource.codexSubagent), "text": "hi"], sender: sender)
+    #expect(subagent.isError)
+    #expect(subagent.text.contains("subagent"))
+    #expect(sender.requests.isEmpty)
+  }
+
+  @Test("A Claude Code session is sent to as Claude")
+  func claudeVendor() async {
+    let sender = FakeMessageSender()
+    _ = await call(["session": "Docs", "text": "hi"], sender: sender)
+    #expect(sender.requests.first?.vendor == .claude)
+  }
+
+  @Test("Grok, an unknown session and a missing text are refused")
   func refusedTargets() async {
     let sender = FakeMessageSender()
-    let codex = await call(
-      ["session": .string(FakeFleetSource.codexOpen), "text": "hi"], sender: sender)
-    #expect(codex.isError)
-    #expect(codex.text.contains("Codex"))
     let unknown = await call(["session": "nope", "text": "hi"], sender: sender)
     #expect(unknown.isError)
     let noText = await call(["session": "Docs"], sender: sender)

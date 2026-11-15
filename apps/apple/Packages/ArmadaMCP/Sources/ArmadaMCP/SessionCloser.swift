@@ -11,14 +11,18 @@ public protocol SessionCloser: Sendable {
 }
 
 public struct CloseSessionRequest: Sendable, Equatable {
-  /// A Claude Code session id, exact: the tool has already resolved any prefix or name.
+  /// A Claude Code session id, or a headless Grok Build session's, exact: the tool has already
+  /// resolved any prefix or name.
   public let sessionID: String
   /// Close it even while it is working or probably running a tool.
   public let force: Bool
+  /// `grok` for a headless Grok Build turn, which only the app that started it can stop.
+  public let vendor: String
 
-  public init(sessionID: String, force: Bool) {
+  public init(sessionID: String, force: Bool, vendor: String = "claude") {
     self.sessionID = sessionID
     self.force = force
+    self.vendor = vendor
   }
 }
 

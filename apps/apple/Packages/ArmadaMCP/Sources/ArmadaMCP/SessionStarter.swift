@@ -22,15 +22,24 @@ public struct StartSessionRequest: Sendable, Equatable {
   /// A Claude Code or Grok Build session id to continue rather than start fresh. The app refuses one that is
   /// still live anywhere: two processes on one transcript is what forking exists to avoid.
   public let resume: String?
+  /// A model id as the vendor's CLI takes it (`opus`, `gpt-6-astra`), vetted by
+  /// `Tools.modelRefusal`. Nil for the account's own default.
+  public let model: String?
+  /// Run one Grok Build turn as Armada's own child process, with no terminal, instead of opening
+  /// one. Needs `prompt`. See `GrokHeadless` in the app for what such a turn may do.
+  public let headless: Bool
 
   public init(
-    projectID: String?, vendor: String?, account: String?, prompt: String?, resume: String? = nil
+    projectID: String?, vendor: String?, account: String?, prompt: String?, resume: String? = nil,
+    model: String? = nil, headless: Bool = false
   ) {
     self.projectID = projectID
     self.vendor = vendor
     self.account = account
     self.prompt = prompt
     self.resume = resume
+    self.model = model
+    self.headless = headless
   }
 }
 
@@ -50,15 +59,21 @@ public struct StartedSession: Sendable, Equatable {
   public let promptAwaitsSend: Bool
   /// The id the session will have: minted by Armada and passed as `--session-id` for a fresh
   /// Claude Code session in a terminal, or the one resumed. Nil for VS Code and Codex, which
-  /// choose their own.
+  /// choose their own. Always set for a headless Grok Build turn.
   public let sessionID: String?
   public let resumed: Bool
+  /// The model the session was asked to run, when one was named.
+  public let model: String?
+  /// Armada runs the turn itself, with no terminal: it owns the process, which ends with the turn.
+  public let headless: Bool
 
   public init(
     project: String, path: String, vendor: String, accountID: String, account: String,
     terminal: String, withPrompt: Bool, promptAwaitsSend: Bool = false, sessionID: String? = nil,
-    resumed: Bool = false
+    resumed: Bool = false, model: String? = nil, headless: Bool = false
   ) {
+    self.model = model
+    self.headless = headless
     self.project = project
     self.path = path
     self.vendor = vendor

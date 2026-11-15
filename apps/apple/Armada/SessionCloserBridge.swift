@@ -49,7 +49,37 @@ nonisolated struct SessionCloserBridge: SessionCloser {
   }
 
   func closeSession(_ request: CloseSessionRequest) async -> CloseSessionOutcome {
-    await Self.close(request, origin: .agent)
+    if request.vendor == "grok" { return await Self.stopGrok(request, now: Date()) }
+    return await Self.close(request, origin: .agent)
+  }
+
+  /// A headless Grok Build turn Armada is running (`GrokHeadless`). Only Armada can stop one: it
+  /// holds the process, and Grok lists no pid for a headless run. Same throttle as a close.
+  @MainActor
+  static func stopGrok(_ request: CloseSessionRequest, now: Date) async -> CloseSessionOutcome {
+    guard EntitlementMonitor.shared.current.isEntitled else {
+      return .refused("Armada has no licence and no trial running, so it closes nothing.")
+    }
+    let session = GrokAccounts.shared.all.lazy.compactMap({ account in
+      account.sessions.sessions.first { $0.id == request.sessionID }
+    }).first
+    let name = session?.displayName ?? request.sessionID
+    guard GrokHeadless.shared.isRunning(request.sessionID) else {
+      return .refused(
+        "Armada is not running a headless turn in \(name): either it has ended, or something "
+          + "other than Armada started it, and Grok Build lists no process to stop for one.")
+    }
+    if let last = lastCloseAt, now.timeIntervalSince(last) < throttle {
+      return .refused("A session was closed a moment ago. Wait a moment before closing another.")
+    }
+    lastCloseAt = now
+    guard let stopped = await GrokHeadless.shared.stop(request.sessionID) else {
+      return .refused("\(name)'s headless turn ended before Armada could stop it.")
+    }
+    return .closed(
+      ClosedSession(
+        name: name, project: session?.summary.projectName ?? "", state: "working",
+        killed: stopped.killed, exited: stopped.exited))
   }
 
   static func close(_ request: CloseSessionRequest, origin: CloseOrigin) async

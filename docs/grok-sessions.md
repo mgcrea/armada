@@ -170,6 +170,52 @@ leading underscore. Measured 2026-09-17:
 allowance covers every model; a monthly period (`USAGE_PERIOD_TYPE_MONTHLY`) exists in the source
 and has not been seen. `StopFailure` with `error: "rate_limit"` is the hook-side signal of hitting it.
 
+## Headless turns Armada runs (grok 1.0.77, 2026-11-15)
+
+`armada_start_session` with `headless: true`, and `armada_send_message` to a headless session
+whose turn has ended, run a turn as Armada's own child process (`GrokHeadless.swift`). A headless
+session has no process between turns, so its next message is its next turn, run with `--resume`.
+`armada_close_session` stops a running one, which only Armada can do: Grok lists no pid for a
+headless run, but Armada holds the `Process`.
+
+The command (`GrokHeadlessCommand.swift`):
+
+```
+grok --prompt-file <file> --cwd <project> --permission-mode dontAsk \
+     (--session-id <new uuid> | --resume <id>) [--model=<id>]
+GROK_DEFAULT_SELECTED_PERMISSION=reject, GROK_HOME as for a terminal launch,
+the person's login environment for PATH
+```
+
+**Why `dontAsk`, from Grok's own guide** (not measured here, see below):
+
+- In headless `default` mode a permission prompt is answered with the row the TUI would
+  preselect, which is `allow_once` unless `default_selected_permission` or
+  `GROK_DEFAULT_SELECTED_PERMISSION` says otherwise (`05-configuration.md`). A plain `grok -p`
+  therefore approves what it asks about.
+- `dontAsk` allows "only pre-approved tools and built-in read-only handling"
+  (`22-permissions-and-safety.md`): reading, searching, the read-only shell commands Grok lists,
+  `mkdir` and `touch`, and whatever the person's own allow rules already permit. Anything else is
+  denied, never prompted.
+- `GROK_DEFAULT_SELECTED_PERMISSION=reject` is a second line, for any path that still prompts.
+- Claude-compatible hooks stay on, so the person's own `PreToolUse` gates still run. Armada's
+  delivery hook exits at once inside Grok (above), so it no longer holds a turn open.
+
+**Measured:** grok 1.0.77 parses both command lines (fresh with `--model=`, and `--resume`) and
+gets as far as its sign-in check. Signed out, it exits 1 in 0.2 s with `Not signed in. To
+authenticate without a browser, run:` on stderr, plain, or behind `Error: ` with
+`--output-format json`; Armada watches a new turn for two seconds and passes that back as the
+tool's refusal. `--no-auto-update`, in the guide's headless table, and `--trust`, in 1.0.34's
+help, are not in 1.0.77's `grok --help`, so neither is passed.
+
+**Not measured yet**, because Grok Build was signed out on this Mac on 2026-11-15: a real turn
+under `dontAsk` (that an edit or a write command is denied rather than prompted or hung), the
+`--resume` turn appending to the same session, `session_kind` staying `headless`, and how
+`grok` answers `SIGTERM` mid-turn. Armada sends `SIGTERM` to the turn's process group (a
+`Process` child leads its own, so the shell commands the turn started get it too), then `SIGKILL`
+to the group after five seconds if `grok` is still there. A command the turn put in a process
+group of its own would escape both; whether grok does that is not measured either.
+
 ## Open questions
 
 - The TUI: what a pending permission prompt writes to `updates.jsonl`, the `session_kind` value,

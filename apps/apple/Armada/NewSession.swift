@@ -151,7 +151,7 @@ nonisolated enum NewSession {
   static func start(
     _ agent: Agent, in project: URL, terminal: TerminalApp, start: Start = .fresh,
     supervisor: Supervisor? = nil, prompt: String? = nil, name: String? = nil,
-    completion: @escaping @MainActor (String) -> Void = { _ in }
+    model: String? = nil, completion: @escaping @MainActor (String) -> Void = { _ in }
   ) -> String? {
     let fileManager = FileManager.default
     let path = project.standardizedFileURL.path(percentEncoded: false)
@@ -184,7 +184,7 @@ nonisolated enum NewSession {
       script = try write(
         script: body(
           agent: agent, project: project, binary: binary, start: start, mcpConfig: mcpConfig,
-          promptFile: promptFile, name: name),
+          promptFile: promptFile, name: name, model: model),
         in: directory, for: project)
     } catch {
       return "Armada could not write the startup script: \(error.localizedDescription)"
@@ -224,7 +224,7 @@ nonisolated enum NewSession {
   /// it into a message.
   private static func body(
     agent: Agent, project: URL, binary: URL, start: Start, mcpConfig: URL?, promptFile: URL?,
-    name: String?
+    name: String?, model: String? = nil
   ) -> String {
     let path = project.standardizedFileURL.path(percentEncoded: false)
     let prompt = promptFile.map { LaunchScript.promptLines(file: $0.path(percentEncoded: false)) }
@@ -238,7 +238,7 @@ nonisolated enum NewSession {
     lines += [
       // The message last: both CLIs take it as the trailing positional word.
       ([quoted(binary.path(percentEncoded: false))]
-        + arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name)
+        + arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name, model: model)
         + (prompt.map { [$0.argument] } ?? []))
         .joined(separator: " ")
     ]
@@ -256,7 +256,7 @@ nonisolated enum NewSession {
   /// uuids and neither needs it, but the invocation line should not be the one place in
   /// this file that assumes what a session id looks like.
   private static func arguments(
-    for agent: Agent, start: Start, mcpConfig: URL?, name: String?
+    for agent: Agent, start: Start, mcpConfig: URL?, name: String?, model: String? = nil
   ) -> [String] {
     var arguments: [String] =
       switch (agent, start) {
@@ -290,6 +290,12 @@ nonisolated enum NewSession {
     // supervisor, which names itself below.
     if case .claude = agent, mcpConfig == nil, let name {
       arguments.append(quoted("--name=" + name))
+    }
+    // All three CLIs take `--model`, and Codex takes it after `resume` or `fork` as well as
+    // before (`codex resume --help`, 0.163). One word for the reason `--name=` is: an id that
+    // begins with a dash cannot become a flag. `Tools.modelRefusal` has vetted it already.
+    if let model {
+      arguments.append(quoted("--model=" + model))
     }
     // The supervisor's flags, from `claude --help` on 2.1.269. Order matters for one reason:
     // `--mcp-config` and `--allowedTools` are variadic and swallow words until the next flag,

@@ -279,8 +279,10 @@ UNIT_SRC := \
 	Armada/CodexHome.swift \
 	Armada/CodexAutomationFile.swift \
 	Armada/CodexAutomations.swift \
+	Armada/CodexQueue.swift \
 	Armada/ClaudeDesktopSchedules.swift \
 	Armada/GrokHome.swift \
+	Armada/GrokHeadlessCommand.swift \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \
 	Armada/TranscriptHandover.swift \

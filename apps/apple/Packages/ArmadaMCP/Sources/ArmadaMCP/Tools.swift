@@ -31,8 +31,11 @@ public enum Tools {
     six that act are listed only when the person has turned on Allow writes in Armada. \
     armada_start_session opens a fresh session in one of their saved projects, or resumes a \
     closed one, in their terminal or VS Code, and that session still asks them for every \
-    permission. armada_close_session ends a Claude Code session's process. armada_send_message \
-    puts a message in front of a running Claude Code session. Start one when the person asks \
+    permission, unless it is a headless Grok Build turn, which has nobody to ask and so may do \
+    only what the person's own allow rules permit. armada_close_session ends a Claude Code \
+    session's process or a headless turn Armada started. armada_send_message puts a message in \
+    front of a running Claude Code session, an open Codex thread, or a headless Grok Build \
+    session between turns. Start one when the person asks \
     for it, their asking being the go-ahead rather than something to put back to them, and \
     check before closing one. armada_focus_session brings the window a session runs in to the \
     front when the person asks to see it. armada_save_schedule and armada_delete_schedule \
@@ -168,11 +171,31 @@ public enum Tools {
     return nil
   }
 
+  /// Why a model id cannot be passed to a CLI, or nil when it can.
+  ///
+  /// It reaches a startup script quoted and as `--model=<id>`, so it could not become a flag or
+  /// a command anyway; the shape is checked so that a typo comes back as a sentence rather than as
+  /// a terminal window holding the CLI's error. The characters are the ones vendors' ids use:
+  /// `opus`, `claude-opus-5-5[1m]`, `gpt-6-astra`, `grok-4.6`.
+  public static func modelRefusal(_ model: String) -> String? {
+    let allowed = CharacterSet(
+      charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_:/[]")
+    guard !model.isEmpty, model.count <= 100,
+      model.unicodeScalars.allSatisfy(allowed.contains),
+      let first = model.first, first.isLetter || first.isNumber
+    else {
+      return "`model` is a model id as the vendor names it, such as opus or gpt-6-astra, not "
+        + "\"\(model.prefix(100))\"."
+    }
+    return nil
+  }
+
   /// Why a message cannot be sent, or nil when it can.
   ///
-  /// Plain text only. Unlike an opening message it never reaches a command line, so a leading
-  /// `-`, `!` or `/` is harmless here: the hook prints it into the session as a reminder, where
-  /// none of them means anything.
+  /// Plain text only. A leading `-`, `!` or `/` is harmless here, unlike in an opening message:
+  /// the app always puts its label in front of the text. Claude Code's hook prints it into the
+  /// session as a reminder; Codex gets it as one `--message=` word; a headless Grok Build turn
+  /// reads it from a file.
   public static func messageRefusal(_ text: String) -> String? {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return "The message is empty." }
@@ -905,13 +928,11 @@ public enum Tools {
         name: "armada_start_session",
         title: "Start a session",
         description:
-          "Open a fresh Claude Code, Codex or Grok Build session in one of the person's saved "
-          + "projects, in their terminal or VS Code as they chose, on the project's own account or "
-          + "the one named, optionally with an opening message. Or pass `resume` with a Claude "
-          + "Code or Grok Build session id that is no longer open, such as one "
-          + "armada_close_session closed, to continue it in a terminal where it ran. The session asks the person for "
-          + "permissions as usual and appears in armada_get_fleet within a few seconds; "
-          + "`sessionId` is its id when Armada knows it. Saved projects only.",
+          "Open a Claude Code, Codex or Grok Build session in a saved project, in the person's "
+          + "terminal or VS Code, on the project's account or the one named. `resume` continues "
+          + "a closed Claude Code or Grok Build session. It asks the person for permissions and "
+          + "shows in armada_get_fleet within seconds, under `sessionId` when known. `headless` "
+          + "runs a Grok Build turn with no terminal, limited to existing allow rules.",
         properties: [
           "project": [
             "type": "string",
@@ -931,8 +952,16 @@ public enum Tools {
           ],
           "resume": [
             "type": "string",
+            "description": "A closed session's id. Replaces project and account.",
+          ],
+          "model": [
+            "type": "string", "maxLength": 100,
             "description":
-              "A Claude Code or Grok Build session id to continue. Replaces project and account.",
+              "As the CLI names it: opus, gpt-6-astra, grok-4.6. Not in VS Code.",
+          ],
+          "headless": [
+            "type": "boolean",
+            "description": "Grok Build only, with `prompt`.",
           ],
         ],
         gate: .requiresWrites,
@@ -947,6 +976,19 @@ public enum Tools {
       }
       let prompt = arguments["prompt"]?.stringValue
       if let prompt, let refusal = promptRefusal(prompt) { return .failure(refusal) }
+      let model = arguments["model"]?.stringValue?.trimmingCharacters(in: .whitespaces)
+      if let model, let refusal = modelRefusal(model) { return .failure(refusal) }
+      let headless = arguments["headless"]?.boolValue ?? false
+      if headless {
+        if let vendor, vendor != "grok" {
+          return .failure(
+            "Only a Grok Build turn runs headless. A Claude Code or Codex session opens in a "
+              + "terminal, and armada_send_message reaches it there.")
+        }
+        guard prompt != nil else {
+          return .failure("A headless turn needs `prompt`: it has nobody else to take one from.")
+        }
+      }
 
       var projectID: String?
       let resume = arguments["resume"]?.stringValue?.trimmingCharacters(in: .whitespaces)
@@ -978,7 +1020,7 @@ public enum Tools {
         StartSessionRequest(
           projectID: projectID, vendor: vendor, account: arguments["account"]?.stringValue,
           prompt: prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
-          resume: resume?.lowercased()))
+          resume: resume?.lowercased(), model: model, headless: headless))
 
       switch outcome {
       case .refused(let message):
@@ -999,15 +1041,25 @@ public enum Tools {
           ? "It appears in armada_get_fleet once the person sends the message."
           : "It appears in armada_get_fleet within a few seconds."
         let action = started.resumed ? "resume a" : "start a"
+        let on = started.model.map { " on \($0)" } ?? ""
         let lede =
-          "Asked \(started.terminal) to \(action) \(vendorName) session in \(started.project) on "
-          + "\(started.account)\(message). \(appears)"
+          started.headless
+          ? "Running a headless \(vendorName) turn in \(started.project) on \(started.account)"
+            + "\(on). It appears in armada_get_fleet within a few seconds and ends with its turn."
+          : "Asked \(started.terminal) to \(action) \(vendorName) session in \(started.project) on "
+            + "\(started.account)\(on)\(message). \(appears)"
         let note =
-          started.sessionID != nil
-          ? "\(started.terminal) was asked to open. Armada does not own the session; it will be "
-            + "in armada_get_fleet under `sessionId` once it has started."
-          : "\(started.terminal) was asked to open. Armada does not own the session and has no "
-            + "id for it; look for a new session in this project in armada_get_fleet."
+          started.headless
+          ? "Armada runs this turn itself, under Grok Build's dontAsk permission mode: it can "
+            + "read, search, create empty files and folders, and do what allow rules already "
+            + "permit, the person's and any the project's own config carries. Everything else is "
+            + "denied. armada_wait with `until: change` returns when it ends; read the answer "
+            + "with armada_read_transcript, then follow up with armada_send_message."
+          : started.sessionID != nil
+            ? "\(started.terminal) was asked to open. Armada does not own the session; it will be "
+              + "in armada_get_fleet under `sessionId` once it has started."
+            : "\(started.terminal) was asked to open. Armada does not own the session and has no "
+              + "id for it; look for a new session in this project in armada_get_fleet."
         return envelope(
           object([
             "started": object([
@@ -1018,6 +1070,8 @@ public enum Tools {
               "promptAwaitsSend": .bool(started.promptAwaitsSend),
               "sessionId": started.sessionID.map(JSONValue.string),
               "resumed": .bool(started.resumed),
+              "model": started.model.map(JSONValue.string),
+              "headless": started.headless ? .bool(true) : nil,
             ]),
             "note": .string(note),
           ]), takenAt: snapshot.takenAt, isEntitled: snapshot.isEntitled, lede: lede)
@@ -1413,8 +1467,9 @@ public enum Tools {
           "End a Claude Code session's process, as quitting it would: the transcript stays and "
           + "the session can be resumed later. A session that is working or probably running a "
           + "tool is refused unless `force` is true, because closing it stops that work "
-          + "mid-turn. Codex sessions cannot be closed. The session leaves armada_get_fleet "
-          + "within a few seconds.",
+          + "mid-turn. A headless Grok Build turn Armada started is stopped the same way, always "
+          + "with `force`. Codex sessions, and Grok Build sessions in a terminal, cannot be "
+          + "closed. The session leaves armada_get_fleet within a few seconds.",
         properties: [
           "session": sessionArgument,
           "force": [
@@ -1430,7 +1485,8 @@ public enum Tools {
       guard snapshot.isEntitled else { return .failure(notEntitled) }
       let force = arguments["force"]?.boolValue ?? false
 
-      let session: FleetSnapshot.ClaudeSession
+      let sessionID: String
+      let vendor: String
       switch lookup(arguments["session"], in: snapshot) {
       case .refused(let refusal):
         return refusal
@@ -1439,21 +1495,36 @@ public enum Tools {
           "\(codex.name) is a Codex session, and Armada cannot close one: Codex keeps no record "
             + "of which process a session runs in, and one process often holds several.")
       case .grok(let grok, _):
-        return .failure(
-          "\(grok.name) is a Grok Build session, and Armada does not close one yet: how Grok "
-            + "Build answers a signal has not been measured. Ask the person to quit it with /exit.")
-      case .claude(let found, _):
-        session = found
+        // A headless turn is a process Armada may own; a TUI session is not.
+        guard grok.isHeadless else {
+          return .failure(
+            "\(grok.name) is a Grok Build session, and Armada does not close one yet: how Grok "
+              + "Build answers a signal has not been measured. Ask the person to quit it with "
+              + "/exit.")
+        }
+        guard grok.isLive else {
+          return .failure(
+            "\(grok.name)'s headless turn has already ended. There is nothing to stop.")
+        }
+        guard force else {
+          return .failure(
+            "\(grok.name) is in the middle of a headless turn, so stopping it ends that work "
+              + "mid-turn. Ask the person, then pass `force: true` to stop it anyway.")
+        }
+        (sessionID, vendor) = (grok.id, "grok")
+      case .claude(let session, _):
+        if busyStates.contains(session.state), !force {
+          let doing = session.stateIsInferred ? "probably running a tool" : "working"
+          return .failure(
+            "\(session.name) is \(doing), so closing it would stop that work mid-turn. Ask the "
+              + "person, then pass `force: true` to close it anyway.")
+        }
+        (sessionID, vendor) = (session.id, "claude")
       }
 
-      if busyStates.contains(session.state), !force {
-        let doing = session.stateIsInferred ? "probably running a tool" : "working"
-        return .failure(
-          "\(session.name) is \(doing), so closing it would stop that work mid-turn. Ask the "
-            + "person, then pass `force: true` to close it anyway.")
-      }
-
-      switch await closer.closeSession(CloseSessionRequest(sessionID: session.id, force: force)) {
+      switch await closer.closeSession(
+        CloseSessionRequest(sessionID: sessionID, force: force, vendor: vendor))
+      {
       case .refused(let message):
         return .failure(message)
       case .closed(let closed):
@@ -1466,7 +1537,7 @@ public enum Tools {
         return envelope(
           [
             "closed": [
-              "id": .string(session.id), "name": .string(closed.name),
+              "id": .string(sessionID), "name": .string(closed.name),
               "project": .string(closed.project), "state": .string(closed.state),
               "killed": .bool(closed.killed), "exited": .bool(closed.exited),
             ]
@@ -1485,10 +1556,12 @@ public enum Tools {
         name: "armada_send_message",
         title: "Message a session",
         description:
-          "Put a message in front of a running Claude Code session. An idle one starts a turn on "
-          + "it within seconds; a busy one reads it when its turn ends. The session sees it "
-          + "labelled as coming from a supervisor agent through Armada, not from the person. "
-          + "Needs Settings ▸ Supervisor to deliver messages. Codex sessions cannot be reached.",
+          "Put a message in front of a running Claude Code session or open Codex thread. An idle "
+          + "one starts a turn on it within seconds; a busy one reads it when its turn ends. The "
+          + "session sees it labelled as coming from a supervisor agent through Armada, not from "
+          + "the person. Needs Settings ▸ Supervisor to deliver messages. A headless Grok Build "
+          + "session whose turn has ended gets the message as its next headless turn. Grok Build "
+          + "sessions in a terminal, closed Codex threads and Codex subagents cannot be reached.",
         properties: [
           "session": sessionArgument,
           "text": [
@@ -1508,37 +1581,61 @@ public enum Tools {
       }
       if let refusal = messageRefusal(text) { return .failure(refusal) }
 
-      let session: FleetSnapshot.ClaudeSession
+      let sessionID: String
+      let vendor: SendMessageRequest.Vendor
       switch lookup(arguments["session"], in: snapshot) {
       case .refused(let refusal):
         return refusal
       case .codex(let codex, _):
-        return .failure(
-          "\(codex.name) is a Codex session, and Armada cannot message one: Codex has no way to "
-            + "wake an idle session from outside.")
+        // `codex queue` holds a message until a client has the thread open, and a client that
+        // opens it runs the message straight away (measured, docs/codex-sessions.md). So one
+        // sent to a closed thread would fire whenever someone next resumed it, days later.
+        guard codex.isLive else {
+          return .failure(
+            "\(codex.name) has ended. Armada messages only an open Codex thread: a message to a "
+              + "closed one would run whenever the thread is next opened.")
+        }
+        guard !codex.isSubagent else {
+          return .failure(
+            "\(codex.name) is a Codex subagent, which its parent thread drives. Message the "
+              + "parent instead.")
+        }
+        (sessionID, vendor) = (codex.id, .codex)
       case .grok(let grok, _):
-        return .failure(
-          "\(grok.name) is a Grok Build session, and Armada cannot message one: Grok Build's hooks "
-            + "run in step with a turn and cannot wake an idle session.")
+        // A headless session has no process between turns, so its next message is its next
+        // turn, which the app runs. A TUI session has no way in from outside.
+        guard grok.isHeadless else {
+          return .failure(
+            "\(grok.name) is a Grok Build session open in a terminal, and Armada cannot message "
+              + "one: Grok Build's hooks run in step with a turn and cannot wake an idle "
+              + "session. Only a headless one is reached, by running its next turn.")
+        }
+        guard !grok.isLive else {
+          return .failure(
+            "\(grok.name) is in the middle of a headless turn. Wait for it to end, with "
+              + "armada_wait and `until: change`, then send.")
+        }
+        (sessionID, vendor) = (grok.id, .grok)
       case .claude(let found, _):
-        session = found
+        (sessionID, vendor) = (found.id, .claude)
       }
 
       let outcome = await sender.sendMessage(
         SendMessageRequest(
-          sessionID: session.id, text: text.trimmingCharacters(in: .whitespacesAndNewlines)))
+          sessionID: sessionID, text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+          vendor: vendor))
       switch outcome {
       case .refused(let message):
         return .failure(message)
       case .delivered(let name, let project):
         return envelope(
-          ["sent": ["id": .string(session.id), "status": "delivered"]], snapshot: snapshot,
+          ["sent": ["id": .string(sessionID), "status": "delivered"]], snapshot: snapshot,
           lede: "Delivered to \(name) in \(project). It is starting a turn on the message.")
       case .queued(let name, let project, let reason):
         return envelope(
           [
             "sent": [
-              "id": .string(session.id), "status": "queued", "reason": .string(reason),
+              "id": .string(sessionID), "status": "queued", "reason": .string(reason),
             ]
           ], snapshot: snapshot, lede: "Queued for \(name) in \(project). \(reason)")
       }

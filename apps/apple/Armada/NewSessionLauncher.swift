@@ -68,16 +68,21 @@ final class NewSessionLauncher {
   /// `VSCodeLaunch.handles`), and the one caller that names a session starts a fork.
   private func launch(
     _ agent: NewSession.Agent, in project: URL, start: NewSession.Start, prompt: String?,
-    name: String? = nil, completion: @escaping @MainActor (String) -> Void
+    name: String? = nil, model: String? = nil, completion: @escaping @MainActor (String) -> Void
   ) -> String? {
     if case .claude(let folder) = agent, opensInVSCode(agent, start: start) {
+      // The extension's link opens a tab and takes a prompt, nothing more.
+      if model != nil {
+        return "This project opens Claude Code in VS Code, whose extension cannot be told which "
+          + "model to use. Leave `model` out, or switch models in the session with /model."
+      }
       return VSCodeLaunch.start(
         folder, accountName: Accounts.shared.account(id: folder.path)?.displayName ?? folder.path,
         in: project, prompt: prompt, completion: completion)
     }
     return NewSession.start(
       agent, in: project, terminal: terminal, start: start, prompt: prompt, name: name,
-      completion: completion)
+      model: model, completion: completion)
   }
 
   /// The same launch, from the menu bar panel, which has no alert of its own.
@@ -110,6 +115,10 @@ final class NewSessionLauncher {
   /// When an agent last started a session through `armada_start_session`, for its throttle.
   private(set) var lastAgentLaunchAt: Date?
 
+  /// A launch that did not go through `startForAgent`: a headless Grok Build turn, which Armada
+  /// runs itself rather than asking a terminal to. It counts against the same throttle.
+  func noteAgentLaunch(_ date: Date) { lastAgentLaunchAt = date }
+
   /// A launch an agent asked for, through `SessionStarterBridge`.
   ///
   /// **Returns the failure rather than setting `failure`.** Nobody clicked anything, so an
@@ -117,11 +126,12 @@ final class NewSessionLauncher {
   /// asynchronous LaunchServices half still lands in `failure`, because by then the tool has
   /// answered and a pane is the one place left to say so.
   func startForAgent(
-    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh, prompt: String?
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start = .fresh, prompt: String?,
+    model: String? = nil
   ) -> String? {
     trustIfSaved(agent, in: project)
     let message = launch(
-      agent, in: project, start: start, prompt: prompt,
+      agent, in: project, start: start, prompt: prompt, model: model,
       completion: { [weak self] message in self?.failure = message })
     if message == nil { lastAgentLaunchAt = Date() }
     return message

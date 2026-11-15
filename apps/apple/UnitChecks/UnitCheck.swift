@@ -74,6 +74,8 @@ struct UnitCheck {
     mouseChord()
     modifierHold()
     mouseSentKey()
+    codexQueue()
+    grokHeadlessCommand()
 
     print("")
     if failures == 0 {
@@ -6029,5 +6031,167 @@ nonisolated struct SplitMix: RandomNumberGenerator {
     z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
     z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
     return z ^ (z >> 31)
+  }
+}
+
+extension UnitCheck {
+  // MARK: - CodexQueue
+
+  /// `codex queue`'s answer read for its item, its failures turned into sentences, and the queue
+  /// table read for whether the item is still waiting (docs/codex-sessions.md, 2026-11-15).
+  static func codexQueue() {
+    let item = "01a1ded7-b284-7602-8d0b-f6720750960a"
+    check(
+      "codex queue: the item id is read from its answer",
+      CodexQueue.queuedItem(
+        in: "Queued message \(item) for thread 01a1ded7-8ab5-7161-869a-08218030b86b.\n")
+        == item)
+    check(
+      "codex queue: an answer without a uuid is not a queued item",
+      CodexQueue.queuedItem(in: "Queued message soon for thread x.") == nil
+        && CodexQueue.queuedItem(in: "") == nil)
+    check(
+      "codex queue: an older codex that takes --thread for a flag is named as too old",
+      CodexQueue.failure(
+        stderr: "error: unexpected argument '--thread' found\n\nUsage: codex [OPTIONS] [PROMPT]"
+      )
+      .contains("too old"))
+    check(
+      "codex queue: another failure quotes the CLI's error line",
+      CodexQueue.failure(stderr: "Error: thread not found: abc\n")
+        == "codex did not queue the message: Error: thread not found: abc")
+    check(
+      "codex queue: silence is still a sentence",
+      CodexQueue.failure(stderr: "") == "codex did not queue the message.")
+
+    let home = FileManager.default.temporaryDirectory.appending(
+      path: "armada-unit-codex-queue-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: home) }
+
+    check(
+      "codex queue: no database is not knowing, not delivered",
+      CodexQueue.isPending(item: item, home: home.path(percentEncoded: false)) == nil)
+
+    for name in ["queue_1.sqlite", "queue_2.sqlite", "queue_x.sqlite", "state_5.sqlite"] {
+      FileManager.default.createFile(
+        atPath: home.appending(path: name).path(percentEncoded: false), contents: nil)
+    }
+    check(
+      "codex queue: every numbered queue database is read, newest first",
+      CodexQueue.databases(in: home).map(\.lastPathComponent)
+        == ["queue_2.sqlite", "queue_1.sqlite"])
+
+    var db: OpaquePointer?
+    let path = home.appending(path: "queue_2.sqlite").path(percentEncoded: false)
+    sqlite3_open(path, &db)
+    sqlite3_exec(
+      db,
+      """
+      CREATE TABLE queued_items (id TEXT PRIMARY KEY NOT NULL, thread_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL, queue_order INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL);
+      INSERT INTO queued_items VALUES ('\(item)', 't', '{}', 0, 0, 0);
+      """, nil, nil, nil)
+    sqlite3_close(db)
+    let homePath = home.path(percentEncoded: false)
+    check(
+      "codex queue: a row still in the table is pending",
+      CodexQueue.isPending(item: item, home: homePath) == true)
+    check(
+      "codex queue: a row a client took is not",
+      CodexQueue.isPending(item: UUID().uuidString.lowercased(), home: homePath) == false)
+    check(
+      "codex queue: an id spelled in capitals is the same row",
+      CodexQueue.isPending(item: item.uppercased(), home: homePath) == true)
+
+    // A row an older codex wrote to the older schema's file is still pending.
+    let older = "01a1ded7-0000-7602-8d0b-f6720750960a"
+    var oldDB: OpaquePointer?
+    sqlite3_open(home.appending(path: "queue_1.sqlite").path(percentEncoded: false), &oldDB)
+    sqlite3_exec(
+      oldDB,
+      """
+      CREATE TABLE queued_items (id TEXT PRIMARY KEY NOT NULL, thread_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL, queue_order INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL);
+      INSERT INTO queued_items VALUES ('\(older)', 't', '{}', 0, 0, 0);
+      """, nil, nil, nil)
+    sqlite3_close(oldDB)
+    check(
+      "codex queue: a row in an older queue database is still pending",
+      CodexQueue.isPending(item: older, home: homePath) == true)
+    check(
+      "codex queue: a codex without the queue command is told apart from other failures",
+      CodexQueue.isTooOld(stderr: "error: unexpected argument '--thread' found")
+        && !CodexQueue.isTooOld(stderr: "Error: thread not found"))
+  }
+}
+
+extension UnitCheck {
+  // MARK: - GrokHeadlessCommand
+
+  /// The headless Grok Build turn's command line and environment: never the default
+  /// permission mode, whose unattended answer is allow, and the prompt only ever in a file.
+  static func grokHeadlessCommand() {
+    let id = "01a0af59-ee50-7b73-a473-2f2bcf56012e"
+    let fresh = GrokHeadlessCommand.arguments(
+      start: .fresh(sessionID: id), promptFile: "/tmp/p.txt", cwd: "/work/x", model: nil)
+    check(
+      "grok headless: a fresh turn names its id, its folder and dontAsk",
+      fresh == [
+        "--prompt-file", "/tmp/p.txt", "--cwd", "/work/x", "--permission-mode", "dontAsk",
+        "--session-id", id,
+      ])
+    let resumed = GrokHeadlessCommand.arguments(
+      start: .resume(sessionID: id), promptFile: "/tmp/p.txt", cwd: "/work/x",
+      model: "grok-4.6")
+    check(
+      "grok headless: a next turn resumes, and a model is one word",
+      resumed.suffix(3) == ["--resume", id, "--model=grok-4.6"])
+    check(
+      "grok headless: no permission mode but dontAsk, and no -p with the prompt in it",
+      !fresh.contains("bypassPermissions") && !fresh.contains("-p")
+        && !fresh.contains("--always-approve"))
+
+    let base = ["PATH": "/opt/homebrew/bin:/usr/bin", "GROK_HOME": "/elsewhere"]
+    let defaultHome = GrokHeadlessCommand.environment(
+      base: base, homePath: "/Users/me/.grok", isDefault: true)
+    check(
+      "grok headless: the default home unsets GROK_HOME and keeps PATH",
+      defaultHome["GROK_HOME"] == nil && defaultHome["PATH"] == base["PATH"])
+    check(
+      "grok headless: a prompt that still comes up is preselected to reject",
+      defaultHome["GROK_DEFAULT_SELECTED_PERMISSION"] == "reject")
+    check(
+      "grok headless: another home is exported",
+      GrokHeadlessCommand.environment(
+        base: base, homePath: "/Users/me/.grok-work", isDefault: false)[
+          "GROK_HOME"] == "/Users/me/.grok-work")
+
+    // Captured from grok 1.0.77 signed out, 2026-11-15.
+    let signedOut = """
+
+      Error: Not signed in. To authenticate without a browser, run:
+        grok login --device-code
+
+      Alternatively, set the XAI_API_KEY environment variable or run `grok login` on a machine with a browser.
+      """
+    check(
+      "grok headless: a signed-out Grok is reported with the command to run",
+      GrokHeadlessCommand.failure(stderr: signedOut, status: 1)
+        == "Grok Build stopped at once: Not signed in. To authenticate without a browser, run: "
+        + "grok login --device-code")
+    check(
+      "grok headless: the plain form, with no Error: in front, reads the same",
+      GrokHeadlessCommand.failure(
+        stderr:
+          "Not signed in. To authenticate without a browser, run:\n  grok login --device-code\n",
+        status: 1)
+        == "Grok Build stopped at once: Not signed in. To authenticate without a browser, run: "
+        + "grok login --device-code")
+    check(
+      "grok headless: silence still says the status",
+      GrokHeadlessCommand.failure(stderr: "", status: 2).contains("status 2"))
   }
 }

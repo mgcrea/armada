@@ -115,6 +115,51 @@ struct StartSessionToolTests {
     #expect(starter.requests.first?.vendor == "grok")
   }
 
+  @Test("A model is passed on as given, and a malformed one never reaches the app")
+  func model() async {
+    let starter = FakeSessionStarter()
+    let result = await call(
+      ["project": "armada site", "vendor": "codex", "model": "gpt-6-astra"], starter: starter)
+    #expect(!result.isError)
+    #expect(starter.requests.first?.model == "gpt-6-astra")
+
+    for bad in ["", "-m", "gpt 6", "a;rm -rf", String(repeating: "x", count: 101)] {
+      let refused = await call(
+        ["project": "armada site", "model": .string(bad)], starter: starter)
+      #expect(refused.isError, "\(bad)")
+    }
+    #expect(starter.requests.count == 1)
+    #expect(Tools.modelRefusal("claude-opus-5-5[1m]") == nil)
+    #expect(Tools.modelRefusal("grok-4.6") == nil)
+  }
+
+  @Test("Headless is Grok Build's, needs a prompt, and is passed on")
+  func headless() async {
+    let starter = FakeSessionStarter()
+    let codex = await call(
+      ["project": "armada site", "vendor": "codex", "headless": true, "prompt": "Read it."],
+      starter: starter)
+    #expect(codex.isError && codex.text.contains("Grok Build"))
+    let noPrompt = await call(
+      ["project": "armada site", "vendor": "grok", "headless": true], starter: starter)
+    #expect(noPrompt.isError && noPrompt.text.contains("prompt"))
+    #expect(starter.requests.isEmpty)
+
+    starter.outcome = .started(
+      StartedSession(
+        project: "Armada site", path: "/Users/me/armada/web", vendor: "grok",
+        accountID: "/Users/me/.grok", account: "Grok Build", terminal: "Armada",
+        withPrompt: true, sessionID: "01a0af59-ee50-7b73-a473-2f2bcf56012e", headless: true))
+    let result = await call(
+      ["project": "armada site", "vendor": "grok", "headless": true, "prompt": "Read it."],
+      starter: starter)
+    #expect(!result.isError)
+    #expect(starter.requests.first?.headless == true)
+    #expect(result.text.hasPrefix("Running a headless Grok Build turn"))
+    #expect(result.structuredContent?["started"]?["headless"] == .bool(true))
+    #expect(result.structuredContent?["note"]?.stringValue?.contains("dontAsk") == true)
+  }
+
   @Test("The app's refusal comes back as the tool's error, word for word")
   func appRefusal() async {
     let starter = FakeSessionStarter()

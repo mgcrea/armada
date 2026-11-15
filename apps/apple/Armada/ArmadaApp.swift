@@ -196,6 +196,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     contentSize: NSSize(width: 700, height: 460)
   ) { SettingsWindowView() }
 
+  /// Headless Grok Build turns are Armada's own children, and nobody could stop one that
+  /// outlived it. See `GrokHeadless.stopAll`.
+  func applicationWillTerminate(_ notification: Notification) {
+    GrokHeadless.shared.stopAll()
+  }
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     Self.shared = self
     // Before the screenshot branch, so a staged capture can be driven too.

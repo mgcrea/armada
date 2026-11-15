@@ -23,7 +23,8 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// ssh, or on a folder it has not discovered — so it is not resumed.
   static let recentWrite: TimeInterval = 30
   func startSession(_ request: StartSessionRequest) async -> StartSessionOutcome {
-    await MainActor.run { Self.start(request, now: Date()) }
+    if request.headless { return await Self.startHeadless(request, now: Date()) }
+    return await MainActor.run { Self.start(request, now: Date()) }
   }
 
   @MainActor
@@ -35,8 +36,12 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       return .refused(refusal)
     }
     if let id = request.resume {
-      if request.vendor == "grok" { return resumeGrok(id, prompt: request.prompt, now: now) }
-      return resume(id, prompt: request.prompt, now: now, fallBackToGrok: request.vendor == nil)
+      if request.vendor == "grok" {
+        return resumeGrok(id, prompt: request.prompt, model: request.model, now: now)
+      }
+      return resume(
+        id, prompt: request.prompt, model: request.model, now: now,
+        fallBackToGrok: request.vendor == nil)
     }
 
     let store = ProjectStore.shared
@@ -71,7 +76,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       start = .fresh
     }
     if let message = launcher.startForAgent(
-      agent, in: project.url, start: start, prompt: request.prompt)
+      agent, in: project.url, start: start, prompt: request.prompt, model: request.model)
     {
       return .refused(message)
     }
@@ -93,7 +98,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         withPrompt: request.prompt != nil,
         promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent)
           && !VSCodeLaunch.sendsPrompt,
-        sessionID: sessionID))
+        sessionID: sessionID, model: request.model))
   }
 
   @MainActor
@@ -113,7 +118,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// message.
   @MainActor
   private static func resume(
-    _ id: String, prompt: String?, now: Date, fallBackToGrok: Bool
+    _ id: String, prompt: String?, model: String?, now: Date, fallBackToGrok: Bool
   ) -> StartSessionOutcome {
     let account: Account
     let cwd: String
@@ -131,7 +136,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       if fallBackToGrok,
         GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil })
       {
-        return resumeGrok(id, prompt: prompt, now: now)
+        return resumeGrok(id, prompt: prompt, model: model, now: now)
       }
       return .refused("No Claude Code account on this Mac has a transcript for session \(id).")
     case .refused(.recentWrite(let seconds)):
@@ -153,7 +158,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     let agent = NewSession.Agent.claude(account.folder)
     if let message = launcher.startForAgent(
       agent, in: URL(filePath: cwd, directoryHint: .isDirectory), start: .resume(sessionID: id),
-      prompt: prompt)
+      prompt: prompt, model: model)
     {
       return .refused(message)
     }
@@ -161,17 +166,69 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       StartedSession(
         project: project.displayName, path: cwd, vendor: "claude", accountID: account.folder.path,
         account: account.displayName, terminal: launcher.terminal.name,
-        withPrompt: prompt != nil, sessionID: id, resumed: true))
+        withPrompt: prompt != nil, sessionID: id, resumed: true, model: model))
   }
 
   /// Continue a Grok Build session, under `resume`'s three checks.
+  @MainActor
+  private static func resumeGrok(_ id: String, prompt: String?, model: String?, now: Date)
+    -> StartSessionOutcome
+  {
+    let target: GrokResumeTarget
+    switch prepareGrokResume(id, now: now, ownTurnEndedAt: nil) {
+    case .refused(let message): return .refused(message)
+    case .ready(let ready): target = ready
+    }
+
+    if let refusal = throttled(now) { return .refused(refusal) }
+    let launcher = NewSessionLauncher.shared
+    if let message = launcher.startForAgent(
+      .grok(target.account.home), in: URL(filePath: target.cwd, directoryHint: .isDirectory),
+      start: .resume(sessionID: id), prompt: prompt, model: model)
+    {
+      return .refused(message)
+    }
+    GrokHeadless.shared.forget(id)
+    return .started(
+      StartedSession(
+        project: target.project.displayName, path: target.cwd, vendor: "grok",
+        accountID: target.account.id, account: target.account.displayName,
+        terminal: launcher.terminal.name, withPrompt: prompt != nil, sessionID: id,
+        resumed: true, model: model))
+  }
+
+  struct GrokResumeTarget {
+    let account: GrokAccount
+    let cwd: String
+    let project: Project
+  }
+
+  enum GrokResumePreparation {
+    case ready(GrokResumeTarget)
+    case refused(String)
+  }
+
+  /// Where and on which home a Grok Build session continues, or why it cannot.
   ///
   /// Open means listed as live by the watcher, or in `active_sessions.json` with a live pid, which
   /// the watcher's state already reflects within a sweep; `recentWrite` covers the sweep's gap and a
   /// headless `grok -p` that no list names. The folder is `summary.json`'s.
+  ///
+  /// `ownTurnEndedAt` is when Armada saw its own last headless turn in the session end
+  /// (`GrokHeadless.ownTurnEnded`). A log last written no later than that, give or take a second
+  /// for the file system's clock, was written by that turn, so `recentWrite` does not apply; a
+  /// later write was something else's, and it does. Shared with `armada_send_message`, which
+  /// continues such a session within seconds of reading its answer.
   @MainActor
-  private static func resumeGrok(_ id: String, prompt: String?, now: Date) -> StartSessionOutcome {
+  static func prepareGrokResume(_ id: String, now: Date, ownTurnEndedAt: Date?)
+    -> GrokResumePreparation
+  {
     let homes = GrokAccounts.shared.all
+    if GrokHeadless.shared.isRunning(id) {
+      return .refused(
+        "A headless turn is still running in session \(id). Wait for it to end, with "
+          + "armada_wait and `until: change`.")
+    }
     for account in homes {
       if let live = account.sessions.sessions.first(where: { $0.id == id }), live.state.isLive {
         return .refused(
@@ -189,7 +246,8 @@ nonisolated struct SessionStarterBridge: SessionStarter {
 
     let updates = directory.appending(path: "updates.jsonl").path(percentEncoded: false)
     if let modified = try? FileManager.default.attributesOfItem(atPath: updates)[.modificationDate]
-      as? Date, now.timeIntervalSince(modified) < recentWrite
+      as? Date, now.timeIntervalSince(modified) < recentWrite,
+      ownTurnEndedAt.map({ modified > $0.addingTimeInterval(1) }) ?? true
     {
       return .refused(
         "Session \(id) wrote to its log \(max(0, Int(now.timeIntervalSince(modified)))) seconds "
@@ -213,20 +271,83 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     else {
       return .refused("\((cwd as NSString).abbreviatingWithTildeInPath) is not there any more.")
     }
+    return .ready(GrokResumeTarget(account: account, cwd: cwd, project: project))
+  }
+
+  // MARK: - Headless
+
+  /// A Grok Build turn Armada runs itself (`GrokHeadless`): fresh in a saved project, or the next
+  /// turn of a session given by `resume`. The checks are the terminal launch's; what differs is
+  /// that the answer waits `GrokHeadless.settle` to catch a turn that fails at once.
+  @MainActor
+  static func startHeadless(_ request: StartSessionRequest, now: Date) async
+    -> StartSessionOutcome
+  {
+    guard EntitlementMonitor.shared.current.isEntitled else {
+      return .refused("Armada has no licence and no trial running, so it starts nothing.")
+    }
+    guard let prompt = request.prompt else {
+      return .refused("A headless turn needs an opening message.")
+    }
+    if let refusal = Tools.promptRefusal(prompt) { return .refused(refusal) }
+    if let vendor = request.vendor, vendor != "grok" {
+      return .refused("Only a Grok Build turn runs headless.")
+    }
+
+    let start: GrokHeadlessCommand.Start
+    let home: GrokHome
+    let accountID: String
+    let accountName: String
+    let cwd: String
+    let projectName: String
+    if let id = request.resume {
+      switch prepareGrokResume(
+        id, now: now, ownTurnEndedAt: GrokHeadless.shared.ownTurnEnded(id))
+      {
+      case .refused(let message): return .refused(message)
+      case .ready(let target):
+        (home, accountID, accountName) =
+          (target.account.home, target.account.id, target.account.displayName)
+        (cwd, projectName) = (target.cwd, target.project.displayName)
+      }
+      start = .resume(sessionID: id)
+    } else {
+      let store = ProjectStore.shared
+      guard let projectID = request.projectID, let project = store.project(id: projectID) else {
+        return .refused("That project is no longer saved in Armada.")
+      }
+      guard store.folderExists(project) else {
+        return .refused("\(project.displayPath) is not there any more.")
+      }
+      let (resolved, refusal) = agent(
+        for: StartSessionRequest(
+          projectID: request.projectID, vendor: "grok", account: request.account,
+          prompt: prompt),
+        project: project)
+      guard case .grok(let grokHome) = resolved else {
+        return .refused(refusal ?? "There is no Grok Build home on this Mac.")
+      }
+      home = grokHome
+      accountID = grokHome.id
+      accountName = GrokAccounts.shared.account(id: grokHome.id)?.displayName ?? grokHome.id
+      cwd = project.path
+      projectName = project.displayName
+      start = .fresh(sessionID: UUID().uuidString.lowercased())
+    }
 
     if let refusal = throttled(now) { return .refused(refusal) }
-    let launcher = NewSessionLauncher.shared
-    if let message = launcher.startForAgent(
-      .grok(account.home), in: URL(filePath: cwd, directoryHint: .isDirectory),
-      start: .resume(sessionID: id), prompt: prompt)
+    NewSessionLauncher.shared.noteAgentLaunch(now)
+    if let failure = await GrokHeadless.shared.run(
+      start, home: home, cwd: cwd, prompt: prompt, model: request.model)
     {
-      return .refused(message)
+      return .refused(failure)
     }
     return .started(
       StartedSession(
-        project: project.displayName, path: cwd, vendor: "grok", accountID: account.id,
-        account: account.displayName, terminal: launcher.terminal.name,
-        withPrompt: prompt != nil, sessionID: id, resumed: true))
+        project: projectName, path: cwd, vendor: "grok", accountID: accountID,
+        account: accountName, terminal: "Armada", withPrompt: true,
+        sessionID: start.sessionID, resumed: request.resume != nil, model: request.model,
+        headless: true))
   }
 
   /// The agent to launch: the account named, else the project's own when the vendor matches,
