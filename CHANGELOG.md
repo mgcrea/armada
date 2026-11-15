@@ -5,8 +5,45 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.12.1` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.13.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.13.0] - 2026-11-15
+
+**Agents can now reach Codex and Grok Build too.** An agent using Armada's tools can message an
+open Codex thread, start a session on the model it picks, and run Grok Build turns with no
+terminal open.
+
+### Added
+
+- **MCP tools: message a Codex thread.** `armada_send_message` now reaches an open Codex thread as
+  well as a Claude Code session, through Codex's own `codex queue` command (codex-cli 0.163 or
+  later). An idle thread starts a turn on the message at once, a busy one after its turn. Closed
+  threads and Codex subagents are refused, because a queued message would run whenever the
+  thread was next opened. Codex's queue is a fifth place Armada writes into an agent's folders,
+  and the privacy page now lists it.
+- **MCP tools: pick a model.** `armada_start_session` takes `model`, the id as the CLI names it
+  (`opus`, `gpt-6-astra`, `grok-4.6`), for a Claude Code, Codex or Grok Build session opened in a
+  terminal.
+- **MCP tools: headless Grok Build turns.** With `headless`, `armada_start_session` runs a Grok
+  Build turn as Armada's own process, with no terminal. With nobody there to answer a permission
+  prompt, the turn may do only what your allow rules already permit, and everything else is
+  denied. `armada_send_message` runs the session's next turn once the last has ended,
+  `armada_close_session` stops a running one, and quitting Armada stops any still running.
+
+### Fixed
+
+- **Ultra and Max.** Anthropic renamed Max 20x to Ultra and Max 5x to Max on 30 October 2026.
+  Accounts on those plans now show the new names.
+- **Codex from ChatGPT 26.1103.** ChatGPT moved the Codex CLI it bundles inside its app, so on a
+  Mac with no other copy, Armada could not start a Codex session or add a Codex account. It finds
+  the new location, and still the old one.
+
+### Internal
+
+- Debug builds launched with `-DrivingChannel YES` open a SupportKitDriving channel, so an agent
+  drives Armada without taking the Mac's focus. Release builds contain none of it.
+  swift-support-kit moves from 1.5.0 to 1.23.0.
 
 ## [1.12.1] - 2026-11-09
 

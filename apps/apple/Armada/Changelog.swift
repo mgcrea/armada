@@ -212,7 +212,54 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_12_1, v1_12_0, v1_11_1, v1_11_0, v1_10_0]
+  static let releases: [Release] = [v1_13_0, v1_12_1, v1_12_0, v1_11_1, v1_11_0]
+
+  // swift-format-ignore
+  private static let v1_13_0: Release = Release(
+    version: "1.13.0",
+    date: "2026-11-15",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "MCP tools: message a Codex thread.",
+            body: [
+              "`armada_send_message` now reaches an open Codex thread as well as a Claude Code session, through Codex's own `codex queue` command (codex-cli 0.163 or later). An idle thread starts a turn on the message at once, a busy one after its turn. Closed threads and Codex subagents are refused, because a queued message would run whenever the thread was next opened. Codex's queue is a fifth place Armada writes into an agent's folders, and the privacy page now lists it.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "MCP tools: pick a model.",
+            body: [
+              "`armada_start_session` takes `model`, the id as the CLI names it (`opus`, `gpt-6-astra`, `grok-4.6`), for a Claude Code, Codex or Grok Build session opened in a terminal.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "MCP tools: headless Grok Build turns.",
+            body: [
+              "With `headless`, `armada_start_session` runs a Grok Build turn as Armada's own process, with no terminal. With nobody there to answer a permission prompt, the turn may do only what your allow rules already permit, and everything else is denied. `armada_send_message` runs the session's next turn once the last has ended, `armada_close_session` stops a running one, and quitting Armada stops any still running.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "Ultra and Max.",
+            body: [
+              "Anthropic renamed Max 20x to Ultra and Max 5x to Max on 30 October 2026. Accounts on those plans now show the new names.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Codex from ChatGPT 26.1103.",
+            body: [
+              "ChatGPT moved the Codex CLI it bundles inside its app, so on a Mac with no other copy, Armada could not start a Codex session or add a Codex account. It finds the new location, and still the old one.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_12_1: Release = Release(
@@ -428,71 +475,6 @@ nonisolated enum Changelog {
             headline: "MCP tools:",
             body: [
               "`armada_read_transcript` keeps a long Grok Build reply as one entry; `armada_get_fleet` refuses a vendor it does not know rather than answering with an empty fleet; `armada_wait` refuses `sessions` given as a string rather than watching everything; and an optional argument sent as `null` is treated as left out.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_10_0: Release = Release(
-    version: "1.10.0",
-    date: "2026-10-05",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Manage Codex schedules from Claude Code.",
-            body: [
-              "With Allow writes on, Claude Code can list every scheduled task on the Mac, and create, change or remove Codex automations, through Armada's MCP server. Codex still runs them, and Armada posts a notification every time one changes. Claude desktop's own scheduled tasks are listed too, read-only.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A Schedules pane.",
-            body: [
-              "The sidebar lists every schedule on the Mac, Codex automations by home and the Claude app's tasks, with when each runs next, its prompt and its folder. Read-only: schedules are changed by asking Claude Code.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Keep the Mac awake while agents work.",
-            body: [
-              "A new setting in General holds off idle sleep while any Claude Code, Codex or Grok Build session is working, and lets it go when the last one stops, optionally keeping the display on too. Off by default; closing the lid still sleeps the Mac.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Move one session to another account.",
-            body: [
-              "A session's right-click menu and its details offer Move beside Continue on, as a selection of several already did. The conversation is copied to the other account and opened there, and the session is closed here only once the copy is in place.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 4,
-            headline: "A file Armada cannot read is no longer saved over.",
-            body: [
-              "When the saved projects, the usage history or an archive's manifest would not load, Armada started empty and its next save replaced the original. It now moves the file aside as `<name>.bak-<seconds>`, or stops saving to it when even that fails, and an archive pass that finds its manifest unreadable says so and leaves it alone.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Check Now no longer stays greyed out.",
-            body: [
-              "An update check that failed, or one started while another was running, left the button disabled until Armada quit.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "A licence key a mail client broke across lines is accepted.",
-            body: [
-              "Pasting a key copied from the purchase email used to be refused as malformed.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Connecting an MCP client keeps a symlinked config.",
-            body: [
-              "A client whose config file is a symlink, such as one kept in a dotfiles repository, used to have the link replaced with a plain file.",
             ]),
         ]),
     ])
