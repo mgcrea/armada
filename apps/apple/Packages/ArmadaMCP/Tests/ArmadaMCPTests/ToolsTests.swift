@@ -26,14 +26,14 @@ struct ToolsTests {
   // MARK: - The listing
 
   @Test(
-    "Nine read-only tools always, and six more that act only behind the switch"
+    "Ten read-only tools always, and six more that act only behind the switch"
   )
   func listing() {
     let table = Tools.table(
       source: FakeFleetSource(), starter: FakeSessionStarter(), closer: FakeSessionCloser(),
       sender: FakeMessageSender(), focuser: FakeSessionFocuser(), schedules: FakeScheduleStore())
     let listed = table.listing(allowWrites: false)
-    #expect(listed.count == 9)
+    #expect(listed.count == 10)
     for tool in listed {
       #expect(tool.annotations.readOnlyHint, "\(tool.name)")
       #expect(tool.gate == .always, "\(tool.name)")

@@ -34,6 +34,7 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
   var hosts: [String: FleetSnapshot.Host] = [:]
   var projectsFixture: ProjectsSnapshot = FakeFleetSource.projects()
   var skillsFixture: SkillsSnapshot = FakeFleetSource.skills()
+  var buildSlotsFixture: BuildSlotsSnapshot = .empty
 
   init(_ fleet: FleetSnapshot = FakeFleetSource.fleet()) {
     self.fleet = fleet
@@ -59,6 +60,8 @@ final class FakeFleetSource: FleetSource, @unchecked Sendable {
     lock.withLock { skillCalls += 1 }
     return skillsFixture
   }
+
+  func buildSlots() async -> BuildSlotsSnapshot { buildSlotsFixture }
 
   /// The two Claude accounts and the two nested projects, with four names in every window:
   /// `code-health` split across both projects and both kinds, a plugin's skill, a custom

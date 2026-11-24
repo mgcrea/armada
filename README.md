@@ -128,7 +128,7 @@ attached. That session is the chat: ask it which sessions need you, what one of 
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
-the Keychain. Nine tools read, among them `armada_wait`, which holds a call open until a session
+the Keychain. Ten tools read, among them `armada_wait`, which holds a call open until a session
 needs you, and `armada_list_schedules`, which lists every Codex automation and Claude desktop
 scheduled task on the Mac. Six more exist only while you turn on Allow writes: `armada_start_session`
 opens a fresh session in one of your saved projects, optionally with an opening message, or

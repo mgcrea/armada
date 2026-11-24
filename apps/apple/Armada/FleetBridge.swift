@@ -1,4 +1,5 @@
 import ArmadaMCP
+import BuildSlotCore
 import Foundation
 
 /// The one place the MCP server touches the fleet.
@@ -32,6 +33,35 @@ nonisolated struct FleetBridge: FleetSource {
       }
       return nil
     }
+  }
+
+  /// The queue as `BuildSlotMonitor` last published it. Reading the lock files here would put
+  /// disk work on an agent's call and a second reader beside the monitor's poll.
+  func buildSlots() async -> BuildSlotsSnapshot {
+    await MainActor.run { Self.buildSlots(now: Date()) }
+  }
+
+  @MainActor
+  static func buildSlots(now: Date) -> BuildSlotsSnapshot {
+    let monitor = BuildSlotMonitor.shared
+    let settings = BuildSlots.shared.settings
+    func entry(_ entry: MonitoredEntry) -> BuildSlotsSnapshot.Entry {
+      let record = entry.record
+      // A record carries the date of its own state; the other is only a fallback for one
+      // written mid-move, and `now` for one carrying neither.
+      let since =
+        entry.isHolding
+        ? record.startedAt ?? record.waitingSince : record.waitingSince ?? record.startedAt
+      return BuildSlotsSnapshot.Entry(
+        slot: entry.slot, pid: record.pid, label: record.label, cwd: record.cwd,
+        tool: record.tool, argv: record.argv, since: since ?? now,
+        waitsOnMemory: entry.waitsOnMemory,
+        session: entry.session.map { .init(id: $0.id, vendor: $0.vendor, title: $0.title) })
+    }
+    return BuildSlotsSnapshot(
+      enabled: BuildSlots.shared.isEnabled, slots: settings.slots,
+      memoryRule: settings.memoryRule.rawValue, memoryPressure: monitor.pressure.word,
+      holders: monitor.holders.map(entry), waiters: monitor.waiters.map(entry))
   }
 
   @MainActor

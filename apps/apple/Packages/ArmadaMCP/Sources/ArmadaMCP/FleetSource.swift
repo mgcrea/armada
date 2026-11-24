@@ -29,6 +29,18 @@ public protocol FleetSource: Sendable {
   /// A hop of its own for the reason `projects()` is one: only `armada_get_skill_usage`
   /// wants it, and it rolls the skill ledger up into projects.
   func skills() async -> SkillsSnapshot
+
+  /// The build queue as the app's monitor last read it.
+  ///
+  /// A hop of its own, taken beside `snapshot()` by the fleet and session tools for one field
+  /// per session. The queue is polled on its own clock, so pairing it with a fleet snapshot
+  /// can never be more exact than one poll anyway.
+  func buildSlots() async -> BuildSlotsSnapshot
+}
+
+extension FleetSource {
+  /// No queue: what a source that predates build slots answers.
+  public func buildSlots() async -> BuildSlotsSnapshot { .empty }
 }
 
 /// The fleet at one instant, as `Sendable` values.

@@ -3,13 +3,13 @@ import MCPKit
 
 /// Armada's tools.
 ///
-/// **Nine that read, and six that act: start, close, message and bring forward a session, and
+/// **Ten that read, and six that act: start, close, message and bring forward a session, and
 /// save or delete a Codex schedule.**
 /// Every definition is paid for in the client's context on every connect, so the reads are shaped
 /// around what a
 /// supervisor actually asks — *what needs me*, *what is everything doing*, *what is this one
 /// doing*, *how much plan is left*, *what did it last say*, *where has the work gone*, *which
-/// skills get used* — rather than
+/// skills get used*, *may I start a build now* — rather than
 /// mirroring the app's types.
 ///
 /// Nothing here reaches the network. The six tools in `writeTools` are what an agent can do *to*
@@ -98,7 +98,7 @@ public enum Tools {
   public static let readToolNames = [
     "armada_needs_attention", "armada_get_fleet", "armada_get_session", "armada_get_usage",
     "armada_get_projects", "armada_get_skill_usage", "armada_read_transcript", "armada_wait",
-    "armada_list_schedules",
+    "armada_get_build_slots", "armada_list_schedules",
   ]
 
   /// The tools behind the write gate, by name, in listing order: what Bastion holds back while
@@ -132,6 +132,7 @@ public enum Tools {
     add(skills: &table, source: source)
     add(transcript: &table, source: source)
     add(wait: &table, source: source, poll: waitPoll)
+    add(buildSlots: &table, source: source)
     add(listSchedules: &table, store: schedules)
     add(startSession: &table, source: source, starter: starter)
     add(closeSession: &table, source: source, closer: closer)
@@ -328,6 +329,7 @@ public enum Tools {
         return .failure("`vendor` is claude, codex or grok, not \"\(vendor)\".")
       }
       let snapshot = await source.snapshot()
+      let slots = buildSlotFields(await source.buildSlots())
       let includeIdle = arguments["include_idle"]?.boolValue ?? true
       let includeEnded = arguments["include_ended"]?.boolValue ?? false
       let includeSubagents = arguments["include_subagents"]?.boolValue ?? false
@@ -412,8 +414,11 @@ public enum Tools {
         "\(plural(accounts.count, "account")), \(plural(rows.count, "session"))"
         + (parts.isEmpty ? "." : ": " + parts.joined(separator: ", ") + ".")
 
+      let sessions = rows.map { row in
+        slots[row.id].map { row.json.merging(["buildSlot": $0]) } ?? row.json
+      }
       return envelope(
-        ["accounts": .array(accounts), "sessions": .array(rows.map(\.json))],
+        ["accounts": .array(accounts), "sessions": .array(sessions)],
         snapshot: snapshot, lede: lede)
     }
   }
@@ -434,6 +439,11 @@ public enum Tools {
         annotations: .readOnly)
     ) { arguments in
       let snapshot = await source.snapshot()
+      let slots = buildSlotFields(await source.buildSlots())
+      func answer(_ id: String, _ detail: JSONValue, lede: String) -> ToolResult {
+        let session = slots[id].map { detail.merging(["buildSlot": $0]) } ?? detail
+        return envelope(["session": session], snapshot: snapshot, lede: lede)
+      }
       switch lookup(arguments["session"], in: snapshot) {
       case .refused(let refusal):
         return refusal
@@ -442,16 +452,15 @@ public enum Tools {
         var lede = "\(session.name), in \(session.project): \(session.stateLabel)"
         if let waitingFor = session.waitingFor { lede += " (\(waitingFor))" }
         if session.stateIsInferred { lede += ", inferred" }
-        return envelope(
-          ["session": detail(session, account: account, host: host)], snapshot: snapshot,
-          lede: lede + ".")
+        return answer(
+          session.id, detail(session, account: account, host: host), lede: lede + ".")
       case .codex(let session, let account):
-        return envelope(
-          ["session": detail(session, account: account)], snapshot: snapshot,
+        return answer(
+          session.id, detail(session, account: account),
           lede: "\(session.name), in \(session.project): \(session.stateLabel).")
       case .grok(let session, let account):
-        return envelope(
-          ["session": detail(session, account: account)], snapshot: snapshot,
+        return answer(
+          session.id, detail(session, account: account),
           lede: "\(session.name), in \(session.project): \(session.stateLabel).")
       }
     }
@@ -1891,6 +1900,73 @@ public enum Tools {
           ],
           isError: true))
     }
+  }
+
+  // MARK: - armada_get_build_slots
+
+  private static func add(buildSlots table: inout ToolTable, source: any FleetSource) {
+    table.add(
+      MCPTool(
+        name: "armada_get_build_slots",
+        title: "Build slots",
+        description:
+          "The machine-wide build queue: how many builds and test runs may run at once, the "
+          + "memory rule, the Mac's memory pressure now, and who holds each slot and who waits, "
+          + "with the session behind each when Armada can tell. `swift build`, `swift test` and "
+          + "`xcodebuild` builds and tests wait for a slot when the person turned Build Slots "
+          + "on. Check this before starting a long build or test suite; when every slot is "
+          + "busy, do other work first.",
+        properties: [:],
+        annotations: .readOnly)
+    ) { _ in
+      let snapshot = await source.buildSlots()
+      let lede =
+        snapshot.enabled
+        ? "\(snapshot.holders.count) of \(snapshot.slots) slots busy, "
+          + "\(snapshot.waiters.count) waiting; memory pressure \(snapshot.memoryPressure)."
+        : "Build slots off."
+      // Not `envelope`: the queue is not behind the licence, so "not watching" would be untrue,
+      // and the monitor's last read has no single instant to stamp.
+      return .answer(
+        lede,
+        [
+          "enabled": .bool(snapshot.enabled), "slots": .int(snapshot.slots),
+          "memoryRule": .string(snapshot.memoryRule),
+          "memoryPressure": .string(snapshot.memoryPressure),
+          "holders": .array(snapshot.holders.map(buildSlotEntry)),
+          "waiters": .array(snapshot.waiters.map(buildSlotEntry)),
+        ])
+    }
+  }
+
+  static func buildSlotEntry(_ entry: BuildSlotsSnapshot.Entry) -> JSONValue {
+    object([
+      "slot": entry.slot.map { .int($0) }, "pid": .int(Int(entry.pid)),
+      "label": .string(entry.label), "cwd": .string(entry.cwd), "tool": .string(entry.tool),
+      "argv": .array(entry.argv.map(JSONValue.string)), "since": isoValue(entry.since),
+      "waitsOnMemory": .bool(entry.waitsOnMemory),
+      "session": entry.session.map { session in
+        object([
+          "id": .string(session.id), "vendor": .string(session.vendor),
+          "title": .string(session.title),
+        ])
+      },
+    ])
+  }
+
+  /// Session id → the `buildSlot` field its row carries. A session both holding and waiting
+  /// (a second build started beside the first) shows the slot it holds.
+  static func buildSlotFields(_ snapshot: BuildSlotsSnapshot) -> [String: JSONValue] {
+    var fields: [String: JSONValue] = [:]
+    for (state, entries) in [("holding", snapshot.holders), ("waiting", snapshot.waiters)] {
+      for entry in entries {
+        guard let id = entry.session?.id, fields[id] == nil else { continue }
+        fields[id] = [
+          "state": .string(state), "since": isoValue(entry.since), "tool": .string(entry.tool),
+        ]
+      }
+    }
+    return fields
   }
 
   // MARK: - Shapes
