@@ -1,4 +1,5 @@
 import AppKit
+import BuildSlotCore
 import Combine
 import SupportKitDriving
 import SupportKitSettings
@@ -414,6 +415,9 @@ struct StatusMenu: View {
       // drawn when it is off.
       MCPPanelRow(now: now)
 
+      // The build queue, while the switch is on. Its own divider, as the MCP row's.
+      BuildSlotsPanelRow()
+
       Divider()
 
       // One row, as Bastion and Cupertino have it, and the same rule decides
@@ -464,6 +468,39 @@ struct StatusMenu: View {
     }
     .padding(12)
     .frame(width: 320)
+  }
+}
+
+/// `Build slots 2/2 · 1 waiting`: slots held over slots, and the waiters when there are any.
+/// Drawn like a session row; a click opens Settings ▸ Build Slots, where the queue is listed.
+private struct BuildSlotsPanelRow: View {
+  @State private var buildSlots = BuildSlots.shared
+  @State private var monitor = BuildSlotMonitor.shared
+
+  var body: some View {
+    if buildSlots.isEnabled, !ScreenshotMode.isEnabled {
+      Divider()
+      PanelRow(help: "Open Settings ▸ Build Slots") {
+        MenuBarPanel.dismiss()
+        AppDelegate.shared?.showSettings(.buildSlots)
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "hammer")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(width: 14)
+          Text(line)
+            .font(.caption)
+            .lineLimit(1)
+          Spacer(minLength: 0)
+        }
+      }
+    }
+  }
+
+  private var line: String {
+    let held = "Build slots \(monitor.holders.count)/\(buildSlots.settings.slots)"
+    return monitor.waiters.isEmpty ? held : "\(held) · \(monitor.waiters.count) waiting"
   }
 }
 

@@ -214,6 +214,10 @@ struct GrokSessionRow: View {
           .lineLimit(1)
         HStack(spacing: 6) {
           Text(session.summary.projectName)
+          if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+            Text("·")
+            BuildSlotBadge(entry: build, now: now)
+          }
           if session.isHeadless {
             Text("·")
             Text("Headless")
@@ -259,6 +263,9 @@ struct GrokSessionDetail: View {
             GrokStateDot(state: session.state)
             Text(session.state.label)
           }
+        }
+        if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+          BuildSlotDetailLine(entry: build, now: now)
         }
         LabeledContent("Folder", value: session.summary.cwd)
         if let model = session.summary.model {

@@ -308,6 +308,10 @@ struct CodexSessionRow: View {
           .lineLimit(1)
         HStack(spacing: 6) {
           Text(session.meta.projectName)
+          if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+            Text("·")
+            BuildSlotBadge(entry: build, now: now)
+          }
           if let kind = session.kindLabel {
             Text("·")
             Text(kind)
@@ -450,6 +454,9 @@ struct CodexSessionDetail: View {
         Text(explanation(session.state))
           .font(.caption)
           .foregroundStyle(.secondary)
+        if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+          BuildSlotDetailLine(entry: build, now: now)
+        }
         // Where `SessionDetail` has it, under the state and above the context: a fork
         // is decided by what this session is doing, so it belongs beside that.
         ForkButton(availability: .codex(session, in: account))

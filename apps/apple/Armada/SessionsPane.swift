@@ -23,6 +23,10 @@ struct SessionRow: View {
               .help(focus.reach.help(hostName: focus.hostName))
               .accessibilityLabel(focus.reach.help(hostName: focus.hostName))
           }
+          if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+            Text("·")
+            BuildSlotBadge(entry: build, now: now)
+          }
           if let reason = session.untitledReason {
             Text("·")
             Text(reason)
@@ -291,6 +295,9 @@ struct SessionDetail: View {
         // per-dialog table, and the set grows with every new kind of prompt.
         if let waitingFor = session.waitingFor {
           LabeledContent("Waiting for", value: waitingFor)
+        }
+        if let build = BuildSlotMonitor.shared.entry(forSession: session.id) {
+          BuildSlotDetailLine(entry: build, now: now)
         }
         if session.state.isBestEffort {
           Text(
