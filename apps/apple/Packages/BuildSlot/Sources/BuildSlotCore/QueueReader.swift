@@ -93,8 +93,9 @@ public enum QueueReader {
   /// One descriptor for both the lock query and the read, so the record read is the file the
   /// lock was asked about.
   private static func probe(_ url: URL) -> Probe {
-    let fd = open(url.path, O_RDONLY | O_CLOEXEC)
-    guard fd >= 0 else { return .free }
+    let fd = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+    // Only a missing file is free; one that cannot be opened (a symlink) is no slot to offer.
+    guard fd >= 0 else { return errno == ENOENT ? .free : .unknownHolder }
     defer { close(fd) }
     guard let pid = LockProbe.holderPID(fd: fd) else { return .free }
     guard let record = SlotRecord.decoded(from: readAll(fd)), record.pid == pid else {
@@ -146,7 +147,7 @@ public enum QueueReader {
   /// waiter of a reused pid may rename its locked file onto the name in between; the inode check
   /// leaves that one alone.
   private static func unlinkIfUnchanged(_ url: URL) {
-    let fd = open(url.path, O_RDONLY | O_CLOEXEC)
+    let fd = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
     guard fd >= 0 else { return }
     defer { close(fd) }
     guard LockProbe.holderPID(fd: fd) == nil, let opened = FileIdentity(fd: fd),

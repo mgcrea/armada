@@ -20,6 +20,32 @@ struct LockTests {
     }
   }
 
+  @Test func refusesALockRootOthersCanWrite() throws {
+    let paths = tempPaths()
+    try FileManager.default.createDirectory(at: paths.lockRoot, withIntermediateDirectories: true)
+    #expect(chmod(paths.lockRoot.path, 0o777) == 0)
+    #expect(throws: UnsafeLockDirectory.self) { try paths.ensureDirectories() }
+  }
+
+  @Test func refusesALockRootThatIsASymlink() throws {
+    let paths = tempPaths()
+    let target = paths.lockRoot.deletingLastPathComponent().appendingPathComponent("elsewhere")
+    try FileManager.default.createDirectory(
+      at: target, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    try FileManager.default.createSymbolicLink(at: paths.lockRoot, withDestinationURL: target)
+    #expect(throws: UnsafeLockDirectory.self) { try paths.ensureDirectories() }
+  }
+
+  @Test func lockFileRefusesASymlink() throws {
+    let paths = try prepared()
+    let victim = paths.lockRoot.appendingPathComponent("victim.txt")
+    try Data("keep me".utf8).write(to: victim)
+    try FileManager.default.createSymbolicLink(at: paths.slotFile(0), withDestinationURL: victim)
+    #expect(throws: POSIXError.self) { try LockFile(path: paths.slotFile(0)) }
+    #expect(try Data(contentsOf: victim) == Data("keep me".utf8))
+    #expect(QueueReader.read(paths, slotCount: 2).freeSlots == [1])
+  }
+
   @Test func tryLockFailsWhileAnotherProcessHolds() throws {
     let paths = try prepared()
     let helper = holdLock(paths.slotFile(0), record: nil)

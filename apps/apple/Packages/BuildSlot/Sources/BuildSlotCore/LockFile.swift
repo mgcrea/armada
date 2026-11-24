@@ -13,8 +13,10 @@ public final class LockFile {
   private var identity: FileIdentity?
 
   /// Opens or creates the file, 0600, close-on-exec so a build's children never carry it.
+  /// Refuses a symlink (`O_NOFOLLOW`): the lock folder sits under world-writable `/tmp`, and a
+  /// planted link would have `write` truncate whatever file it points at.
   public init(path: URL) throws {
-    let fd = open(path.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    let fd = open(path.path, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0o600)
     guard fd >= 0 else { throw POSIXError.current() }
     self.path = path
     self.fd = fd
@@ -106,7 +108,7 @@ public enum LockProbe {
   /// is missing. Never names this process's own locks (`F_GETLK` skips the caller's), and must
   /// not be pointed at a file this process holds: closing the probe's descriptor would drop it.
   public static func holderPID(of path: URL) -> Int32? {
-    let fd = open(path.path, O_RDONLY | O_CLOEXEC)
+    let fd = open(path.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
     guard fd >= 0 else { return nil }
     defer { close(fd) }
     return holderPID(fd: fd)

@@ -49,11 +49,35 @@ public struct BuildSlotPaths: Sendable {
       lockRoot: URL(fileURLWithPath: lockRoot, isDirectory: true), settingsFile: settingsFile)
   }
 
-  /// Creates the lock folders, 0700, whoever needs them first.
+  /// Creates the lock folders, 0700, whoever needs them first, then checks each is a real
+  /// directory of this user's that nobody else can write. `/private/tmp` is world-writable, so
+  /// another account could have made the path first, open to all or as a symlink, to plant lock
+  /// files; creating succeeds silently over an existing path, hence the check. Throws
+  /// `UnsafeLockDirectory`, and the caller runs the build unqueued.
   public func ensureDirectories() throws {
     for dir in [lockRoot, slotsDir, waitingDir] {
       try FileManager.default.createDirectory(
         at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      var info = stat()
+      guard lstat(dir.path, &info) == 0 else { throw POSIXError.current() }
+      if info.st_mode & S_IFMT != S_IFDIR {
+        throw UnsafeLockDirectory(path: dir.path, reason: "not a directory")
+      }
+      if info.st_uid != getuid() {
+        throw UnsafeLockDirectory(path: dir.path, reason: "owned by uid \(info.st_uid)")
+      }
+      if info.st_mode & 0o077 != 0 {
+        let mode = String(info.st_mode & 0o777, radix: 8)
+        throw UnsafeLockDirectory(path: dir.path, reason: "mode \(mode), not 700")
+      }
     }
   }
+}
+
+/// A lock folder another account could write to, or a symlink in its place.
+public struct UnsafeLockDirectory: Error, CustomStringConvertible, Sendable {
+  public let path: String
+  public let reason: String
+
+  public var description: String { "\(path) is unsafe: \(reason)" }
 }
