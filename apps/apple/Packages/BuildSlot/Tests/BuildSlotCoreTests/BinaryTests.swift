@@ -153,7 +153,7 @@ struct BinaryTests {
     var waiters: [Entry]
   }
 
-  private func status(_ sandbox: Sandbox) -> Status? {
+  private func readStatus(_ sandbox: Sandbox) -> Status? {
     let run = Run(["status", "--json"], sandbox: sandbox)
     guard run.wait(timeout: 10), run.exitCode == 0 else { return nil }
     return try? JSONDecoder().decode(Status.self, from: Data(run.stdout.utf8))
@@ -162,7 +162,7 @@ struct BinaryTests {
   /// Starts a holder and returns once `status --json` lists it.
   private func holder(_ script: String, sandbox: Sandbox, cwd: String? = nil) throws -> Run {
     let run = Run(shell(script), sandbox: sandbox, cwd: cwd)
-    let listed = until { status(sandbox)?.holders.contains { $0.pid == run.pid } == true }
+    let listed = until { readStatus(sandbox)?.holders.contains { $0.pid == run.pid } == true }
     try #require(listed, "the holder never showed in status; stderr: \(run.stderr)")
     return run
   }
@@ -214,7 +214,7 @@ struct BinaryTests {
   @Test func statusJSON() throws {
     let sandbox = Sandbox()
     let a = try holder("sleep 30", sandbox: sandbox)
-    let status = try #require(status(sandbox))
+    let status = try #require(readStatus(sandbox))
     #expect(status.holders.count == 1)
     #expect(status.holders.first?.slot == 0)
     #expect(status.holders.first?.pid == a.pid)
