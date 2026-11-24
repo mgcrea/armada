@@ -72,6 +72,13 @@ func ownExecutablePath() -> String {
   Bundle.main.executablePath ?? CommandLine.arguments[0]
 }
 
+/// `path` with every link resolved, as the shims must call the binary wherever it really is.
+func resolvedPath(_ path: String) -> String {
+  guard let real = realpath(path, nil) else { return path }
+  defer { free(real) }
+  return String(cString: real)
+}
+
 let arguments = Array(CommandLine.arguments.dropFirst())
 switch arguments.first {
 case "--as":
@@ -107,9 +114,21 @@ case "status":
   exit(StatusCommand.run(json: options.contains("--json")))
 
 case "install", "uninstall":
-  // The installer lands with the shims themselves.
-  FileHandle.standardError.write(Data("\(arguments[0]) is not available in this build.\n".utf8))
-  exit(69)  // EX_UNAVAILABLE
+  let options = Array(arguments.dropFirst())
+  let binDir: URL
+  switch options.count {
+  case 0:
+    binDir = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(".local/bin", isDirectory: true)
+  case 2 where options[0] == "--bin-dir":
+    binDir = URL(fileURLWithPath: options[1], isDirectory: true)
+  default:
+    usageError()
+  }
+  exit(
+    arguments[0] == "install"
+      ? InstallCommand.install(binDir: binDir, helperPath: resolvedPath(ownExecutablePath()))
+      : InstallCommand.uninstall(binDir: binDir))
 
 default:
   usageError()
