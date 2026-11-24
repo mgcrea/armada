@@ -212,7 +212,43 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_13_0, v1_12_1, v1_12_0, v1_11_1, v1_11_0]
+  static let releases: [Release] = [v1_14_0, v1_13_0, v1_12_1, v1_12_0, v1_11_1]
+
+  // swift-format-ignore
+  private static let v1_14_0: Release = Release(
+    version: "1.14.0",
+    date: "2026-11-24",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Build Slots.",
+            body: [
+              "Settings ▸ Build Slots ▸ Queue builds puts `swift` and `xcodebuild` shims in `~/.local/bin`. From then on, every `swift build`, `swift test` and `xcodebuild` build or test started in a terminal or by an agent, in any repo, waits for one of a set number of slots, two by default. A waiting build says so on its error output and names what it waits behind, so an agent can tell queued from hung. The queue rests on the system's file locks: it keeps working with Armada quit, and a build that dies frees its slot at once. A build started from inside one that holds a slot, such as a test host or a Makefile's own `swift build`, runs straight through, and `ARMADA_BUILDSLOT=off` runs any build unqueued. Xcode's own builds, `xcrun` and `swift run` don't go through the shims and don't queue. Armada never replaces a `swift` or `xcodebuild` in `~/.local/bin` that it did not write, and switching the setting off removes only its own.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Wait on memory.",
+            body: [
+              "The Memory setting holds a new build back while macOS reports memory pressure, as long as another build is running, so one always runs.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Building and waiting, on the session rows.",
+            body: [
+              "A session whose build holds a slot says `building` and for how long, on its row, in its details and in the popover; one in the queue says `waiting for a slot`. Settings ▸ Build Slots lists the queue as it stands.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "MCP tools: build slots.",
+            body: [
+              "`armada_get_build_slots` reads the queue: how many slots, the memory rule and the Mac's memory pressure, who holds each slot and who waits, and the session behind each. `armada_get_fleet` and `armada_get_session` give each session's build slot.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_13_0: Release = Release(
@@ -351,130 +387,6 @@ nonisolated enum Changelog {
             headline: "The icon matches its siblings.",
             body: [
               "Its plate ran a shade lighter and pinker than Bastion's and Cupertino's, and beside them in the Dock it read as a near miss. It is now the same.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_11_0: Release = Release(
-    version: "1.11.0",
-    date: "2026-10-18",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Talk over a reply to answer it.",
-            body: [
-              "With Keep listening on, you no longer have to wait for a spoken reply to finish: start talking and it stops, and what you say becomes your answer. The reply is taken out of what the microphone hears, so Armada does not mistake its own voice for yours, and an answer can start the moment the reply ends.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "The supervisor's server in the toolbar and the menu bar.",
-            body: [
-              "A button at the trailing edge of the main window shows whether the MCP server is on and listening and when an agent last asked, turns it on or off, and adds it to Claude Code, Codex, Cursor or VS Code in one click. While it is on, the menu bar panel shows its light and what it last did.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Add Armada to Bastion.",
-            body: [
-              "Settings › Supervisor offers Add to Bastion… where Bastion is installed, which hands it Armada's server with the tools that act held back behind Bastion's own switch. Bastion asks before adding anything.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "With Keep listening on, the microphone is on while a reply is spoken",
-            body: [
-              ", so the orange dot shows then too. With Keep listening set to Never, or in hold mode, nothing changes.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Allow writes says everything it unlocks.",
-            body: [
-              "The switch and the text under it now name bringing a window forward, Grok Build sessions, and saving or deleting Codex schedules, which Codex then runs unattended.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 5,
-            headline: "A session started in Terminal or iTerm no longer ends on an error.",
-            body: [
-              "Every launch script stopped with \"read-only variable: status\", so an agent that failed at startup never showed why, and a session that ended cleanly still left its window open.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "A session waiting for you no longer shows as Working.",
-            body: [
-              "A transcript write while Claude Code reported a permission prompt or an idle session turned the row to Working until the next status change, which hid it from the menu bar ring. Running a tool shows again during a tool call.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Usage no longer grows for a session found in two folders.",
-            body: [
-              "A project folder copied after renaming a repository put one session in two places, and every other pass counted part of it again.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "A full window no longer forecasts the past.",
-            body: [
-              "At 100% the meter said \"At this rate, 100% 3 minutes ago\".",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "A compaction made while Armada is open shows in the context panel.",
-            body: [
-              "It used to show only a compaction that happened before Armada first read the session.",
-            ]),
-          Entry(
-            ordinal: 10,
-            headline: "Show all works on a long typed prompt.",
-            body: [
-              "A prompt pasted as plain text, or a long notice, stayed cut after Show all.",
-            ]),
-          Entry(
-            ordinal: 11,
-            headline: "Opening a session in VS Code no longer waits on a login profile that hangs.",
-            body: [
-              "The five-second limit on reading your shell's environment did not stop an interactive shell, and a background job your profile started could hold it open indefinitely.",
-            ]),
-          Entry(
-            ordinal: 12,
-            headline: "Launch at login no longer undoes itself.",
-            body: [
-              "A registration waiting for your approval was removed and its message lost; Settings now says when System Settings is waiting for you.",
-            ]),
-          Entry(
-            ordinal: 13,
-            headline: "A launch or close that fails from the menu bar always shows why.",
-            body: [
-              "With the main window on Usage, Schedules or Voice, the alert waited until another pane appeared.",
-            ]),
-          Entry(
-            ordinal: 14,
-            headline: "A session no longer flickers out and back when its registry file is caught mid-write",
-            body: [
-              ", and a Claude Code folder that is a symlink now picks up new sessions and status changes at once.",
-            ]),
-          Entry(
-            ordinal: 15,
-            headline: "Grok Build:",
-            body: [
-              "the pane scrolls to a session opened from the menu bar, and its usage tooltip names Grok Build rather than Claude Code.",
-            ]),
-          Entry(
-            ordinal: 16,
-            headline: "MCP tools:",
-            body: [
-              "`armada_read_transcript` keeps a long Grok Build reply as one entry; `armada_get_fleet` refuses a vendor it does not know rather than answering with an empty fleet; `armada_wait` refuses `sessions` given as a string rather than watching everything; and an optional argument sent as `null` is treated as left out.",
             ]),
         ]),
     ])

@@ -43,6 +43,10 @@ const TOOLS = [
     body: "How often each Agent Skill and custom command was used in Claude Code, loaded by Claude or typed as /name, per project or account. Codex records none.",
   },
   {
+    title: "Build slots",
+    body: "The machine-wide build queue: how many builds may run at once, the Mac's memory pressure, who holds each slot and who waits, and the session behind each.",
+  },
+  {
     title: "Wait for a change",
     body: "Holds the call open until a session newly needs you or changes state, for up to four minutes, so a supervisor watches without polling.",
   },
@@ -81,7 +85,7 @@ const WRITE_TOOLS = [
 ] as const;
 
 const GROUPS = [
-  { heading: "Nine tools, all read-only", tools: TOOLS },
+  { heading: "Ten tools, all read-only", tools: TOOLS },
   { heading: "Six more, only with Allow writes on", tools: WRITE_TOOLS },
 ] as const;
 ---

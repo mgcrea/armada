@@ -5,8 +5,42 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.13.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.14.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.14.0] - 2026-11-24
+
+**Your agents' builds now take turns.** Turn on Build Slots and `swift build`,
+`swift test` and `xcodebuild` from every agent and terminal wait for a free slot, two at a time by
+default, so a dozen sessions no longer compile at once.
+
+### Added
+
+- **Build Slots.** Settings ▸ Build Slots ▸ Queue builds puts `swift` and `xcodebuild` shims in
+  `~/.local/bin`. From then on, every `swift build`, `swift test` and `xcodebuild` build or test
+  started in a terminal or by an agent, in any repo, waits for one of a set number of slots, two
+  by default. A waiting build says so on its error output and names what it waits behind, so an
+  agent can tell queued from hung. The queue rests on the system's file locks: it keeps working
+  with Armada quit, and a build that dies frees its slot at once. A build started from inside one
+  that holds a slot, such as a test host or a Makefile's own `swift build`, runs straight
+  through, and `ARMADA_BUILDSLOT=off` runs any build unqueued. Xcode's own builds, `xcrun` and
+  `swift run` don't go through the shims and don't queue. Armada never replaces a `swift` or
+  `xcodebuild` in `~/.local/bin` that it did not write, and switching the setting off removes
+  only its own.
+- **Wait on memory.** The Memory setting holds a new build back while macOS reports memory
+  pressure, as long as another build is running, so one always runs.
+- **Building and waiting, on the session rows.** A session whose build holds a slot says
+  `building` and for how long, on its row, in its details and in the popover; one in the queue
+  says `waiting for a slot`. Settings ▸ Build Slots lists the queue as it stands.
+- **MCP tools: build slots.** `armada_get_build_slots` reads the queue: how many slots, the memory
+  rule and the Mac's memory pressure, who holds each slot and who waits, and the session behind
+  each. `armada_get_fleet` and `armada_get_session` give each session's build slot.
+
+### Internal
+
+- A `BuildSlot` local package (`BuildSlotCore` and the `buildslot` executable), whose suite runs in
+  `make -C apps/apple test` and drives the real binary against locks in a temporary folder. The
+  helper ships signed in `Armada.app/Contents/Helpers`.
 
 ## [1.13.0] - 2026-11-15
 

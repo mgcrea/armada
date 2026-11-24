@@ -35,7 +35,7 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and nine of its fifteen tools are read-only. The other six are listed and callable only while
+  and ten of its sixteen tools are read-only. The other six are listed and callable only while
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
   opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
   that nothing has open, and that session asks you for every permission as usual.
@@ -79,7 +79,12 @@ Three properties, each of which is checkable rather than asserted:
   `Armada Archive` folder inside the folder you picked, with an `armada-archive.json` naming the
   accounts; with a retention period set, it deletes copies older than that from those account
   folders and nothing else. It mounts nothing and connects to nothing to do it: the copies go as
-  far as the disk or share you picked, and no further.
+  far as the disk or share you picked, and no further. With Build Slots switched on, the
+  installed copy of Armada writes `swift` and `xcodebuild` shims into `~/.local/bin`, each
+  carrying a marker line, never over a file there without one, and removes only marked shims
+  when you turn it off; the queue keeps its settings in
+  `~/Library/Application Support/Armada/build-slots/settings.json` and its lock files in
+  `/private/tmp/armada-build-slots-<uid>`, created 0700.
 - **It holds no vendor credentials.** There is no "sign in with Claude", nothing reads or
   stores an OAuth token, and `auth.json` is never opened — a Codex plan name arrives inside
   the rate limits as `plan_type`, so no credential file is touched at all. The reasoning, and
@@ -141,7 +146,7 @@ attacker-influenced text meets something that acts on it:
   removed before the agent starts, and passed as one double-quoted word, and a message that
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves nine read-only tools on `127.0.0.1` to
+- **The MCP endpoint.** Switched on, Armada serves ten read-only tools on `127.0.0.1` to
   whoever presents the token, and six that start, close, bring forward and message a session,
   or save and delete a Codex schedule, only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
@@ -162,6 +167,16 @@ attacker-influenced text meets something that acts on it:
   off the agent is told none was shown. Anything that writes another path, writes either
   database, schedules a folder that is not a saved project, rewrites a file it refused, or saves
   or deletes without trying to post that notification, is in scope.
+- **Build slots.** With the switch on, every `swift` and `xcodebuild` found through `PATH` is
+  Armada's shim, an `sh` script that runs the signed `Contents/Helpers/buildslot` when that is
+  an executable file, and otherwise the real tool further along `PATH` or Apple's in `/usr/bin`.
+  The helper takes a lock in `/private/tmp/armada-build-slots-<uid>` and runs the real tool as
+  its child; it opens no socket. The lock folder is refused, and the build run unqueued, unless
+  it is a directory of yours closed to group and others, and every lock file is opened
+  `O_NOFOLLOW`. Anything that gets a shim to run something other than the helper or the real
+  tool, lets another user hold, plant or rewrite the locks, makes a build fail where the real
+  tool alone would have succeeded, or gets the installer to overwrite or remove a file it did not
+  write, is in scope.
 - **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
   control request. Anything that changes _which_ binary is run, or that gets an argument or
   an environment variable in from data rather than from configuration, is in scope.

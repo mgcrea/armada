@@ -250,6 +250,7 @@ Built and running:
 | **Skills**            | each skill and command used in Claude Code, typed or loaded, per project, in the Skills pane and each project's, and through `armada_get_skill_usage` |
 | **Supervisor**        | an MCP endpoint on 127.0.0.1 that reads, and a Claude Code session started with it attached                                                           |
 | **Voice**             | a global shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs                                                               |
+| **Build slots**       | a machine-wide queue for `swift` and `xcodebuild` builds and tests, through PATH shims                                                                |
 | **Codex**             | sessions, plan limits and context per Codex home, as a spike                                                                                          |
 | **Settings**          | `swift-support-kit`'s shared scaffold, an About pane and a Help menu                                                                                  |
 | **Multiple accounts** | `~/.claude`, every `~/.claude-*` sibling and `CLAUDE_CONFIG_DIR`; `~/.codex` and `CODEX_HOME`                                                         |
@@ -259,8 +260,9 @@ anything that writes to a vendor's config beyond one flag. **`~/.claude*` and `~
 read-only**, with one exception: starting a Claude Code session in a saved project sets
 `projects[<folder>].hasTrustDialogAccepted` in that account's `.claude.json`, under Claude Code's own
 lock and as an edit of those bytes alone (`ClaudeTrust`). Otherwise the only things Armada writes are
-its own: its preferences, its usage history, its projects and token ledger, and the startup script
-it hands to a terminal.
+its own: its preferences, its usage history, its projects and token ledger, the startup script
+it hands to a terminal, and, with Build Slots on, the `swift` and `xcodebuild` shims in
+`~/.local/bin`, never over a file there it did not write.
 
 ### Known gaps
 
@@ -268,8 +270,9 @@ it hands to a terminal.
   under node:test (the CHANGELOG parse the appcast and the What's New pane share, the licence key
   format, and the Sparkle signature check), the licence Worker under vitest in the Workers runtime,
   the app's pure files under `make unit` (the transcript parsers, forecasts, sort order and
-  licence refusals, compiled beside a check driver), and the ArmadaMCP package under `swift test`
-  against a fake fleet. The app target has no test
+  licence refusals, compiled beside a check driver), and the local packages under `swift test`:
+  ArmadaMCP against a fake fleet, ArmadaSupervisor, and BuildSlot, whose binary tests take real
+  locks in a temporary folder. The app target has no test
   bundle, and `make license-check`, which runs a minted key through the real `License.swift`, needs
   the signing key and so is not part of it.
 - **Folder discovery is not watched**: a config folder created while Armada is running does not

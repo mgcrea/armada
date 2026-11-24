@@ -79,7 +79,7 @@ const STAYS = [
   },
   {
     what: "What Armada writes",
-    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor. With voice on, it also keeps a folder per account where its <code>claude</code> records the conversation. With Archive on, it writes copies of your transcripts into an <code>Armada Archive</code> folder inside the folder you picked, and deletes copies there only if you set a retention period.",
+    body: "Only its own files: its preferences, usage history in <code>~/Library/Application Support/io.mgcrea.armada</code>, kept 30 days and deletable from Settings, and a startup script in its own temporary folder when you start a session, with the connection details beside it when that session is a supervisor. With voice on, it also keeps a folder per account where its <code>claude</code> records the conversation. With Archive on, it writes copies of your transcripts into an <code>Armada Archive</code> folder inside the folder you picked, and deletes copies there only if you set a retention period. With Build Slots on, it puts <code>swift</code> and <code>xcodebuild</code> shims in <code>~/.local/bin</code>, leaves alone any there it did not write, and removes its own when you turn it off; the queue keeps its settings in <code>~/Library/Application Support/Armada/build-slots</code> and its locks in a folder of yours under <code>/private/tmp</code>.",
   },
 ] as const;
 

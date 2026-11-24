@@ -24,7 +24,7 @@ const RULES = [
   },
   {
     title: "Five named writes where your agents keep theirs",
-    body: "<code>~/.claude*</code>, <code>~/.codex</code> and <code>~/.grok</code> are read, and written in five places only, each from something you did: the trust flag Claude Code's own \"Yes, I trust this folder\" sets, when you start a session in a saved project; one hook in each Claude Code account's <code>settings.json</code> while message delivery is on; a copied transcript when you continue a session on another account; Armada's MCP entry in a Claude Code or Codex config when you press Configure; and a message in Codex's own queue, through its <code>codex queue</code> command, when an agent you allowed to write messages a Codex thread. Everything else it writes is its own: preferences, 30 days of usage history, a startup script when you start a session or the prompt of a headless Grok Build turn, and a folder for voice's conversation when you use it.",
+    body: "<code>~/.claude*</code>, <code>~/.codex</code> and <code>~/.grok</code> are read, and written in five places only, each from something you did: the trust flag Claude Code's own \"Yes, I trust this folder\" sets, when you start a session in a saved project; one hook in each Claude Code account's <code>settings.json</code> while message delivery is on; a copied transcript when you continue a session on another account; Armada's MCP entry in a Claude Code or Codex config when you press Configure; and a message in Codex's own queue, through its <code>codex queue</code> command, when an agent you allowed to write messages a Codex thread. Everything else it writes is its own: preferences, 30 days of usage history, a startup script when you start a session or the prompt of a headless Grok Build turn, a folder for voice's conversation when you use it, and, with Build Slots on, <code>swift</code> and <code>xcodebuild</code> shims in <code>~/.local/bin</code> that it never writes over another program's.",
   },
   {
     title: "Nothing leaves the Mac",
@@ -32,7 +32,7 @@ const RULES = [
   },
   {
     title: "The supervisor is off, loopback and read-only by default",
-    body: "The one path that shows your fleet to a model is a switch you turn on yourself. It binds <code>127.0.0.1</code>, answers only a token held in the Keychain, and serves nine tools that can only read. Six that start, close, bring forward or message a session, or save or delete a Codex schedule, exist only while Allow writes is on, which it is not by default.",
+    body: "The one path that shows your fleet to a model is a switch you turn on yourself. It binds <code>127.0.0.1</code>, answers only a token held in the Keychain, and serves ten tools that can only read. Six that start, close, bring forward or message a session, or save or delete a Codex schedule, exist only while Allow writes is on, which it is not by default.",
   },
 ] as const;
 
