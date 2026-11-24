@@ -156,25 +156,16 @@ final class BuildSlots {
     return pathWarning(shellPATH: path, binDir: binDir.path(percentEncoded: false))
   }
 
-  /// The warning for `shellPATH`, or nil when a `swift` typed in that shell reaches the shim:
-  /// `binDir` is on it and no real `swift` comes first. The real one is found as the shim finds
-  /// it, so a `swift` in Homebrew's or a toolchain's folder counts as well as `/usr/bin`'s.
+  /// The warning for `shellPATH`, or nil when a `swift` typed in that shell reaches the shim.
+  /// The real one is found as the shim finds it, so a `swift` in Homebrew's or a toolchain's
+  /// folder counts as well as `/usr/bin`'s.
   nonisolated static func pathWarning(shellPATH: String, binDir: String) -> String? {
-    let entries = shellPATH.split(separator: ":", omittingEmptySubsequences: true).map(String.init)
-    let shimDir = resolved(binDir)
-    let shimIndex = entries.firstIndex { resolved($0) == shimDir }
     let real = RealTool.resolve(
       .swift, path: shellPATH, skipping: binDir, helperPath: helperPath)
     let realDir = (real as NSString).deletingLastPathComponent
-    let realIndex = entries.firstIndex { resolved($0) == resolved(realDir) }
-    if let shimIndex, realIndex.map({ shimIndex < $0 }) ?? true { return nil }
+    guard !PathCheck.shimsComeFirst(path: shellPATH, binDir: binDir, realToolDirs: [realDir])
+    else { return nil }
     return "~/.local/bin must come before \(abbreviated(realDir)) on your shell's PATH."
-  }
-
-  private nonisolated static func resolved(_ path: String) -> String {
-    guard let real = realpath(path, nil) else { return path }
-    defer { free(real) }
-    return String(cString: real)
   }
 
   private nonisolated static func abbreviated(_ path: String) -> String {

@@ -29,15 +29,19 @@ nonisolated struct MonitoredEntry: Identifiable, Equatable, Sendable {
 ///
 /// **Polled, not watched.** A `kill -9`'d holder releases its lock with no file event, and its
 /// record stays on disk, so FSEvents would never say it left. Every 2 s while the switch is on or
-/// the lock folder has anything in it; each poll is a few `open` + `F_GETLK` + small reads, plus
-/// a `sysctl` per ancestor of each entry, all off the main actor. The account stores are read on
-/// the main actor, before the hop.
+/// the last read found a holder or waiter, every 30 s otherwise: a Release build's shims queue
+/// builds while a Debug build with its switch off is the one watching, and that should still show,
+/// but slot files outlive their holders (a slot is released by closing it, never by unlinking),
+/// so files alone are no sign of activity. Each poll is a few `open` + `F_GETLK` + small reads,
+/// plus a `sysctl` per ancestor of each entry, all off the main actor. The account stores are read
+/// on the main actor, before the hop.
 @MainActor
 @Observable
 final class BuildSlotMonitor {
   static let shared = BuildSlotMonitor()
 
   static let interval: Duration = .seconds(2)
+  static let idleInterval: Duration = .seconds(30)
 
   private(set) var holders: [MonitoredEntry] = []
   private(set) var waiters: [MonitoredEntry] = []
@@ -49,10 +53,17 @@ final class BuildSlotMonitor {
 
   func start() {
     guard task == nil else { return }
+    // Ticks every 2 s and skips the read while idle, so turning the switch on is seen at the
+    // next tick rather than up to 30 s later.
     task = Task { [weak self] in
+      var lastRead: ContinuousClock.Instant?
       while !Task.isCancelled {
         guard let self else { return }
-        await self.poll()
+        let busy = BuildSlots.shared.isEnabled || !holders.isEmpty || !waiters.isEmpty
+        if busy || lastRead.map({ $0.duration(to: .now) >= Self.idleInterval }) ?? true {
+          lastRead = .now
+          await self.poll()
+        }
         try? await Task.sleep(for: Self.interval)
       }
     }
@@ -65,10 +76,8 @@ final class BuildSlotMonitor {
 
   private func poll() async {
     let slots = BuildSlots.shared
-    let reading = await Self.read(
-      enabled: slots.isEnabled, slotCount: slots.settings.slots,
-      candidates: Self.liveCandidates())
-    let next = reading ?? Reading(holders: [], waiters: [], pressure: .normal)
+    let next = await Self.read(
+      slotCount: slots.settings.slots, candidates: Self.liveCandidates())
     if holders != next.holders { holders = next.holders }
     if waiters != next.waiters { waiters = next.waiters }
     if pressure != next.pressure { pressure = next.pressure }
@@ -106,14 +115,12 @@ final class BuildSlotMonitor {
     var pressure: MemoryPressure
   }
 
-  /// The queue now, or nil when there is nothing to read: the switch is off and the lock folder
-  /// is empty. Sweeps the files dead waiters left, as the shims do.
+  /// The queue now. Sweeps the files dead waiters left, as the shims do.
   @concurrent
   private nonisolated static func read(
-    enabled: Bool, slotCount: Int, candidates: [MatchCandidate]
-  ) async -> Reading? {
+    slotCount: Int, candidates: [MatchCandidate]
+  ) async -> Reading {
     let paths = BuildSlotPaths.standard()
-    guard enabled || hasFiles(paths) else { return nil }
     let state = QueueReader.read(paths, slotCount: slotCount, sweep: true)
     // A holder's cwd is resolved before it is recorded; a Codex thread's is as Codex wrote it,
     // which may be `/tmp/…` for `/private/tmp/…`.
@@ -138,12 +145,6 @@ final class BuildSlotMonitor {
       holders: state.holders.map { entry($0, holding: true) },
       waiters: state.waiters.map { entry($0, holding: false) },
       pressure: MemoryPressure.current())
-  }
-
-  private nonisolated static func hasFiles(_ paths: BuildSlotPaths) -> Bool {
-    [paths.slotsDir, paths.waitingDir].contains { dir in
-      !((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).isEmpty
-    }
   }
 
   private nonisolated static func resolved(_ path: String) -> String {
