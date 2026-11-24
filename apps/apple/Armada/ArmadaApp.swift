@@ -224,6 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before the gate: projects are the person's own list, and stay whatever the licence
     // says. See `ProjectStore`.
     ProjectStore.shared.load()
+    // Not behind the licence either: the shims queue builds whether Armada watches or not.
+    // Installs nothing unless the switch is on and this is the Release bundle.
+    BuildSlots.shared.launch()
     // The watchers start only if a key verifies: at launch there is never a trial
     // yet, since one is started by hand. See `EntitlementMonitor`.
     EntitlementMonitor.shared.apply()

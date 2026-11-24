@@ -62,7 +62,7 @@ public enum WaitMessages {
   /// `swift test`, `xcodebuild test`. xcodebuild's action is read as `Invocation` reads it, so
   /// an option's value (`-scheme build`) is never taken for it, and no action is its default,
   /// `build`. Anything else shows its first non-option argument.
-  private static func command(_ record: SlotRecord) -> String {
+  public static func command(_ record: SlotRecord) -> String {
     guard let first = record.argv.first else { return record.tool }
     let tool = (first as NSString).lastPathComponent
     let arguments = Array(record.argv.dropFirst())
