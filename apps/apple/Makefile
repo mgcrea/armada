@@ -97,13 +97,15 @@ build: sparkle ## Build the app (CONFIG=Debug by default; the root's build-relea
 # The local packages' own suites. ArmadaMCP: its tool table, run against a fake fleet with no
 # app, no config folder and no bound port. ArmadaSupervisor: the voice supervisor's stream-json
 # decoding, argument lockdown, sentence chunking and shortcut rules, with no microphone, no
-# panel and no spawned `claude`. `swift test` rather than `xcodebuild test`, because both
-# packages are plain SwiftPM and the app target has no test bundle — a protocol and a pure
-# reducer are what moved everything worth testing out of it. The app's own pure files are
+# panel and no spawned `claude`. BuildSlot: which invocations queue and the holder label, with
+# no slot taken. `swift test` rather than `xcodebuild test`, because the packages are plain
+# SwiftPM and the app target has no test bundle — a protocol and a pure reducer are what moved
+# everything worth testing out of it. The app's own pure files are
 # checked separately, by `unit` below.
 test: ## Run the local Swift package tests
 	swift test --package-path Packages/ArmadaMCP
 	swift test --package-path Packages/ArmadaSupervisor
+	swift test --package-path Packages/BuildSlot
 
 # `-f` matches this recipe's own shell as well as the app, which is why the match is
 # anchored on the launched binary's absolute path: that shell's command line starts
@@ -159,7 +161,8 @@ clean: ## Remove build products
 SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaMCP/Sources \
 	Packages/ArmadaMCP/Tests Packages/ArmadaSupervisor/Package.swift \
 	Packages/ArmadaSupervisor/Sources Packages/ArmadaSupervisor/Tests \
-	Packages/ArmadaSpeech/Package.swift Packages/ArmadaSpeech/Sources
+	Packages/ArmadaSpeech/Package.swift Packages/ArmadaSpeech/Sources \
+	Packages/BuildSlot/Package.swift Packages/BuildSlot/Sources Packages/BuildSlot/Tests
 
 # swift-format's behaviour follows whichever Xcode is selected, so a toolchain
 # bump can reformat the whole tree with no change to `.swift-format` and turn the
