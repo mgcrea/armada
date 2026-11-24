@@ -10,30 +10,33 @@ func tempPaths() -> BuildSlotPaths {
     settingsFile: root.appendingPathComponent("settings.json"))
 }
 
-/// Takes a POSIX record lock on `argv[2]` with `lockf` (fcntl `F_SETLK`, the family the tool
-/// uses, unlike `flock`). In `hold` mode it writes the record JSON from `argv[3]` when given,
-/// prints `locked`, then keeps the lock for 30 s; in `try` mode it prints whether it got the lock
-/// and exits, which releases it. `{pid}` in the path and a record `pid` of 0 become the helper's
-/// own pid, which the test cannot know before it starts.
+/// Takes a POSIX record lock on each path with `lockf` (fcntl `F_SETLK`, the family the tool
+/// uses, unlike `flock`). Arguments after the mode are paths, each followed by its record JSON
+/// when it has one. In `hold` mode it writes each record, prints `locked`, then keeps the locks
+/// for 30 s; in `try` mode it prints whether it got the first lock and exits, which releases it.
+/// `{pid}` in a path and a record `pid` of 0 become the helper's own pid, which the test cannot
+/// know before it starts.
 private let lockScript = """
   import fcntl, json, os, sys, time
-  mode, path = sys.argv[1], sys.argv[2].replace('{pid}', str(os.getpid()))
-  f = open(path, 'a+')
-  try:
-      fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-  except OSError:
-      print('busy', flush=True)
-      sys.exit(0)
-  if mode == 'try':
-      print('locked', flush=True)
-      sys.exit(0)
-  if len(sys.argv) > 3:
-      record = json.loads(sys.argv[3])
-      if record['pid'] == 0:
-          record['pid'] = os.getpid()
-      f.truncate(0)
-      f.write(json.dumps(record))
-      f.flush()
+  mode, rest, files = sys.argv[1], sys.argv[2:], []
+  for i in range(0, len(rest), 2):
+      f = open(rest[i].replace('{pid}', str(os.getpid())), 'a+')
+      files.append(f)
+      try:
+          fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      except OSError:
+          print('busy', flush=True)
+          sys.exit(0)
+      if mode == 'try':
+          print('locked', flush=True)
+          sys.exit(0)
+      if i + 1 < len(rest):
+          record = json.loads(rest[i + 1])
+          if record['pid'] == 0:
+              record['pid'] = os.getpid()
+          f.truncate(0)
+          f.write(json.dumps(record))
+          f.flush()
   print('locked', flush=True)
   time.sleep(30)
   """
@@ -63,6 +66,16 @@ func holdLock(_ url: URL, record: SlotRecord?) -> Process {
   var arguments = ["hold", url.path]
   if let record { arguments.append(String(decoding: try! record.encoded(), as: UTF8.self)) }
   let (process, line) = runLockScript(arguments)
+  precondition(line == "locked", "lock helper said \(line)")
+  return process
+}
+
+/// One other process holding every file in `locks`, each with its record.
+func holdLocks(_ locks: [(URL, SlotRecord)]) -> Process {
+  let arguments = locks.flatMap { url, record in
+    [url.path, String(decoding: try! record.encoded(), as: UTF8.self)]
+  }
+  let (process, line) = runLockScript(["hold"] + arguments)
   precondition(line == "locked", "lock helper said \(line)")
   return process
 }

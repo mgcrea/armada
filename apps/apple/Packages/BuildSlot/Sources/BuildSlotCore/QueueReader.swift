@@ -33,22 +33,28 @@ public enum QueueReader {
   static let staleTempAge: TimeInterval = 60
 
   /// The queue now. Slots run from 0 to the configured count, or past it while a slot file
-  /// above the count exists (a holder from before the count was lowered). A slot is held only
-  /// when `F_GETLK` names the pid its record names: a free lock is a free slot whatever the file
-  /// says, and a lock whose record names someone else (being written, or torn) is neither.
+  /// above the count exists (a holder from before the count was lowered), but never past the
+  /// largest count settings allow: a file named beyond it is no slot, and a name like
+  /// `9223372036854775807.lock` would otherwise overflow, or cost every read billions of opens.
+  /// A slot is held only when `F_GETLK` names the pid its record names: a free lock is a free
+  /// slot whatever the file says, and a lock whose record names someone else (being written, or
+  /// torn) is neither.
   ///
   /// Files this process holds are skipped, never opened, since closing a descriptor on them
   /// would drop the lock, and `F_GETLK` would not report them anyway; the caller knows its own
-  /// state. `ownPID` also skips that pid's waiting and temp files. With `sweep`, a waiting file
-  /// whose lock is free (its waiter died) is deleted, and so is a temp file older than a minute
-  /// whose lock is free.
+  /// state. `ownPID` also skips that pid's waiting and temp files. A pid holding a slot is no
+  /// waiter, though its waiting file stays locked for a moment after it takes the slot. With
+  /// `sweep`, a waiting file whose lock is free (its waiter died) is deleted, and so is a temp
+  /// file older than a minute whose lock is free.
   public static func read(
     _ paths: BuildSlotPaths, slotCount: Int, ownPID: Int32? = nil, now: Date = .now,
     sweep: Bool = true
   ) -> QueueState {
     var holders: [QueueEntry] = []
     var freeSlots: [Int] = []
-    let highest = numberedFiles(in: paths.slotsDir).map(\.number).max() ?? -1
+    let highest =
+      numberedFiles(in: paths.slotsDir).map(\.number)
+      .filter { $0 < BuildSlotSettings.slotRange.upperBound }.max() ?? -1
     for slot in 0..<max(slotCount, highest + 1) {
       let url = paths.slotFile(slot)
       if LockFile.isHeldHere(url) { continue }
@@ -63,13 +69,16 @@ public enum QueueReader {
     }
 
     var waiters: [QueueEntry] = []
+    let holderPIDs = Set(holders.map(\.record.pid))
     for (number, url) in numberedFiles(in: paths.waitingDir) {
       if Int32(exactly: number) == ownPID || LockFile.isHeldHere(url) { continue }
       switch probe(url) {
       case .free:
         if sweep { unlinkIfUnchanged(url) }
       case .held(let record):
-        waiters.append(QueueEntry(slot: nil, record: record))
+        if !holderPIDs.contains(record.pid) {
+          waiters.append(QueueEntry(slot: nil, record: record))
+        }
       case .unknownHolder:
         break
       }
@@ -117,13 +126,14 @@ public enum QueueReader {
     return data
   }
 
-  /// `N.lock` files in `dir`, by their number.
+  /// `N.lock` files in `dir`, by their number, spelled as the tool writes it: `+3.lock` and
+  /// `03.lock` are not slot 3.
   private static func numberedFiles(in dir: URL) -> [(number: Int, url: URL)] {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
     return names.compactMap { name in
-      guard name.hasSuffix(".lock"), let number = Int(name.dropLast(5)), number >= 0 else {
-        return nil
-      }
+      guard name.hasSuffix(".lock"), let number = Int(name.dropLast(5)), number >= 0,
+        "\(number).lock" == name
+      else { return nil }
       return (number, dir.appendingPathComponent(name))
     }
   }

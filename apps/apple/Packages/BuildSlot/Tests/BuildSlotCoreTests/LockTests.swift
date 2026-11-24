@@ -120,6 +120,38 @@ struct LockTests {
     #expect(state.freeSlots == [0, 1])
   }
 
+  /// A name past the largest slot count, or spelled other than `String(n)`, is no slot: read
+  /// ignores it. `Int.max` once trapped on `highest + 1`, and 10⁸ meant 10⁸ opens a read.
+  @Test func oddSlotNamesAreIgnored() throws {
+    let paths = try prepared()
+    for name in ["9223372036854775807.lock", "100000000.lock", "+3.lock", "03.lock", "8.lock"] {
+      try Data().write(to: paths.slotsDir.appendingPathComponent(name))
+    }
+    let holder = holdLock(paths.slotFile(7), record: record(pid: 0))
+    defer { stop(holder) }
+    let start = Date.now
+    let state = QueueReader.read(paths, slotCount: 2)
+    #expect(Date.now.timeIntervalSince(start) < 1)
+    #expect(state.holders.map(\.slot) == [7])
+    #expect(state.freeSlots == [0, 1])
+  }
+
+  /// A waiter takes its slot before removing its waiting file, so for a moment one pid has both.
+  @Test func aHolderIsNoWaiter() throws {
+    let paths = try prepared()
+    let both = holdLocks([
+      (paths.slotFile(0), record(pid: 0)),
+      (
+        paths.waitingDir.appendingPathComponent("{pid}.lock"),
+        record(pid: 0, startedAt: nil, waitingSince: .now)
+      ),
+    ])
+    defer { stop(both) }
+    let state = QueueReader.read(paths, slotCount: 1)
+    #expect(state.holders.map(\.record.pid) == [both.processIdentifier])
+    #expect(state.waiters.isEmpty)
+  }
+
   @Test func sweepsDeadWaiter() throws {
     let paths = try prepared()
     let dead = paths.waitingFile(pid: 123)
