@@ -17,8 +17,12 @@ struct InvocationTests {
     #expect(queues(.swift, "test --package-path Packages/X") == true)
   }
 
-  @Test func swiftOptionBeforeSubcommandQueues() {
-    #expect(queues(.swift, "--package-path P test --filter Foo") == true)
+  // Measured 2026-11-24: `swift --package-path /x build` fails with "unknown argument:
+  // '--package-path'", and `swift -c release build` with "option '-c' is not supported by
+  // 'swift'". The driver dispatches a subcommand only as the first argument, so this builds
+  // nothing.
+  @Test func swiftOptionBeforeSubcommandPassesThrough() {
+    #expect(queues(.swift, "--package-path P test --filter Foo") == false)
   }
 
   @Test func swiftShowBinPathPassesThrough() {

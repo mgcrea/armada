@@ -23,24 +23,11 @@ public enum Invocation {
     "--help", "-h", "--version", "--show-bin-path",
   ]
 
-  /// SwiftPM options that take their value as the next argument, so `--package-path P test`
-  /// reads `test` as the subcommand and not `P`. `--opt=value` needs no entry.
-  private static let swiftValueOptions: Set<String> = [
-    "--package-path", "--scratch-path", "--build-path", "--cache-path", "--config-path",
-    "--security-path", "--swift-sdks-path", "--toolset", "--pkg-config-path",
-    "--configuration", "-c", "--triple", "--sdk", "--swift-sdk", "--arch", "--jobs", "-j",
-    "-Xswiftc", "-Xcc", "-Xcxx", "-Xlinker", "--netrc-file", "--default-registry-url",
-  ]
-
+  /// The swift driver dispatches a subcommand only when it is the first argument:
+  /// `swift --package-path P build` and `swift -c release build` are errors, not builds.
   private static func swiftQueues(_ arguments: [String]) -> Bool {
     if arguments.contains(where: swiftQueryFlags.contains) { return false }
-    var index = arguments.startIndex
-    while index < arguments.endIndex {
-      let argument = arguments[index]
-      if !argument.hasPrefix("-") { return argument == "build" || argument == "test" }
-      index += swiftValueOptions.contains(argument) ? 2 : 1
-    }
-    return false
+    return arguments.first == "build" || arguments.first == "test"
   }
 
   // MARK: xcodebuild
