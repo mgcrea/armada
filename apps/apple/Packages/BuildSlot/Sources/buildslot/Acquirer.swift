@@ -37,7 +37,7 @@ enum Acquirer {
     var lastStep: AcquireStep?
     var shownHolders: Set<Int32>?
     var lastPrinted = Date.distantPast
-    var capAnnounced = false
+    var announcedCaps: Set<AnywayReason> = []
 
     while true {
       let now = Date.now
@@ -90,9 +90,9 @@ enum Acquirer {
         }
 
       case .takeAnyway(let slot, let reason):
-        // Once: a slot lost to another shim brings this case back on the next poll.
-        if !capAnnounced {
-          capAnnounced = true
+        // Once per reason: a slot lost to another shim brings this case back on the next poll,
+        // and a memory cap announced first must not silence the slot cap's line after it.
+        if announcedCaps.insert(reason).inserted {
           switch reason {
           case .memoryCap: say(WaitMessages.memoryCapReached(pressure, after: memoryWaited))
           case .slotCap: say(WaitMessages.slotCapReached(after: now.timeIntervalSince(start)))

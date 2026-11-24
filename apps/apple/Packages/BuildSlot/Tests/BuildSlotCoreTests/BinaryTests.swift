@@ -14,10 +14,13 @@ struct BinaryTests {
     .appending(path: "buildslot").path
 
   /// One test's lock folder, settings and a working folder outside any git checkout, so the
-  /// same-tree nesting rule never lets one test process through behind another.
-  struct Sandbox {
+  /// same-tree nesting rule never lets one test process through behind another. Removed once
+  /// the test and every `Run` started in it are done with it.
+  final class Sandbox {
     let root: URL
     var environment: [String: String]
+
+    deinit { try? FileManager.default.removeItem(at: root) }
 
     init(lockDir: String? = nil) {
       root = FileManager.default.temporaryDirectory
@@ -46,8 +49,11 @@ struct BinaryTests {
     let stderrPath: String
     private(set) var status: Int32?
     private(set) var endedAt: Date?
+    /// Kept so the folder holding this run's output outlives it.
+    private let sandbox: Sandbox
 
     init(_ arguments: [String], sandbox: Sandbox, cwd: String? = nil) {
+      self.sandbox = sandbox
       let id = UUID().uuidString
       stdoutPath = sandbox.path("out-\(id)")
       stderrPath = sandbox.path("err-\(id)")
@@ -173,7 +179,7 @@ struct BinaryTests {
 
   @Test func secondWaitsAndSaysWhy() throws {
     let sandbox = Sandbox()
-    let repo = "/tmp/a-repo"
+    let repo = sandbox.path("a-repo")
     try FileManager.default.createDirectory(atPath: repo, withIntermediateDirectories: true)
     let a = try holder("sleep 2", sandbox: sandbox, cwd: repo)
     let b = try waiter("exit 0", sandbox: sandbox)
@@ -276,7 +282,7 @@ struct BinaryTests {
   // MARK: Passing through
 
   @Test func nestedPassesThrough() {
-    var sandbox = Sandbox()
+    let sandbox = Sandbox()
     sandbox.environment["BUILDSLOT"] = Self.binary
     let run = Run(shell(#""$BUILDSLOT" run -- /bin/echo inner"#), sandbox: sandbox)
     #expect(run.wait(timeout: 5))
@@ -295,7 +301,7 @@ struct BinaryTests {
   }
 
   @Test func offPassesThrough() throws {
-    var sandbox = Sandbox()
+    let sandbox = Sandbox()
     let a = try holder("sleep 30", sandbox: sandbox)
     sandbox.environment["ARMADA_BUILDSLOT"] = "off"
     let run = Run(shell("exit 4"), sandbox: sandbox)
