@@ -80,6 +80,7 @@ final class BuildSlots {
     if enabled {
       if installsShims { install() }
       checkPath()
+      BuildSlotMonitor.shared.nudge()
     } else {
       uninstall()
     }

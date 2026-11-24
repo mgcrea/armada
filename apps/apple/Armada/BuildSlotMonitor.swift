@@ -12,12 +12,21 @@ nonisolated struct MonitoredEntry: Identifiable, Equatable, Sendable {
   var isHolding: Bool
   /// A waiter while a slot stands free: what holds it back is memory, not the queue.
   let waitsOnMemory: Bool
+  /// Started under a `codex` process. With no session named, more than one Codex thread could
+  /// own it, and it is still a Codex session's, not a terminal's.
+  let viaCodex: Bool
 
   /// When it took its slot, or when it started waiting.
   var since: Date? { record.startedAt ?? record.waitingSince }
 
   /// `swift test`, `xcodebuild build`.
   var command: String { WaitMessages.command(record) }
+
+  /// Who started it, for a line that names every entry: the session, else "a Codex session" or
+  /// "Terminal".
+  var ownerName: String {
+    session?.title ?? (viaCodex ? "a Codex session" : "Terminal")
+  }
 
   /// `40 s`, `2 min`; empty for a record carrying neither date.
   func age(at now: Date) -> String {
@@ -32,7 +41,8 @@ nonisolated struct MonitoredEntry: Identifiable, Equatable, Sendable {
 /// the last read found a holder or waiter, every 30 s otherwise: a Release build's shims queue
 /// builds while a Debug build with its switch off is the one watching, and that should still show,
 /// but slot files outlive their holders (a slot is released by closing it, never by unlinking),
-/// so files alone are no sign of activity. Each poll is a few `open` + `F_GETLK` + small reads,
+/// so files alone are no sign of activity. Turning the switch on calls `nudge()`, so the idle
+/// sleep never delays the first read after it. Each poll is a few `open` + `F_GETLK` + small reads,
 /// plus a `sysctl` per ancestor of each entry, all off the main actor. The account stores are read
 /// on the main actor, before the hop.
 @MainActor
@@ -48,25 +58,41 @@ final class BuildSlotMonitor {
   private(set) var pressure = MemoryPressure.normal
 
   private var task: Task<Void, Never>?
+  /// The sleep between reads, cancelled by `nudge()`.
+  private var sleeper: Task<Void, Never>?
+  /// Set by `nudge()`: one that comes while a read runs skips the sleep after it.
+  private var nudged = false
 
   private init() {}
 
   func start() {
     guard task == nil else { return }
-    // Ticks every 2 s and skips the read while idle, so turning the switch on is seen at the
-    // next tick rather than up to 30 s later.
     task = Task { [weak self] in
-      var lastRead: ContinuousClock.Instant?
       while !Task.isCancelled {
         guard let self else { return }
+        await self.poll()
         let busy = BuildSlots.shared.isEnabled || !holders.isEmpty || !waiters.isEmpty
-        if busy || lastRead.map({ $0.duration(to: .now) >= Self.idleInterval }) ?? true {
-          lastRead = .now
-          await self.poll()
-        }
-        try? await Task.sleep(for: Self.interval)
+        await self.rest(for: busy ? Self.interval : Self.idleInterval)
       }
     }
+  }
+
+  /// Reads the queue now rather than at the end of the current sleep.
+  func nudge() {
+    nudged = true
+    sleeper?.cancel()
+  }
+
+  private func rest(for duration: Duration) async {
+    guard !nudged else {
+      nudged = false
+      return
+    }
+    let sleep = Task { _ = try? await Task.sleep(for: duration) }
+    sleeper = sleep
+    await sleep.value
+    sleeper = nil
+    nudged = false
   }
 
   /// The holder or waiter a session started, holding first.
@@ -131,15 +157,17 @@ final class BuildSlotMonitor {
     }
     func entry(_ queued: QueueEntry, holding: Bool) -> MonitoredEntry {
       let ancestors = ProcessTree.ancestors(of: queued.record.pid)
+      let names = ancestors.compactMap(ProcessTree.executableName)
       let session = SessionMatch.match(
-        ancestors: ancestors, ancestorNames: ancestors.compactMap(ProcessTree.executableName),
-        holderCwd: queued.record.cwd, candidates: resolvedCandidates)
+        ancestors: ancestors, ancestorNames: names, holderCwd: queued.record.cwd,
+        candidates: resolvedCandidates)
       let original = session.flatMap { match in
         candidates.first { $0.id == match.id && $0.vendor == match.vendor }
       }
       return MonitoredEntry(
         id: queued.record.pid, slot: queued.slot, record: queued.record, session: original,
-        isHolding: holding, waitsOnMemory: !holding && !state.freeSlots.isEmpty)
+        isHolding: holding, waitsOnMemory: !holding && !state.freeSlots.isEmpty,
+        viaCodex: names.contains("codex"))
     }
     return Reading(
       holders: state.holders.map { entry($0, holding: true) },

@@ -73,10 +73,8 @@ struct BuildSlotsPane: View {
         if monitor.holders.isEmpty && monitor.waiters.isEmpty {
           Text("Nothing is building.").foregroundStyle(.secondary)
         } else {
-          TimelineView(.periodic(from: .now, by: 1)) { context in
-            ForEach(monitor.holders + monitor.waiters) { entry in
-              BuildSlotEntryRow(entry: entry, now: context.date)
-            }
+          ForEach(monitor.holders + monitor.waiters) { entry in
+            BuildSlotEntryRow(entry: entry)
           }
         }
       } header: {
@@ -100,9 +98,11 @@ struct BuildSlotsPane: View {
 }
 
 /// One holder or waiter: who, what, how long, and for which session.
+///
+/// The timeline wraps the age alone, so the seconds tick redraws one `Text` per entry rather than
+/// the whole queue.
 private struct BuildSlotEntryRow: View {
   let entry: MonitoredEntry
-  let now: Date
 
   private var state: String {
     // As stored, the number the shim prints in "got slot N".
@@ -117,13 +117,20 @@ private struct BuildSlotEntryRow: View {
         Spacer()
         Text(state).foregroundStyle(entry.isHolding ? .primary : .secondary)
       }
-      Text(
-        [entry.command, entry.age(at: now), entry.session?.title ?? "Terminal"]
-          .filter { !$0.isEmpty }
-          .joined(separator: " · ")
-      )
+      HStack(spacing: 4) {
+        Text(entry.command)
+        if entry.since != nil {
+          Text("·")
+          TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(entry.age(at: context.date)).monospacedDigit()
+          }
+        }
+        Text("·")
+        Text(entry.ownerName)
+      }
       .font(.caption)
       .foregroundStyle(.secondary)
+      .lineLimit(1)
     }
   }
 }
