@@ -19,6 +19,8 @@ public struct BuildSlotSettings: Codable, Equatable, Sendable {
 
   public static let defaults = BuildSlotSettings()
   public static let slotRange = 1...8
+  /// A day. A cap past it is no cap at all, and a bounded one keeps every duration printable.
+  public static let capRange = 0...86_400
 
   public init() {}
 
@@ -36,9 +38,13 @@ public struct BuildSlotSettings: Codable, Equatable, Sendable {
     let rule = (try? container.decodeIfPresent(String.self, forKey: .memoryRule)) ?? nil
     memoryRule = rule.flatMap(MemoryRule.init(rawValue:)) ?? defaults.memoryRule
     let memoryCap = (try? container.decodeIfPresent(Int.self, forKey: .memoryWaitCapSeconds))
-    memoryWaitCapSeconds = max(0, memoryCap ?? defaults.memoryWaitCapSeconds)
+    memoryWaitCapSeconds = Self.clampCap(memoryCap ?? defaults.memoryWaitCapSeconds)
     let slotCap = (try? container.decodeIfPresent(Int.self, forKey: .slotWaitCapSeconds))
-    slotWaitCapSeconds = max(0, slotCap ?? defaults.slotWaitCapSeconds)
+    slotWaitCapSeconds = Self.clampCap(slotCap ?? defaults.slotWaitCapSeconds)
+  }
+
+  private static func clampCap(_ seconds: Int) -> Int {
+    min(max(seconds, capRange.lowerBound), capRange.upperBound)
   }
 
   public static func load(from url: URL) -> BuildSlotSettings {

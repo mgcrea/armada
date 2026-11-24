@@ -49,6 +49,30 @@ struct WaitMessagesTests {
         == "buildslot: waiting for a slot (2 of 2 busy). Queued, not hung.")
   }
 
+  @Test func holderWithoutStartTimeHasNoAge() {
+    var unknownAge = valise
+    unknownAge.startedAt = nil
+    #expect(
+      WaitMessages.waitingForSlot(holders: [unknownAge], busy: 1, total: 1, now: now)
+        == "buildslot: waiting for a slot (1 of 1 busy), held by valise/land-gate-f764fa9 "
+        + "(pid 17804, swift test). Queued, not hung.")
+  }
+
+  // The action comes from Invocation's parsing, so an option's value is never taken for it.
+  @Test(arguments: [
+    (["xcodebuild", "-scheme", "A", "test"], "xcodebuild test"),
+    (["/usr/bin/xcodebuild", "-project", "A.xcodeproj", "-scheme", "A"], "xcodebuild build"),
+    (["xcodebuild", "-scheme", "build", "archive"], "xcodebuild archive"),
+    (["swift"], "swift"),
+  ])
+  func commandShown(argv: [String], text: String) {
+    let holder = holder("a", pid: 1, argv: argv, age: 5)
+    #expect(
+      WaitMessages.waitingForSlot(holders: [holder], busy: 1, total: 1, now: now)
+        == "buildslot: waiting for a slot (1 of 1 busy), held by a (pid 1, \(text), 5 s). "
+        + "Queued, not hung.")
+  }
+
   @Test func waitingForMemory() {
     #expect(
       WaitMessages.waitingForMemory(.warning, remaining: 480)
@@ -80,7 +104,8 @@ struct WaitMessagesTests {
 
   @Test(arguments: [
     (0.0, "0 s"), (40.4, "40 s"), (59.9, "59 s"), (60, "1 min"), (120, "2 min"),
-    (192, "3 min 12 s"), (3600, "1 h"), (3900, "1 h 5 min"), (-3, "0 s"),
+    (192, "3 min 12 s"), (3600, "1 h"), (3900, "1 h 5 min"), (-3, "0 s"), (.infinity, "0 s"),
+    (.nan, "0 s"), (1e300, "24 h"),
   ])
   func duration(seconds: Double, text: String) {
     #expect(WaitMessages.duration(seconds) == text)

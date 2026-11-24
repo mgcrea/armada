@@ -33,6 +33,12 @@ struct SettingsTests {
     #expect(settings.slotWaitCapSeconds == 0)
   }
 
+  @Test func clampsCapsAtADay() throws {
+    let settings = try load(#"{"memoryWaitCapSeconds":900000,"slotWaitCapSeconds":9000000000}"#)
+    #expect(settings.memoryWaitCapSeconds == 86_400)
+    #expect(settings.slotWaitCapSeconds == 86_400)
+  }
+
   @Test func unknownRuleIsWarning() throws {
     #expect(try load(#"{"memoryRule":"sometimes"}"#).memoryRule == .warning)
   }

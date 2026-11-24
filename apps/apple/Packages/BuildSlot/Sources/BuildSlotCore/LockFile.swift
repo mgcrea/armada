@@ -55,7 +55,10 @@ public final class LockFile {
   }
 
   /// Removes the file, then closes, which drops the lock. In that order, so no reader finds the
-  /// file free with this process's record still in it.
+  /// file free with this process's record still in it. For waiting files only: a slot is
+  /// released by closing (deinit, or the process exiting), never by unlinking. A reader that
+  /// opened the old inode could lock it while a newcomer locks a fresh file at the same path,
+  /// and two processes would both hold that slot.
   public func unlinkAndClose() {
     guard fd >= 0 else { return }
     unlink(path.path)

@@ -11,10 +11,11 @@ struct AcquirePolicyTests {
 
   private func decide(
     _ state: QueueState, rule: MemoryRule = .warning, pressure: MemoryPressure = .normal,
-    waitedForSlot: Double = 0, waitedForMemory: Double = 0
+    slots: Int = 2, waitedForSlot: Double = 0, waitedForMemory: Double = 0
   ) -> AcquireStep {
     var settings = BuildSlotSettings.defaults
     settings.memoryRule = rule
+    settings.slots = slots
     return AcquirePolicy.decide(
       state: state, settings: settings, pressure: pressure, waitedForSlot: waitedForSlot,
       waitedForMemory: waitedForMemory)
@@ -30,6 +31,11 @@ struct AcquirePolicyTests {
 
   @Test func waitsOnMemoryWhileOthersBuild() {
     #expect(decide(state(holders: 1, free: [1]), pressure: .warning) == .waitForMemory(.warning))
+  }
+
+  // A slot locked by a holder whose record cannot be read is still another build running.
+  @Test func unreadableHolderStillCountsForMemory() {
+    #expect(decide(state(holders: 0, free: [1]), pressure: .warning) == .waitForMemory(.warning))
   }
 
   @Test func memoryCapRunsAnyway() {

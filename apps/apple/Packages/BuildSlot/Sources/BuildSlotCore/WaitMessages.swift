@@ -35,9 +35,11 @@ public enum WaitMessages {
     prefix + "\(reason); running unqueued."
   }
 
-  /// `40 s`, `2 min`, `3 min 12 s`, `1 h 5 min`, in whole seconds rounded down.
+  /// `40 s`, `2 min`, `3 min 12 s`, `1 h 5 min`, in whole seconds rounded down. A value that is
+  /// not finite reads as 0, and one past a day as a day, so a clock jump or a corrupt record
+  /// never traps converting to `Int`.
   public static func duration(_ t: TimeInterval) -> String {
-    let seconds = t.isFinite ? max(0, Int(t)) : 0
+    let seconds = t.isFinite ? Int(min(max(0, t), 86_400)) : 0
     if seconds < 60 { return "\(seconds) s" }
     if seconds < 3600 {
       let rest = seconds % 60
@@ -47,23 +49,27 @@ public enum WaitMessages {
     return minutes == 0 ? "\(seconds / 3600) h" : "\(seconds / 3600) h \(minutes) min"
   }
 
-  /// `valise/land-gate-f764fa9 (pid 17804, swift test, 2 min)`. A record without a start time
-  /// leaves the age out rather than guess one.
-  private static func describe(_ record: SlotRecord, now: Date) -> String {
+  /// `valise/land-gate-f764fa9 (pid 17804, swift test, 2 min)`, aged from `startedAt`, or from
+  /// `waitingSince` for a waiter. A record with neither leaves the age out rather than guess one.
+  public static func describe(_ record: SlotRecord, now: Date) -> String {
     var details = ["pid \(record.pid)", command(record)]
-    if let startedAt = record.startedAt {
-      details.append(duration(now.timeIntervalSince(startedAt)))
+    if let since = record.startedAt ?? record.waitingSince {
+      details.append(duration(now.timeIntervalSince(since)))
     }
     return "\(record.label) (\(details.joined(separator: ", ")))"
   }
 
-  /// The tool's name and its first non-option argument: `swift test`, `xcodebuild test`.
+  /// `swift test`, `xcodebuild test`. xcodebuild's action is read as `Invocation` reads it, so
+  /// an option's value (`-scheme build`) is never taken for it, and no action is its default,
+  /// `build`. Anything else shows its first non-option argument.
   private static func command(_ record: SlotRecord) -> String {
     guard let first = record.argv.first else { return record.tool }
     let tool = (first as NSString).lastPathComponent
-    guard let action = record.argv.dropFirst().first(where: { !$0.hasPrefix("-") }) else {
-      return tool
+    let arguments = Array(record.argv.dropFirst())
+    if tool == Tool.xcodebuild.rawValue {
+      return "\(tool) \(Invocation.xcodebuildAction(arguments))"
     }
+    guard let action = arguments.first(where: { !$0.hasPrefix("-") }) else { return tool }
     return "\(tool) \(action)"
   }
 

@@ -16,7 +16,9 @@ public enum AnywayReason: Equatable, Sendable {
 public enum AcquirePolicy {
   /// The memory rule only holds a build back while a slot is free and another build holds one:
   /// with nothing building, waiting cannot relieve the pressure, so the first build always
-  /// starts. Both caps exist so that chronic pressure or a hung holder never blocks forever.
+  /// starts. A slot below the count that is neither free nor readable as a holder (its record
+  /// torn or unreadable) still counts as another build. Both caps exist so that chronic
+  /// pressure or a hung holder never blocks forever.
   public static func decide(
     state: QueueState, settings: BuildSlotSettings, pressure: MemoryPressure,
     waitedForSlot: TimeInterval, waitedForMemory: TimeInterval
@@ -25,7 +27,8 @@ public enum AcquirePolicy {
       return waitedForSlot < TimeInterval(settings.slotWaitCapSeconds)
         ? .waitForSlot : .takeAnyway(slot: nil, reason: .slotCap)
     }
-    guard !state.holders.isEmpty, pressure.blocks(under: settings.memoryRule) else {
+    let anotherHeld = !state.holders.isEmpty || state.freeSlots.count < settings.slots
+    guard anotherHeld, pressure.blocks(under: settings.memoryRule) else {
       return .take(slot: slot)
     }
     return waitedForMemory < TimeInterval(settings.memoryWaitCapSeconds)

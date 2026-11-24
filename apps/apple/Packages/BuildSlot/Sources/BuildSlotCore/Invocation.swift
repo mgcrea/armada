@@ -47,6 +47,10 @@ public enum Invocation {
     "-showBuildSettings", "-list", "-version", "-exportArchive", "-resolvePackageDependencies",
     "-showsdks", "-showdestinations", "-showTestPlans", "-create-xcframework",
     "-checkFirstLaunchStatus", "-runFirstLaunch", "-help", "-usage",
+    // Platform downloads run to gigabytes and compile nothing; localization export and import
+    // only read strings out of a build, which no queue needs to hold back.
+    "-downloadPlatform", "-downloadAllPlatforms", "-importPlatform", "-exportLocalizations",
+    "-importLocalizations",
   ]
 
   /// Options whose next argument is their value, so `-scheme build test` is the action `test`
@@ -67,6 +71,23 @@ public enum Invocation {
     if arguments.contains(where: { $0.contains("WebDriverAgent") }) { return false }
     if arguments.contains(where: xcodebuildQueryFlags.contains) { return false }
 
+    let actions = xcodebuildActions(arguments)
+    if actions.contains(where: xcodebuildBuildingActions.contains) { return true }
+    // No known action means xcodebuild's default, `build`. A bare word it does not know (the
+    // value of an option missing from the table) is not taken for an action that builds
+    // nothing, so a gap in the table errs towards queueing.
+    return !actions.contains(where: xcodebuildIdleActions.contains)
+  }
+
+  /// The action a waiting line names for an xcodebuild holder: the first that builds, else
+  /// the first bare word, else xcodebuild's default, `build`.
+  static func xcodebuildAction(_ arguments: [String]) -> String {
+    let actions = xcodebuildActions(arguments)
+    return actions.first(where: xcodebuildBuildingActions.contains) ?? actions.first ?? "build"
+  }
+
+  /// The bare words left once options, their values and `KEY=VALUE` settings are skipped.
+  private static func xcodebuildActions(_ arguments: [String]) -> [String] {
     var actions: [String] = []
     var index = arguments.startIndex
     while index < arguments.endIndex {
@@ -78,11 +99,6 @@ public enum Invocation {
       if !argument.contains("=") { actions.append(argument) }  // `KEY=VALUE` is a build setting
       index += 1
     }
-
-    if actions.contains(where: xcodebuildBuildingActions.contains) { return true }
-    // No known action means xcodebuild's default, `build`. A bare word it does not know (the
-    // value of an option missing from the table) is not taken for an action that builds
-    // nothing, so a gap in the table errs towards queueing.
-    return !actions.contains(where: xcodebuildIdleActions.contains)
+    return actions
   }
 }

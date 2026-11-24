@@ -84,6 +84,9 @@ struct InvocationTests {
     "-showBuildSettings -scheme A", "-list", "-version", "-exportArchive -archivePath a",
     "-resolvePackageDependencies", "-showsdks", "-showdestinations -scheme A", "-showTestPlans",
     "-create-xcframework", "-checkFirstLaunchStatus", "-runFirstLaunch", "-help", "-usage",
+    "-downloadPlatform iOS", "-downloadAllPlatforms", "-importPlatform /tmp/iOS.dmg",
+    "-exportLocalizations -project A.xcodeproj -localizationPath L",
+    "-importLocalizations -project A.xcodeproj -localizationPath L/fr.xcloc",
   ])
   func xcodebuildQueryFlagsPassThrough(line: String) {
     #expect(queues(.xcodebuild, line) == false)
@@ -102,7 +105,9 @@ struct InvocationTests {
   // MARK: The fleet's Makefiles
 
   /// Every `swift` and `xcodebuild` line of maquette's and this repo's `apps/apple/Makefile`,
-  /// with the Make variables expanded to their values, as the shim would receive them.
+  /// with the Make variables expanded to their values, as the shim would receive them. Their
+  /// `xcrun swift --version` lines are left out: xcrun finds swift in the active toolchain,
+  /// never through PATH, so the shim never sees them.
   @Test func fleetMakefileInvocations() {
     let rows: [(Tool, [String], Bool)] = [
       // armada `build`
