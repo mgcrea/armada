@@ -15,10 +15,23 @@
 		0FA8DA000000000000000048 /* ArmadaSpeech in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000047 /* ArmadaSpeech */; };
 		0FA8DA000000000000000049 /* ArmadaSpeech in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000047 /* ArmadaSpeech */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0FA8DA00000000000000004C /* MCPKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA00000000000000004B /* MCPKitUI */; };
+		0FA8DA00000000000000004F /* BuildSlotCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA00000000000000004E /* BuildSlotCore */; };
+		0FA8DA000000000000000051 /* BuildSlotCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000050 /* BuildSlotCore */; };
+		0FA8DA00000000000000005D /* buildslot in Embed Helpers */ = {isa = PBXBuildFile; fileRef = 0FA8DA000000000000000053 /* buildslot */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0FA8DA000000000000000031 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FA8DA000000000000000030 /* Sparkle.framework */; };
 		0FA8DA000000000000000032 /* Sparkle.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 0FA8DA000000000000000030 /* Sparkle.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		58492DB759297801637F1D5A /* SupportKitDriving in Frameworks */ = {isa = PBXBuildFile; productRef = 0FF89C7DA6AB1DC5F43F28B4 /* SupportKitDriving */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0FA8DA00000000000000005A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0FA8DA000000000000000002 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0FA8DA000000000000000052;
+			remoteInfo = buildslot;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		0FA8DA000000000000000033 /* Embed Frameworks */ = {
@@ -33,10 +46,22 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0FA8DA00000000000000005C /* Embed Helpers */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				0FA8DA00000000000000005D /* buildslot in Embed Helpers */,
+			);
+			name = "Embed Helpers";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0FA8DA000000000000000004 /* Armada.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Armada.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0FA8DA000000000000000053 /* buildslot */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = buildslot; sourceTree = BUILT_PRODUCTS_DIR; };
 		0FA8DA000000000000000030 /* Sparkle.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Sparkle.framework; path = Vendor/Sparkle.framework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -44,6 +69,12 @@
 		0FA8DA000000000000000006 /* Armada */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Armada;
+			sourceTree = "<group>";
+		};
+		0FA8DA000000000000000054 /* buildslot */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = buildslot;
+			path = Packages/BuildSlot/Sources/buildslot;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -60,8 +91,17 @@
 				0FA8DA000000000000000045 /* ArmadaSupervisor in Frameworks */,
 				0FA8DA000000000000000048 /* ArmadaSpeech in Frameworks */,
 				0FA8DA00000000000000004C /* MCPKitUI in Frameworks */,
+				0FA8DA00000000000000004F /* BuildSlotCore in Frameworks */,
 				0FA8DA000000000000000031 /* Sparkle.framework in Frameworks */,
 				58492DB759297801637F1D5A /* SupportKitDriving in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0FA8DA000000000000000056 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FA8DA000000000000000051 /* BuildSlotCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				0FA8DA000000000000000006 /* Armada */,
+				0FA8DA000000000000000054 /* buildslot */,
 				0FA8DA000000000000000034 /* Frameworks */,
 				0FA8DA000000000000000003 /* Products */,
 			);
@@ -81,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				0FA8DA000000000000000004 /* Armada.app */,
+				0FA8DA000000000000000053 /* buildslot */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -104,10 +146,12 @@
 				0FA8DA000000000000000008 /* Frameworks */,
 				0FA8DA000000000000000009 /* Resources */,
 				0FA8DA000000000000000033 /* Embed Frameworks */,
+				0FA8DA00000000000000005C /* Embed Helpers */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0FA8DA00000000000000005B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				0FA8DA000000000000000006 /* Armada */,
@@ -121,11 +165,34 @@
 				0FA8DA000000000000000044 /* ArmadaSupervisor */,
 				0FA8DA000000000000000047 /* ArmadaSpeech */,
 				0FA8DA00000000000000004B /* MCPKitUI */,
+				0FA8DA00000000000000004E /* BuildSlotCore */,
 				0FF89C7DA6AB1DC5F43F28B4 /* SupportKitDriving */,
 			);
 			productName = Armada;
 			productReference = 0FA8DA000000000000000004 /* Armada.app */;
 			productType = "com.apple.product-type.application";
+		};
+		0FA8DA000000000000000052 /* buildslot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0FA8DA000000000000000057 /* Build configuration list for PBXNativeTarget "buildslot" */;
+			buildPhases = (
+				0FA8DA000000000000000055 /* Sources */,
+				0FA8DA000000000000000056 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0FA8DA000000000000000054 /* buildslot */,
+			);
+			name = buildslot;
+			packageProductDependencies = (
+				0FA8DA000000000000000050 /* BuildSlotCore */,
+			);
+			productName = buildslot;
+			productReference = 0FA8DA000000000000000053 /* buildslot */;
+			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
@@ -138,6 +205,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					0FA8DA000000000000000005 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					0FA8DA000000000000000052 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -156,6 +226,7 @@
 				0FA8DA000000000000000040 /* XCLocalSwiftPackageReference "Packages/ArmadaMCP" */,
 				0FA8DA000000000000000043 /* XCLocalSwiftPackageReference "Packages/ArmadaSupervisor" */,
 				0FA8DA000000000000000046 /* XCLocalSwiftPackageReference "Packages/ArmadaSpeech" */,
+				0FA8DA00000000000000004D /* XCLocalSwiftPackageReference "Packages/BuildSlot" */,
 				0FA8DA00000000000000004A /* XCRemoteSwiftPackageReference "swift-mcp-kit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -164,6 +235,7 @@
 			projectRoot = "";
 			targets = (
 				0FA8DA000000000000000005 /* Armada */,
+				0FA8DA000000000000000052 /* buildslot */,
 			);
 		};
 /* End PBXProject section */
@@ -186,7 +258,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0FA8DA000000000000000055 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0FA8DA00000000000000005B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0FA8DA000000000000000052 /* buildslot */;
+			targetProxy = 0FA8DA00000000000000005A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0FA8DA000000000000000014 /* Debug */ = {
@@ -387,6 +474,34 @@
 			};
 			name = Release;
 		};
+		0FA8DA000000000000000058 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 75QE9PRT3V;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = buildslot;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		0FA8DA000000000000000059 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 75QE9PRT3V;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = buildslot;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -408,6 +523,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		0FA8DA000000000000000057 /* Build configuration list for PBXNativeTarget "buildslot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0FA8DA000000000000000058 /* Debug */,
+				0FA8DA000000000000000059 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -422,6 +546,10 @@
 		0FA8DA000000000000000046 /* XCLocalSwiftPackageReference "Packages/ArmadaSpeech" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/ArmadaSpeech;
+		};
+		0FA8DA00000000000000004D /* XCLocalSwiftPackageReference "Packages/BuildSlot" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/BuildSlot;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -481,6 +609,14 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0FA8DA000000000000000016 /* XCRemoteSwiftPackageReference "swift-support-kit" */;
 			productName = SupportKitDriving;
+		};
+		0FA8DA00000000000000004E /* BuildSlotCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BuildSlotCore;
+		};
+		0FA8DA000000000000000050 /* BuildSlotCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BuildSlotCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
