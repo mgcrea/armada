@@ -93,23 +93,19 @@ enum ChildRunner {
     unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_IGN, to: Int.self)
   }
 
-  /// Signals a caller expects to see as the cause of death, re-raised so `WIFSIGNALED` holds.
-  private static let reraised: Set<Int32> = [SIGINT, SIGTERM, SIGHUP, SIGKILL, SIGPIPE]
-
-  /// Exits with the child's code, or dies of the signal it died of. Crash signals (ABRT, SEGV,
-  /// BUS, ILL, TRAP, FPE, QUIT) and any other become `128 + signal` instead: re-raising those
-  /// would have macOS write a crash report blaming `buildslot` each time a test crashes.
+  /// Ends as `ExitMapping` says: the child's code, or death by the signal it died of.
   private static func exitAs(_ status: Int32) -> Never {
-    let signal = status & 0x7f
-    if signal == 0 { exit((status >> 8) & 0xff) }
-    if reraised.contains(signal) {
+    switch ExitMapping.outcome(forWaitStatus: status) {
+    case .exit(let code):
+      exit(code)
+    case .raise(let signal):
       Darwin.signal(signal, SIG_DFL)
       var unblock = sigset_t()
       sigemptyset(&unblock)
       sigaddset(&unblock, signal)
       sigprocmask(SIG_UNBLOCK, &unblock, nil)
       raise(signal)
+      exit(128 + signal)  // Only if the raise did not end the process.
     }
-    exit(128 + signal)
   }
 }

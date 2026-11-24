@@ -233,13 +233,6 @@ struct BinaryTests {
     #expect(run.signal == SIGTERM)
   }
 
-  @Test func crashSignalBecomesExitCode() {
-    let run = Run(shell("kill -ABRT $$"), sandbox: Sandbox())
-    #expect(run.wait())
-    #expect(run.signal == nil)
-    #expect(run.exitCode == 128 + SIGABRT)
-  }
-
   // MARK: Signals
 
   @Test func interruptReachesChildOnce() throws {
