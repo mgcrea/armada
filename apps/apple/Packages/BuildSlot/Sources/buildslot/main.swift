@@ -44,7 +44,12 @@ func queueAndRun(
 
   let held = Acquirer.acquire(tool: tool, argv: argv, paths: paths)
   guard held.lock != nil else {
-    ChildRunner.replace(path: executable, arguments: childArguments)
+    // Unqueued, or every slot still busy at the slot cap: the build runs anyway, so whatever it
+    // starts must pass through rather than queue behind other holders. Exec keeps this pid, so
+    // the ancestry rule still finds it.
+    var unqueued = environment
+    unqueued[Nesting.holderVariable] = String(getpid())
+    ChildRunner.replace(path: executable, arguments: childArguments, environment: unqueued)
   }
   withExtendedLifetime(held) {
     ChildRunner.run(path: executable, arguments: childArguments, environment: environment)
@@ -57,12 +62,7 @@ func resolveOnPath(_ command: String) -> String? {
   let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
   for directory in path.split(separator: ":") {
     let candidate = "\(directory)/\(command)"
-    var info = stat()
-    if stat(candidate, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-      access(candidate, X_OK) == 0
-    {
-      return candidate
-    }
+    if RealTool.isExecutableFile(candidate) { return candidate }
   }
   return nil
 }

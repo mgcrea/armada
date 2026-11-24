@@ -42,8 +42,9 @@ public enum RealTool {
     return Data(buffer[0..<count]).range(of: Data(ShimMarker.text.utf8)) != nil
   }
 
-  /// A regular file (after following links) this user may execute.
-  private static func isExecutableFile(_ path: String) -> Bool {
+  /// A regular file (after following links) this user may execute. Public so `buildslot run`
+  /// finds its command by the same test.
+  public static func isExecutableFile(_ path: String) -> Bool {
     var info = stat()
     guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return false }
     return access(path, X_OK) == 0

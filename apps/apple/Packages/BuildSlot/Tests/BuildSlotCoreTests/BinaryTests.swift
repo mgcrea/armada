@@ -313,6 +313,14 @@ struct BinaryTests {
     #expect(run.stderr.contains("; running unqueued."))
   }
 
+  @Test func unqueuedRunMarksItselfHolder() {
+    // Exec keeps the pid, so the tool's own nested builds still pass through by ancestry.
+    let run = Run(
+      shell(#"echo "$ARMADA_BUILDSLOT_HOLDER $$""#), sandbox: Sandbox(lockDir: "/System/forbidden"))
+    #expect(run.wait())
+    #expect(run.stdout == "\(run.pid) \(run.pid)\n")
+  }
+
   @Test func badUsageExits64() {
     for arguments in [[], ["--as", "cc"], ["run"], ["frobnicate"]] {
       let run = Run(arguments, sandbox: Sandbox())

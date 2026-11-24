@@ -23,7 +23,11 @@ enum ChildRunner {
     environment[Nesting.holderVariable] = String(getpid())
 
     // TERM and HUP stay blocked until the child's pid is known, so one that lands during the
-    // spawn is forwarded once unblocked rather than lost.
+    // spawn is forwarded once unblocked rather than lost. This assumes one thread: `sigprocmask`
+    // blocks the calling thread only, and the kernel hands a process-directed signal to any
+    // thread that does not block it, whose handler would then run while `forwardTarget` is
+    // still 0. The tool starts no thread or dispatch queue of its own; anything that adds one
+    // must block TERM and HUP in it as well.
     var forwarded = sigset_t()
     sigemptyset(&forwarded)
     sigaddset(&forwarded, SIGTERM)
@@ -81,10 +85,18 @@ enum ChildRunner {
     exitAs(status)
   }
 
-  /// Replaces this process with `path`: a pass-through needs no wrapper and no slot.
-  static func replace(path: String, arguments: [String]) -> Never {
+  /// Replaces this process with `path`: a pass-through needs no wrapper and no slot. Without
+  /// `environment`, the tool gets this process's own.
+  static func replace(path: String, arguments: [String], environment: [String: String]? = nil)
+    -> Never
+  {
     let argv = arguments.map { strdup($0) } + [nil]
-    execv(path, argv)
+    if let environment {
+      let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+      execve(path, argv, envp)
+    } else {
+      execv(path, argv)
+    }
     say("buildslot: cannot run \(path): \(String(cString: strerror(errno))).")
     exit(127)
   }

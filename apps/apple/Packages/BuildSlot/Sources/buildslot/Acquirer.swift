@@ -37,6 +37,7 @@ enum Acquirer {
     var lastStep: AcquireStep?
     var shownHolders: Set<Int32>?
     var lastPrinted = Date.distantPast
+    var capAnnounced = false
 
     while true {
       let now = Date.now
@@ -89,17 +90,23 @@ enum Acquirer {
         }
 
       case .takeAnyway(let slot, let reason):
-        switch reason {
-        case .memoryCap: say(WaitMessages.memoryCapReached(pressure, after: memoryWaited))
-        case .slotCap: say(WaitMessages.slotCapReached(after: now.timeIntervalSince(start)))
+        // Once: a slot lost to another shim brings this case back on the next poll.
+        if !capAnnounced {
+          capAnnounced = true
+          switch reason {
+          case .memoryCap: say(WaitMessages.memoryCapReached(pressure, after: memoryWaited))
+          case .slotCap: say(WaitMessages.slotCapReached(after: now.timeIntervalSince(start)))
+          }
         }
         guard let slot else { return Held(lock: nil) }
-        if case .took(let lock, _) = take(
-          preferring: slot, count: settings.slots, record: record, paths: paths)
-        {
+        switch take(preferring: slot, count: settings.slots, record: record, paths: paths) {
+        case .took(let lock, _):
           return Held(lock: lock)
+        case .lost:
+          break  // As for `.take`: poll again.
+        case .failed(let reason):
+          return unqueued(reason)
         }
-        return Held(lock: nil)
       }
       usleep(pollInterval)
     }
