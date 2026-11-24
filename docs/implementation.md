@@ -452,8 +452,10 @@ Build slots, decided while building them on 2026-11-24:
   locks a fresh file at the same path, and two builds would hold one slot.
 - **The lock folder is checked, not trusted.** `/private/tmp` is world-writable, so another
   account could make the path first, open to all or as a symlink. `ensureDirectories` refuses
-  anything that is not a 0700 directory of this user's, and every lock file is opened
-  `O_NOFOLLOW`. A refusal runs the build unqueued and says why.
+  anything that is not a directory of this user's, or is one open to group or others, and every
+  lock file is opened `O_NOFOLLOW`. A refusal runs the build unqueued and says why. Readers make
+  the same checks first (`verifyDirectories`, which creates nothing): the shim's nesting
+  pre-read and the app's monitor read a refused folder as an empty queue.
 - **The folders are created 0700 by `mkdir`, never by FileManager.** FileManager's `attributes`
   chmod after creating, and a second shim starting at that moment found the folder 755 and ran
   unqueued. Measured: 8 threads creating one fresh folder failed in every one of 50 rounds. Two
@@ -490,7 +492,11 @@ Build slots, decided while building them on 2026-11-24:
   leave every build on the Mac depending on a bundle in DerivedData. On a branch, run the Debug
   bundle's own `Contents/Helpers/buildslot install`; the next Release launch takes the shims
   back. The installer never touches a `swift` or `xcodebuild` in `~/.local/bin` without the
-  marker line, and uninstall removes only files carrying it.
+  marker line, and uninstall removes only files carrying it: the Release build's switch-off all
+  of them, a Debug build's only those calling its own helper (`uninstall(binDir:onlyPointingAt:)`,
+  links resolved), so switching a Debug build off leaves the Release shims queueing. A Release
+  app translocated by Gatekeeper or run from `/Volumes/…` installs nothing and leaves the shims
+  as they are; the next launch from where it stays installs.
 
 ## Verifying it against reality
 
@@ -562,8 +568,8 @@ ARMADA_BUILDSLOT=off swift build                          # straight through, wh
 
 `status` reads the queue the way the shims do, through fresh read-only descriptors and
 `F_GETLK`, so it never disturbs it. A slot file whose lock nobody holds is a leftover and reads
-as free, whatever its record says. When the lock folder is refused (a symlink, another owner, a
-mode other than 700), `status` says `Not queueing:` and why: that is the one fault that turns
+as free, whatever its record says. When the lock folder is refused (a symlink, another owner,
+open to group or others), `status` says `Not queueing:` and why: that is the one fault that turns
 every build unqueued without failing any.
 
 The queue itself is checked with three worktrees of one repo and Slots at 2. Start `swift test`
@@ -855,18 +861,26 @@ The limits the design accepted, as the spec states them:
 - Two agents in one tree, or a parent and child in one tree, share a slot (the same-tree rule).
 - ^C or SIGQUIT sent with `kill` to the shim's pid alone, while its build runs, is ignored; send it
   to the process group, or send SIGTERM.
+- `xcrun xcodebuild …` bypasses PATH as `xcrun swift` does, and does not queue.
+- The `sh` shim loses `DYLD_*` variables, which SIP strips for `/bin/sh`. That matters only for
+  a non-Apple swift toolchain that needs them.
+- `xcodebuild -license` (no action, so read as the default build) takes a slot while it waits
+  for input.
 
 And what the build left:
 
-- **Not run end to end on this Mac yet.** The three-worktree check above, a build from inside a
-  Codex session taking a slot rather than running unqueued, Maquette's `make test-all` running
-  through without deadlock, and the rows and `armada_get_build_slots` naming the right sessions
-  are all unobserved at the time of writing.
-- **The tests leave temporary folders in `$TMPDIR`** (`buildslot-tests-*`, `buildslot-binary-*`,
-  `buildslot-shims-*` and others), a set per run, never removed.
+- **Run end to end on 2026-11-24, all but one check.** Checks 1, 2, 4, 5, 6 and 7 of the spec's
+  end-to-end list passed, with the shims in a temporary bin folder put first on `PATH` for those
+  commands, not in `~/.local/bin` (installing there would have queued every live agent's builds
+  mid-session), and check 6 run under `codex sandbox -P :workspace` rather than inside a live
+  Codex session. Check 3, the session rows, their session matching and the
+  `armada_get_build_slots` answer, is unobserved: run it once on the installed Release build
+  after merge.
+- **Some tests leave temporary folders in `$TMPDIR`** (`buildslot-tests-*`, `buildslot-shims-*`
+  and others), a set per run, never removed. The binary tests remove theirs.
 - **The shipped helper and the package's test build are compiled differently.** The Xcode
-  `buildslot` target inherits `SWIFT_APPROACHABLE_CONCURRENCY = YES` from the app's settings;
-  the package's executable does not set it. The tool has no async code today, so nothing differs
+  `buildslot` target sets `SWIFT_APPROACHABLE_CONCURRENCY = YES` in its own build settings, as
+  the app does; the package's executable does not set it. The tool has no async code today, so nothing differs
   in behaviour, but the binary the tests run is not byte for byte the one that ships.
 - **A Codex build is named only when one Codex session fits.** Codex records no pid, so a build
   under a `codex` process is matched by cwd, deepest first; two Codex sessions at that depth show

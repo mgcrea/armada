@@ -310,7 +310,9 @@ which honour `DEVELOPER_DIR` and `xcode-select`).
 **Who installs.** Only the Release bundle (`io.mgcrea.armada`), at launch while the switch is on,
 and on the switch. It re-points the shims if the app moved. Debug builds never install: on a
 branch, run the Debug bundle's `Contents/Helpers/buildslot install` to point the shims at it;
-the next Release launch takes them back.
+the next Release launch takes them back. A Debug build's switch-off removes only shims calling
+its own helper. A Release app running translocated or from a disk image installs nothing and
+leaves the shims as they are, until a launch from where it stays.
 
 **PATH check.** Settings shows a warning when the login shell's `PATH` (from `LoginShell`) does
 not put `~/.local/bin` before the directory holding the real `swift` (normally `/usr/bin`).
@@ -383,6 +385,11 @@ event, so polling, not FSEvents. Each poll is a few `open` + `F_GETLK` + small r
 - Two agents in one tree, or a parent and child in one tree, share a slot (the same-tree rule).
 - ^C or SIGQUIT sent with `kill` to the shim's pid alone, while its build runs, is ignored; send it
   to the process group, or send SIGTERM.
+- `xcrun xcodebuild …` bypasses PATH as `xcrun swift` does, and does not queue.
+- The `sh` shim loses `DYLD_*` variables, which SIP strips for `/bin/sh`. That matters only for
+  a non-Apple swift toolchain that needs them.
+- `xcodebuild -license` (no action, so read as the default build) takes a slot while it waits
+  for input.
 
 These go in `docs/implementation.md` (a section, plus table rows for the new types) and in the
 Settings pane's footnote.

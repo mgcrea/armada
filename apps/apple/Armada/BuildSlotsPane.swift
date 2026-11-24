@@ -50,7 +50,9 @@ struct BuildSlotsPane: View {
           }
         }
       } footer: {
-        Text("Xcode's own builds, `xcrun swift` and `swift run` don't queue.")
+        Text(
+          "Xcode's own builds, `xcrun swift`, `xcrun xcodebuild` and `swift run` don't queue. `xcodebuild -license` holds a slot while it waits for you."
+        )
       }
 
       Section {
