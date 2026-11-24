@@ -9,11 +9,14 @@ import Foundation
 /// keyed by bundle id, so a Debug and a Release build would each write their own file while the
 /// one `buildslot` tool reads only `BuildSlotPaths.standard().settingsFile`.
 ///
-/// **Only the Release bundle installs.** A Debug build pointing the shims at itself would leave
-/// every build on the Mac depending on a bundle in DerivedData; on a branch, its own
-/// `Contents/Helpers/buildslot install` does that on purpose, and the next Release launch takes
-/// the shims back. Turning the switch off removes them from any bundle, and only files carrying
-/// the shim marker.
+/// **Only the Release bundle installs, and only from where it stays.** A Debug build pointing
+/// the shims at itself would leave every build on the Mac depending on a bundle in DerivedData;
+/// on a branch, its own `Contents/Helpers/buildslot install` does that on purpose, and the next
+/// Release launch takes the shims back. A Release app translocated by Gatekeeper or run from its
+/// disk image would point them at a path that vanishes, so it leaves them as they are and the
+/// next launch from Applications installs. Turning the switch off removes only files carrying the
+/// shim marker: in the Release build all of them, in any other only those calling its own helper,
+/// so switching a Debug build off leaves the Release build's shims queueing.
 ///
 /// Not `@AppStorage`, for `MouseBindingsStore`'s reason: launch reads the switch with no view
 /// around, so the store is the authority and persists on write.
@@ -42,8 +45,11 @@ final class BuildSlots {
   /// Why `settings.json` could not be written, the last time it was not.
   private(set) var settingsError: String?
 
+  let isReleaseBundle = Bundle.main.bundleIdentifier == releaseBundleID
+  /// Translocated, or on a mounted disk image. See the type's comment.
+  let runsFromTransientLocation = ShimInstaller.isTransientLocation(Bundle.main.bundlePath)
   /// Whether this bundle may install shims. See the type's comment.
-  let installsShims = Bundle.main.bundleIdentifier == releaseBundleID
+  var installsShims: Bool { isReleaseBundle && !runsFromTransientLocation }
 
   private let paths = BuildSlotPaths.standard()
   private var pathCheck: Task<Void, Never>?
@@ -117,9 +123,10 @@ final class BuildSlots {
     pathWarning = nil
     pathCheck?.cancel()
     let previous = shimWork
+    let removesAll = isReleaseBundle
     shimWork = Task {
       await previous?.value
-      await Self.uninstallOffMain()
+      await Self.uninstallOffMain(removesAll: removesAll)
     }
   }
 
@@ -129,8 +136,11 @@ final class BuildSlots {
   }
 
   @concurrent
-  private nonisolated static func uninstallOffMain() async {
-    _ = ShimInstaller.uninstall(binDir: binDir)
+  private nonisolated static func uninstallOffMain(removesAll: Bool) async {
+    _ =
+      removesAll
+      ? ShimInstaller.uninstall(binDir: binDir)
+      : ShimInstaller.uninstall(binDir: binDir, onlyPointingAt: helperPath)
   }
 
   private func saveSettings() {

@@ -19,9 +19,15 @@ struct BuildSlotsPane: View {
             "Puts `swift` and `xcodebuild` shims in ~/.local/bin, so `swift build`, `swift test` and `xcodebuild` builds and tests from every agent and terminal on this Mac wait for a free slot."
           )
         }
-        if !buildSlots.installsShims {
+        if !buildSlots.isReleaseBundle {
           Text(
             "Debug builds don't install the shims; run this build's `Contents/Helpers/buildslot install` to test them."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        } else if buildSlots.runsFromTransientLocation {
+          Text(
+            "Armada is running from a disk image or a temporary copy, so it leaves the shims as they are. Move it to Applications and open it again to install them."
           )
           .font(.caption)
           .foregroundStyle(.secondary)
