@@ -54,10 +54,20 @@ public struct BuildSlotPaths: Sendable {
   /// another account could have made the path first, open to all or as a symlink, to plant lock
   /// files; creating succeeds silently over an existing path, hence the check. Throws
   /// `UnsafeLockDirectory`, and the caller runs the build unqueued.
+  ///
+  /// Each folder is made by `mkdir(…, 0700)`, which sets the mode as it creates: FileManager's
+  /// `attributes` chmod after creating, and a second shim starting at that moment (two builds
+  /// after a reboot) would find the folder 755 and run unqueued. Measured: 8 threads creating
+  /// one fresh folder failed in every one of 50 rounds that way.
   public func ensureDirectories() throws {
+    try FileManager.default.createDirectory(
+      at: lockRoot.deletingLastPathComponent(), withIntermediateDirectories: true)
     for dir in [lockRoot, slotsDir, waitingDir] {
-      try FileManager.default.createDirectory(
-        at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      if mkdir(dir.path, 0o700) == 0 {
+        chmod(dir.path, 0o700)  // A umask that strips the owner's bits must not leave it unusable.
+      } else if errno != EEXIST {
+        throw POSIXError.current()
+      }
       var info = stat()
       guard lstat(dir.path, &info) == 0 else { throw POSIXError.current() }
       if info.st_mode & S_IFMT != S_IFDIR {

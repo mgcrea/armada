@@ -1,6 +1,7 @@
 import BuildSlotCore
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 
 // Locks are POSIX record locks, observed from a second process (python's `lockf`) because
@@ -44,6 +45,19 @@ struct LockTests {
     #expect(throws: POSIXError.self) { try LockFile(path: paths.slotFile(0)) }
     #expect(try Data(contentsOf: victim) == Data("keep me".utf8))
     #expect(QueueReader.read(paths, slotCount: 2).freeSlots == [1])
+  }
+
+  // Two shims starting together on a fresh lock folder (after a reboot) both create it. Neither
+  // may catch the other's folder half made and refuse it as unsafe.
+  @Test func concurrentCreationIsNeverRefused() {
+    for _ in 0..<50 {
+      let paths = tempPaths()
+      let failures = Mutex(0)
+      DispatchQueue.concurrentPerform(iterations: 8) { _ in
+        do { try paths.ensureDirectories() } catch { failures.withLock { $0 += 1 } }
+      }
+      #expect(failures.withLock { $0 } == 0)
+    }
   }
 
   @Test func tryLockFailsWhileAnotherProcessHolds() throws {
