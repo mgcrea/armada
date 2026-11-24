@@ -92,6 +92,35 @@ struct ShimInstallerTests {
       !FileManager.default.fileExists(atPath: binDir.appendingPathComponent("xcodebuild").path))
   }
 
+  /// A Debug build's switch-off takes back only the shims it wrote, compared after resolving
+  /// links, and leaves the Release build's.
+  @Test func uninstallOnlyPointingAtKeepsOthers() throws {
+    let helper = try dir("mine").appendingPathComponent("buildslot")
+    try executable(helper, "#!/bin/sh\n")
+    let link = root.appendingPathComponent("mine-link")
+    try FileManager.default.createSymbolicLink(
+      at: link, withDestinationURL: helper.deletingLastPathComponent())
+    let otherDir = try dir("other")
+    _ = ShimInstaller.install(binDir: binDir, helperPath: "/Applications/Armada.app/buildslot")
+    _ = ShimInstaller.install(
+      binDir: otherDir, helperPath: link.appendingPathComponent("buildslot").path)
+
+    #expect(ShimInstaller.uninstall(binDir: binDir, onlyPointingAt: helper.path) == [])
+    #expect(ShimInstaller.installedHelperPath(binDir: binDir, tool: .swift) != nil)
+    #expect(
+      ShimInstaller.uninstall(binDir: otherDir, onlyPointingAt: helper.path)
+        == [.swift, .xcodebuild])
+  }
+
+  @Test func transientLocations() {
+    #expect(
+      ShimInstaller.isTransientLocation(
+        "/private/var/folders/x/T/AppTranslocation/1234/d/Armada.app"))
+    #expect(ShimInstaller.isTransientLocation("/Volumes/Armada/Armada.app"))
+    #expect(!ShimInstaller.isTransientLocation("/Applications/Armada.app"))
+    #expect(!ShimInstaller.isTransientLocation("/Users/me/Applications/Armada.app"))
+  }
+
   @Test func quotesHelperPath() throws {
     let helperDir = try dir("it's here")
     let helper = helperDir.appendingPathComponent("buildslot")
@@ -115,6 +144,16 @@ struct ShimInstallerTests {
     let realDir = try dir("real")
     try executable(realDir.appendingPathComponent("swift"), "#!/bin/sh\necho REAL \"$@\"\n")
     _ = ShimInstaller.install(binDir: binDir, helperPath: root.appendingPathComponent("gone").path)
+    let result = try run(
+      binDir.appendingPathComponent("swift"), ["build"], path: "\(binDir.path):\(realDir.path)")
+    #expect(result == (0, "REAL build\n"))
+  }
+
+  /// `-x` is true of a directory too, and exec'ing one fails the build.
+  @Test func shimFallsBackWhenHelperIsADirectory() throws {
+    let realDir = try dir("real")
+    try executable(realDir.appendingPathComponent("swift"), "#!/bin/sh\necho REAL \"$@\"\n")
+    _ = ShimInstaller.install(binDir: binDir, helperPath: try dir("helper-dir").path)
     let result = try run(
       binDir.appendingPathComponent("swift"), ["build"], path: "\(binDir.path):\(realDir.path)")
     #expect(result == (0, "REAL build\n"))

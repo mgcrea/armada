@@ -273,7 +273,7 @@ check first. The script that ships (`ShimInstaller.script`), for an app in `/App
 #!/bin/sh
 # armada-buildslot-shim v1 — written by Armada; Armada repairs or removes this file.
 b='/Applications/Armada.app/Contents/Helpers/buildslot'
-[ -x "$b" ] && exec "$b" --as swift "$@"
+[ -f "$b" ] && [ -x "$b" ] && exec "$b" --as swift "$@"
 # Armada is gone: run the real swift, unqueued.
 self_dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd -P)
 set -f; IFS=:
@@ -288,8 +288,8 @@ exec /usr/bin/swift "$@"
 
 It tightens the shape first approved here, which was a one-line loop that skipped only its own
 folder. The fallback now also skips any other shim (by its marker), since two shims whose helper
-is gone would otherwise exec each other in a loop; tests `-f` so a folder named `swift` is not
-taken for the tool; clears `CDPATH` and ends options with `--`; turns off globbing (`set -f`)
+is gone would otherwise exec each other in a loop; tests `-f`, on the helper and in the walk, so
+a folder at either path is not taken for the program; clears `CDPATH` and ends options with `--`; turns off globbing (`set -f`)
 so a `*` in a `PATH` entry stays literal; and names `dirname`, `head` and `grep` by full path,
 as the `PATH` it was given may lack `/usr/bin`. The installer compares the whole file, so any
 change to the script reaches installed shims on the next install.

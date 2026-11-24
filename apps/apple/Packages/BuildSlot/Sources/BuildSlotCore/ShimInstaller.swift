@@ -44,7 +44,7 @@ public enum ShimInstaller {
       #!/bin/sh
       # \(marker)
       b=\(shellQuoted(helperPath))
-      [ -x "$b" ] && exec "$b" --as \(name) "$@"
+      [ -f "$b" ] && [ -x "$b" ] && exec "$b" --as \(name) "$@"
       # Armada is gone: run the real \(name), unqueued.
       self_dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd -P)
       set -f; IFS=:
@@ -100,6 +100,25 @@ public enum ShimInstaller {
     }
   }
 
+  /// Removes only the shims calling `helperPath`, both sides compared with links resolved, and
+  /// returns the tools it removed. A Debug build switching off uses it, so the Release build's
+  /// shims stay.
+  public static func uninstall(binDir: URL, onlyPointingAt helperPath: String) -> [Tool] {
+    let own = resolved(helperPath)
+    return Tool.allCases.filter { tool in
+      guard let installed = installedHelperPath(binDir: binDir, tool: tool),
+        resolved(installed) == own
+      else { return false }
+      return unlink(binDir.appendingPathComponent(tool.rawValue).path) == 0
+    }
+  }
+
+  /// Whether an app at `bundlePath` runs from somewhere it will not stay: translocated by
+  /// Gatekeeper, or on a mounted disk image. Shims pointing there break once it is gone.
+  public static func isTransientLocation(_ bundlePath: String) -> Bool {
+    bundlePath.contains("/AppTranslocation/") || bundlePath.hasPrefix("/Volumes/")
+  }
+
   /// The helper path the installed shim for `tool` calls, or nil when there is no shim.
   public static func installedHelperPath(binDir: URL, tool: Tool) -> String? {
     let path = binDir.appendingPathComponent(tool.rawValue).path
@@ -116,6 +135,13 @@ public enum ShimInstaller {
   /// reopens it.
   private static func shellQuoted(_ text: String) -> String {
     "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+  }
+
+  /// `path` with every link resolved, or as given when it does not resolve.
+  private static func resolved(_ path: String) -> String {
+    guard let real = realpath(path, nil) else { return path }
+    defer { free(real) }
+    return String(cString: real)
   }
 
   /// Whether anything is at `path`, a dangling link included: a link of the shim's name is the
