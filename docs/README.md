@@ -8,7 +8,8 @@ the session dashboard and plan limits, per Claude account and, as a spike, per C
 plus starting a session in a project on a chosen account, which the original scope had left
 out. An opt-in supervisor also shipped: a Claude Code session that reads the fleet through a
 read-only MCP endpoint on loopback. Voice is built and not yet run end to end: a global
-shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs. Messaging is
+shortcut, on-device dictation, and a spoken answer from a `claude` Armada runs. So are build
+slots, an opt-in machine-wide queue for `swift` and `xcodebuild` builds and tests. Messaging is
 designed and not started. See [implementation.md](implementation.md).
 
 ## Start here

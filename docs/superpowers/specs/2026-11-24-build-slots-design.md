@@ -56,6 +56,11 @@ So the fix covers every repo on the machine, and accounts for memory as well as 
 
 ## Design
 
+The shim script under **Shims** is the one that ships, which tightened the shape approved here;
+that section says what changed and why. Smaller departures (the monitor's 30 s idle poll, the
+row badge as caption text rather than a capsule) and the build's limits are in
+`docs/implementation.md`.
+
 ### Package and binary
 
 A new local package, `apps/apple/Packages/BuildSlot`:
@@ -262,7 +267,7 @@ directory), and failing that the cwd's own basename.
 
 Two POSIX `sh` scripts, `swift` and `xcodebuild`, in `~/.local/bin`, **not symlinks**. A shell
 that hashed a symlink's path fails the command once Armada is deleted or moved; a script can
-check first. Shape (the builder may tighten it):
+check first. The script that ships (`ShimInstaller.script`), for an app in `/Applications`:
 
 ```sh
 #!/bin/sh
@@ -270,12 +275,24 @@ check first. Shape (the builder may tighten it):
 b='/Applications/Armada.app/Contents/Helpers/buildslot'
 [ -x "$b" ] && exec "$b" --as swift "$@"
 # Armada is gone: run the real swift, unqueued.
-self_dir=$(cd "$(dirname "$0")" && pwd -P)
-IFS=:; for d in $PATH; do
-  [ -n "$d" ] && [ "$(cd "$d" 2>/dev/null && pwd -P)" != "$self_dir" ] && [ -x "$d/swift" ] && exec "$d/swift" "$@"
+self_dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd -P)
+set -f; IFS=:
+for d in $PATH; do
+  [ -n "$d" ] && [ -f "$d/swift" ] && [ -x "$d/swift" ] || continue
+  [ "$(CDPATH= cd -- "$d" 2>/dev/null && pwd -P)" = "$self_dir" ] && continue
+  /usr/bin/head -c 256 "$d/swift" 2>/dev/null | /usr/bin/grep -qF 'armada-buildslot-shim v1' && continue
+  exec "$d/swift" "$@"
 done
 exec /usr/bin/swift "$@"
 ```
+
+It tightens the shape first approved here, which was a one-line loop that skipped only its own
+folder. The fallback now also skips any other shim (by its marker), since two shims whose helper
+is gone would otherwise exec each other in a loop; tests `-f` so a folder named `swift` is not
+taken for the tool; clears `CDPATH` and ends options with `--`; turns off globbing (`set -f`)
+so a `*` in a `PATH` entry stays literal; and names `dirname`, `head` and `grep` by full path,
+as the `PATH` it was given may lack `/usr/bin`. The installer compares the whole file, so any
+change to the script reaches installed shims on the next install.
 
 The Swift binary finds the real tool the same way: walk `PATH`, skip any directory that resolves
 to the shim's directory, skip any candidate that is a shim (marker line) or resolves to the

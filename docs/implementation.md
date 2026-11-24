@@ -36,7 +36,7 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   (`ClaudeTrust`), so the session opens without the trust dialog; it is the one write to a
   vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
   builds in the background over every transcript and rollout (`usage-index.sqlite`).
-- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with nine read
+- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with ten read
   tools (one, `armada_wait`, a long poll) and, behind its Allow writes switch, `armada_start_session`, `armada_close_session`, `armada_send_message`, `armada_focus_session`, `armada_save_schedule` and `armada_delete_schedule`; and
   a Start Supervisor Session button that opens an ordinary Claude Code session with that
   server attached, its read tools pre-allowed (never the start or close tool), and a brief. The session is the chat: ask it
@@ -54,6 +54,14 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   `Armada Archive` folder inside a folder the person picked, such as a NAS share, appending
   whole lines to a transcript as it grows and never deleting anything unless a retention period
   is set. `TranscriptArchive` holds the rules, `TranscriptArchiver` when it runs.
+- **Build slots**, opt-in (Settings ▸ Build Slots, built 2026-11-24): a machine-wide queue for
+  `swift build`, `swift test` and `xcodebuild` builds and tests, two at once by default, across
+  every repo, agent and terminal. `swift` and `xcodebuild` shims in `~/.local/bin` run Armada's
+  `Contents/Helpers/buildslot`, which takes a kernel file lock in the build's own process, so the
+  queue works with Armada quit and a dead build never keeps its slot. A queued build says so on
+  stderr (`buildslot: waiting for a slot …`), the session that started it shows `building` or
+  `waiting for a slot` on its row, and `armada_get_build_slots` reads the queue. The design is
+  [the spec](superpowers/specs/2026-11-24-build-slots-design.md).
 - **Settings** on `swift-support-kit`'s shared scaffold, with an About pane and the Help
   menu.
 - **Codex**, as a spike: a second sidebar section with its own pane, sessions and plan
@@ -126,7 +134,7 @@ transcripts, separate rate limits.
 | `SessionClosing` / `SessionClosePolicy` | Close Session in the details, the row menus and the popover: asks before closing a session that is mid-turn, sends it through `SessionCloserBridge` as a person, and holds the refusal for whichever pane is up; the policy is the one difference from an agent's close, no throttle, and `make unit` checks it |
 | `SessionFocuser` (package) / `SessionFocuserBridge` | `armada_focus_session`'s door: finds the session's host on the main actor, runs the rows' `FocusSession.focus`, and falls back to LaunchServices when Armada, not frontmost, has its activation declined; one focus per two seconds |
 | `LaunchScript` | the startup script's plain-text parts: shell quoting, and an opening message read from its file |
-| `ArmadaMCP` (package) | the fifteen tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, the transcript condenser; `make -C apps/apple test` |
+| `ArmadaMCP` (package) | the sixteen tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
 | `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
@@ -140,6 +148,13 @@ transcripts, separate rate limits.
 | `VoiceShortcut`, `ShortcutRecorder` | the one global chord through `RegisterEventHotKey`, and the Settings control that records it |
 | `VoiceOverlay`, `Speaker` | the non-activating card at the top of the screen, and the speaker: a system voice or Kokoro per sentence, in order |
 | `VoicePane` | Settings ▸ Voice: the switch, the shortcut, the account, the voice and a button to hear it |
+| `BuildSlot` (package) | `BuildSlotCore`, Foundation and Darwin only: which invocations queue (`Invocation`), the holder label, settings, the memory-pressure read, the slot record, the lock files and the reader every observer shares (`LockFile`, `LockProbe`, `QueueReader`), the acquire decision, the nesting rules, the stderr lines, the real-tool walk, the exit mapping, the shim installer, session matching and the `PATH` check. The `buildslot` executable over it: the shim path, `run`, `status`, `install` and `uninstall`. `swift test --package-path Packages/BuildSlot`, in `make -C apps/apple test` |
+| `buildslot` (Xcode target) | the same `main.swift` compiled against `BuildSlotCore`, copied to `Contents/Helpers` by an Embed Helpers phase, signed by the root Makefile's `sign` before the app |
+| `BuildSlots` | Settings ▸ Build Slots' state: the switch, `settings.json` at its fixed path, installing and removing the shims (Release bundle only), the login shell's `PATH` check |
+| `BuildSlotMonitor` | the queue as the app shows it: polls the lock folder off the main actor, matches each holder and waiter to a session (`SessionMatch`), feeds the rows, the popover line and the MCP bridge |
+| `BuildSlotsPane` | Settings ▸ Build Slots: the switch, Slots, Memory, the `PATH` warning and refused installs, the live queue, the line on what does not queue |
+| `BuildSlotBadge` | a session's build as caption text in its row (`building · 2 min`) and a line in its detail pane |
+| `BuildSlotsSnapshot` (package) | `armada_get_build_slots` and each session's `buildSlot` in `armada_get_fleet` and `armada_get_session`: what the monitor last read, handed over by `FleetBridge` in its own hop, in plain strings so `ArmadaMCP` never imports `BuildSlotCore` |
 
 The Codex half mirrors it, name for name, and shares the icon lookup (`VendorIcon`), the
 usage views (`WindowRow`, `SidebarUsage`, `UsageBar`, `UsageResetLine`), the list's sort and grouping
@@ -420,6 +435,63 @@ Each of these cost time here, and none is visible from the code that depends on 
   English-only model, and the multilingual Nemotron streaming model is a separate download,
   weaker on French. Live words come from running v3 over the growing buffer instead.
 
+Build slots, decided while building them on 2026-11-24:
+
+- **The locks live under `/private/tmp/armada-build-slots-<uid>`, not Application Support.**
+  The shim runs inside the agents' sandboxes, and Codex's `workspace-write` refuses writes
+  outside the workspace and the temp folders. A write lock needs a writable descriptor, so under
+  Application Support every Codex build would run unqueued. Settings stay in Application Support
+  (`Armada/build-slots/settings.json`, not keyed by bundle id), which sandboxes may read. Both
+  paths are fixed, so a Debug and a Release build share one queue.
+- **`fcntl` record locks, not `flock`.** A child never inherits one, so a stray `swift-frontend`
+  or test host cannot keep a slot, and `F_GETLK` names the holder's pid without taking the lock.
+  The price is two traps: closing *any* descriptor on a file drops the process's lock on it, so
+  a holder never opens its own file a second time (`LockFile.isHeldHere`), and `F_GETLK` never
+  reports the caller's own locks, so readers skip their own files. A slot is released by
+  closing, never by unlinking: a reader holding the old inode could lock it while a newcomer
+  locks a fresh file at the same path, and two builds would hold one slot.
+- **The lock folder is checked, not trusted.** `/private/tmp` is world-writable, so another
+  account could make the path first, open to all or as a symlink. `ensureDirectories` refuses
+  anything that is not a 0700 directory of this user's, and every lock file is opened
+  `O_NOFOLLOW`. A refusal runs the build unqueued and says why.
+- **The folders are created 0700 by `mkdir`, never by FileManager.** FileManager's `attributes`
+  chmod after creating, and a second shim starting at that moment found the folder 755 and ran
+  unqueued. Measured: 8 threads creating one fresh folder failed in every one of 50 rounds. Two
+  builds right after a reboot is exactly that.
+- **The shim runs the tool as a child, not by exec.** Exec would leave the lock with whatever
+  the tool becomes, for some invocations a long-lived process. A pass-through (no queue, nested,
+  `ARMADA_BUILDSLOT=off`) does exec, as nothing needs to stay behind it.
+- **While the child runs, the shim ignores SIGINT and SIGQUIT and forwards SIGTERM and SIGHUP.**
+  The child is in the shim's process group, so a terminal's ^C already reaches it; forwarding
+  would deliver it twice, and a second SIGINT makes SwiftPM and xcodebuild abort hard instead of
+  cancelling. A tty's ^C cannot be told from a `kill` aimed at the shim alone: measured, a pty's
+  ^C arrives with `si_pid` set to the writer's pid.
+- **A child that crashed makes the shim exit `128 + signal`, not die of it.** INT, TERM, HUP,
+  KILL and PIPE are re-raised so a caller sees the same `WIFSIGNALED`; re-raising ABRT, SEGV and
+  the other crash signals would have macOS write a crash report blaming `buildslot` each time a
+  test crashes. An early test that did re-raise left 25 `bash-*.ips` reports in
+  `~/Library/Logs/DiagnosticReports`; `ExitMapping` is now a pure function tested without one.
+- **A nested build never waits on its parent, by three rules.** Ancestry: the holder sets
+  `ARMADA_BUILDSLOT_HOLDER` to its pid, honoured only when that pid is an ancestor. Same tree: a
+  cwd at or below a holder's, resolving to the same nearest `.git`, passes through, which
+  catches `xcodebuild test`'s host started through launchd; a worktree under
+  `.claude/worktrees/` has its own `.git` file, so it queues against its main checkout. And a
+  30-minute cap on any wait. A shim that runs without a lock (unqueued, or at the cap) still
+  sets the variable, so whatever it starts passes through rather than queueing behind it.
+- **The memory rule holds a build back only while another slot is held.** With nothing
+  building, waiting cannot relieve the pressure, so the first build always starts. A slot below
+  the count that is busy but has no readable record counts as held.
+- **`BuildSlotMonitor` polls every 2 s while the switch is on or the last read found anyone,
+  and every 30 s otherwise.** A `kill -9`'d holder leaves no file event, so FSEvents cannot do
+  it; and slot files outlive their holders, so their presence says nothing. The 30 s idle read
+  is what still shows a Release build's queue in a Debug build with its switch off. Turning the
+  switch on reads at once.
+- **Only the Release bundle (`io.mgcrea.armada`) installs shims.** A Debug build that did would
+  leave every build on the Mac depending on a bundle in DerivedData. On a branch, run the Debug
+  bundle's own `Contents/Helpers/buildslot install`; the next Release launch takes the shims
+  back. The installer never touches a `swift` or `xcodebuild` in `~/.local/bin` without the
+  marker line, and uninstall removes only files carrying it.
+
 ## Verifying it against reality
 
 The app's numbers are checkable, and were checked, against the machine it runs on:
@@ -460,7 +532,7 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{
        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
        "io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1"}}}}' \
-  | jq -r '.result.tools[].name'                          # the armada_* tools: nine, fifteen with Allow writes on
+  | jq -r '.result.tools[].name'                          # the armada_* tools: ten, sixteen with Allow writes on
 
 # A tools/call needs the tool's name in an Mcp-Name header too, or the listener answers -32020.
 # Same headers as above plus -H 'Mcp-Name: armada_wait', and in the body
@@ -475,7 +547,33 @@ pgrep -lf deliver-message.zsh                             # one waiting hook per
 pgrep -lP "$(pgrep -nx Armada)"                          # the voice claude, Armada's own child
 ls ~/Library/Application\ Support/io.mgcrea.armada.debug/voice   # a folder per account; io.mgcrea.armada when installed
 ls ~/Library/Application\ Support/FluidAudio/Models/parakeet-tdt-0.6b-v3   # the model voice uses when it is there
+
+# Build slots, with Settings ▸ Build Slots ▸ Queue builds on. Any bundle's helper reads the one queue.
+buildslot=/Applications/Armada.app/Contents/Helpers/buildslot
+"$buildslot" status                                       # settings, pressure, a line per slot, the waiters
+"$buildslot" status --json | jq '{pressure, holders: [.holders[] | {slot, pid, label, argv}],
+                                  waiters: [.waiters[] | {pid, label, waitingSince}]}'
+head -2 ~/.local/bin/swift                                # the marker line: Armada's shim, not a real swift
+grep '^b=' ~/.local/bin/swift ~/.local/bin/xcodebuild    # the helper each shim calls
+ls -la /private/tmp/armada-build-slots-$(id -u)/slots    # drwx------; a file per slot ever used
+sysctl kern.memorystatus_vm_pressure_level                # 1 normal, 2 warning, 4 critical
+ARMADA_BUILDSLOT=off swift build                          # straight through, whatever the queue holds
 ```
+
+`status` reads the queue the way the shims do, through fresh read-only descriptors and
+`F_GETLK`, so it never disturbs it. A slot file whose lock nobody holds is a leftover and reads
+as free, whatever its record says. When the lock folder is refused (a symlink, another owner, a
+mode other than 700), `status` says `Not queueing:` and why: that is the one fault that turns
+every build unqueued without failing any.
+
+The queue itself is checked with three worktrees of one repo and Slots at 2. Start `swift test`
+in each: two run, and the third prints `buildslot: waiting for a slot (2 of 2 busy), held by …`
+naming both. `kill -9` one holder's `buildslot` pid (the `pid` in `status`), and the waiter
+prints `got slot` within a second. While they run, `swift build --show-bin-path` and
+`xcodebuild -version` return at once, the rows of the sessions that started them say `building`
+and `waiting for a slot`, and `armada_get_build_slots` lists the same pids. To try a branch
+without the Release app, run the Debug bundle's `Contents/Helpers/buildslot install`, and its
+`uninstall` afterwards.
 
 Voice also needs three checks by eye, none of which a command can make. Type in TextEdit, press
 the shortcut, and keep typing: the text must keep landing in TextEdit. The orange microphone
@@ -509,8 +607,9 @@ shows no usage bars and "No usage data yet" on the overview, and neither crashes
   New pane share; the licence key format; and the Sparkle signature check `make appcast` runs),
   the licence Worker under vitest inside the Workers runtime against a local D1, the app's
   pure files under `make unit` (the transcript parsers, forecasts, sort order and licence
-  refusals, compiled beside a check driver with `swiftc`), and the ArmadaMCP package under
-  `swift test` against a fake fleet. The app target has no test bundle.
+  refusals, compiled beside a check driver with `swiftc`), and the local packages under
+  `swift test`: ArmadaMCP against a fake fleet, ArmadaSupervisor, and BuildSlot, whose binary
+  tests take real locks in a temporary folder. The app target has no test bundle.
   `make license-check`, which runs a minted key through the real `License.swift`, needs the
   signing key, so it is not part of `make test` and runs in CI only where that secret exists.
 - **Folder discovery is not watched**: a config folder created while Armada is running does
@@ -733,6 +832,47 @@ audit`. Nothing below has been run end to end.
   unmeasured. Latency on the default was 2 to 4 s to the first text, 7 s once, on Opus 5.
 - **Debug and installed builds share the default shortcut.** Whichever registers second shows
   that another app already uses it.
+
+### Where build slots are thin
+
+Built 2026-11-24 (`BuildSlot`, `BuildSlots`, `BuildSlotMonitor`). The package suite covers which
+invocations queue, the policy, the messages and the installer, and drives the real binary
+against locks in a temporary folder: a second build waiting and saying why, `kill -9` freeing a
+slot at once, ^C reaching the child once, pass-throughs never waiting, the shim falling back
+when the helper is gone. The Release bundle is built, signed and passes `make audit`.
+
+The limits the design accepted, as the spec states them:
+
+- `xcrun swift …`, a direct `swift-build`/`swift-test`, Xcode's own builds and the Xcode MCP's
+  `BuildProject` bypass PATH and do not queue. The fleet's Makefiles call bare `swift test` and
+  `xcodebuild`, so they do.
+- `kill -9` on a shim frees its slot and leaves its build running unqueued.
+- `swift run` does not queue.
+- Waiters are served in no particular order.
+- A process that does not inherit the login shell's PATH (a GUI app launching `swift`) does not
+  queue.
+- A shim that cannot write the lock directory (a stricter sandbox) runs unqueued, and says so.
+- Two agents in one tree, or a parent and child in one tree, share a slot (the same-tree rule).
+- ^C or SIGQUIT sent with `kill` to the shim's pid alone, while its build runs, is ignored; send it
+  to the process group, or send SIGTERM.
+
+And what the build left:
+
+- **Not run end to end on this Mac yet.** The three-worktree check above, a build from inside a
+  Codex session taking a slot rather than running unqueued, Maquette's `make test-all` running
+  through without deadlock, and the rows and `armada_get_build_slots` naming the right sessions
+  are all unobserved at the time of writing.
+- **The tests leave temporary folders in `$TMPDIR`** (`buildslot-tests-*`, `buildslot-binary-*`,
+  `buildslot-shims-*` and others), a set per run, never removed.
+- **The shipped helper and the package's test build are compiled differently.** The Xcode
+  `buildslot` target inherits `SWIFT_APPROACHABLE_CONCURRENCY = YES` from the app's settings;
+  the package's executable does not set it. The tool has no async code today, so nothing differs
+  in behaviour, but the binary the tests run is not byte for byte the one that ships.
+- **A Codex build is named only when one Codex session fits.** Codex records no pid, so a build
+  under a `codex` process is matched by cwd, deepest first; two Codex sessions at that depth show
+  as "a Codex session".
+- **macOS's daily `/tmp` sweep removes files untouched for three days.** A slot file is
+  re-created on demand, so that only costs a stale record.
 
 ## Codex automations written from outside the app
 
