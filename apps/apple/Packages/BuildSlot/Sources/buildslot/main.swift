@@ -33,12 +33,17 @@ func queueAndRun(
 
   let paths = BuildSlotPaths.standard(environment: environment)
   let settings = BuildSlotSettings.load(from: paths.settingsFile)
-  // Without sweeping: the lock folder is not checked yet, and reading only opens files
-  // read-only to ask who holds them.
-  let state = QueueReader.read(paths, slotCount: settings.slots, ownPID: getpid(), sweep: false)
+  // Only from a lock folder that passes the checks: another account's records must not let a
+  // build through. A folder refused or not made yet has no holders, and the acquire below says
+  // why it runs unqueued. Without sweeping, which is the acquire's job.
+  let holders =
+    (try? paths.verifyDirectories()) == nil
+    ? []
+    : QueueReader.read(paths, slotCount: settings.slots, ownPID: getpid(), sweep: false)
+      .holders.map(\.record)
   let nested = Nesting.passesThrough(
     environment: environment, ancestors: ProcessTree.ancestors(of: getpid()),
-    cwd: currentDirectory(), holders: state.holders.map(\.record),
+    cwd: currentDirectory(), holders: holders,
     workingTreeRoot: { HolderLabel.workingTreeRoot(of: $0) })
   if nested { ChildRunner.replace(path: executable, arguments: childArguments) }
 

@@ -141,12 +141,17 @@ final class BuildSlotMonitor {
     var pressure: MemoryPressure
   }
 
-  /// The queue now. Sweeps the files dead waiters left, as the shims do.
+  /// The queue now. Sweeps the files dead waiters left, as the shims do. A lock folder that
+  /// fails the shims' checks (another account's, open to others, a symlink) is read as empty, as
+  /// the shims run unqueued beside it: its records are nobody's to show, nor its files to delete.
   @concurrent
   private nonisolated static func read(
     slotCount: Int, candidates: [MatchCandidate]
   ) async -> Reading {
     let paths = BuildSlotPaths.standard()
+    guard (try? paths.verifyDirectories()) != nil else {
+      return Reading(holders: [], waiters: [], pressure: MemoryPressure.current())
+    }
     let state = QueueReader.read(paths, slotCount: slotCount, sweep: true)
     // A holder's cwd is resolved before it is recorded; a Codex thread's is as Codex wrote it,
     // which may be `/tmp/…` for `/private/tmp/…`.

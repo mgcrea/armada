@@ -28,6 +28,17 @@ struct LockTests {
     #expect(throws: UnsafeLockDirectory.self) { try paths.ensureDirectories() }
   }
 
+  @Test func verifyChecksWithoutCreating() throws {
+    let paths = tempPaths()
+    #expect(throws: POSIXError.self) { try paths.verifyDirectories() }
+    #expect(!FileManager.default.fileExists(atPath: paths.lockRoot.path))
+
+    try paths.ensureDirectories()
+    try paths.verifyDirectories()
+    #expect(chmod(paths.slotsDir.path, 0o777) == 0)
+    #expect(throws: UnsafeLockDirectory.self) { try paths.verifyDirectories() }
+  }
+
   @Test func refusesALockRootThatIsASymlink() throws {
     let paths = tempPaths()
     let target = paths.lockRoot.deletingLastPathComponent().appendingPathComponent("elsewhere")

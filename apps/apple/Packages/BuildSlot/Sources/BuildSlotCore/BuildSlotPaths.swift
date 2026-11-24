@@ -68,18 +68,29 @@ public struct BuildSlotPaths: Sendable {
       } else if errno != EEXIST {
         throw POSIXError.current()
       }
-      var info = stat()
-      guard lstat(dir.path, &info) == 0 else { throw POSIXError.current() }
-      if info.st_mode & S_IFMT != S_IFDIR {
-        throw UnsafeLockDirectory(path: dir.path, reason: "not a directory")
-      }
-      if info.st_uid != getuid() {
-        throw UnsafeLockDirectory(path: dir.path, reason: "owned by uid \(info.st_uid)")
-      }
-      if info.st_mode & 0o077 != 0 {
-        let mode = String(info.st_mode & 0o777, radix: 8)
-        throw UnsafeLockDirectory(path: dir.path, reason: "mode \(mode), not 700")
-      }
+      try Self.verify(dir)
+    }
+  }
+
+  /// The checks `ensureDirectories` makes, without creating anything: for a reader that must not
+  /// trust files another account planted, and has no business making the folders. A folder
+  /// that does not exist throws ENOENT.
+  public func verifyDirectories() throws {
+    for dir in [lockRoot, slotsDir, waitingDir] { try Self.verify(dir) }
+  }
+
+  private static func verify(_ dir: URL) throws {
+    var info = stat()
+    guard lstat(dir.path, &info) == 0 else { throw POSIXError.current() }
+    if info.st_mode & S_IFMT != S_IFDIR {
+      throw UnsafeLockDirectory(path: dir.path, reason: "not a directory")
+    }
+    if info.st_uid != getuid() {
+      throw UnsafeLockDirectory(path: dir.path, reason: "owned by uid \(info.st_uid)")
+    }
+    if info.st_mode & 0o077 != 0 {
+      let mode = String(info.st_mode & 0o777, radix: 8)
+      throw UnsafeLockDirectory(path: dir.path, reason: "mode \(mode), not 700")
     }
   }
 }
