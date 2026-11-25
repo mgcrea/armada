@@ -192,7 +192,7 @@ changelog-check: ## Fail if Changelog.swift or a release card is stale against C
 # `appcast` runs) and for the website's release card composer, vitest
 # inside the Workers runtime for the licence Worker, and Swift twice over: the
 # app's pure files compiled beside a check driver (`unit`), and SwiftPM for the
-# ArmadaMCP package (`test`). Root-level because two of the four are not
+# local packages (`test`). Root-level because two of the four are not
 # apps/apple's, which is also why `test` is filtered out of APPLE_TARGETS:
 # forwarded, it would run only the package suite under a name that promises all
 # of them.

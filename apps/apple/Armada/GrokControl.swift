@@ -1,3 +1,4 @@
+import ArmadaProcess
 import Foundation
 
 /// Asking Grok Build for the account's allowance, the way `UsageProbe` asks Claude Code.
@@ -12,81 +13,40 @@ import Foundation
 /// against grok 1.0.34: `initialize` answered in 0.25s, `_x.ai/billing` in 0.13s, and no session
 /// directory or `active_sessions.json` entry appeared.
 ///
-/// `nonisolated` and never called from the main actor: this blocks on a subprocess.
+/// The process is run by `ChildProcess`, off the main actor, and stopped with the task
+/// that asked.
 nonisolated enum GrokControl {
-  static let timeout: TimeInterval = 15
-  static let killGrace: TimeInterval = 2
+  static let timeout: Duration = .seconds(15)
+  static let killGrace: Duration = .seconds(2)
 
-  static func limits(home: GrokHome) -> GrokFiles.Limits? {
+  static func limits(home: GrokHome) async -> GrokFiles.Limits? {
     guard let executable = executable() else { return nil }
-
-    let process = Process()
-    process.executableURL = executable
-    process.arguments = ["agent", "stdio"]
-    process.environment = environment(for: home)
-    // Not inside a repository, for `UsageProbe`'s reason: nothing here is about a project.
-    process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-
-    let input = Pipe()
-    let output = Pipe()
-    process.standardInput = input
-    process.standardOutput = output
-    process.standardError = FileHandle.nullDevice
-
-    guard !Task.isCancelled else { return nil }
-    do { try process.run() } catch { return nil }
-    let watchdog = armWatchdog(for: process)
-    defer {
-      watchdog.cancel()
-      try? input.fileHandleForWriting.close()
-      if process.isRunning { process.terminate() }
-    }
-
     // An extension method goes on the wire with a leading underscore, per the protocol.
     let requests = [
       #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}"#,
       #"{"jsonrpc":"2.0","id":2,"method":"_x.ai/billing","params":{}}"#,
     ]
-    guard let lines = (requests.joined(separator: "\n") + "\n").data(using: .utf8),
-      (try? input.fileHandleForWriting.write(contentsOf: lines)) != nil
-    else { return nil }
-
-    guard let result = readResult(id: 2, from: output.fileHandleForReading) else { return nil }
+    let result = await ChildProcess.ask(
+      executable, arguments: ["agent", "stdio"], environment: environment(for: home),
+      // Not inside a repository, for `UsageProbe`'s reason: nothing here is about a project.
+      directory: FileManager.default.homeDirectoryForCurrentUser,
+      input: Data((requests.joined(separator: "\n") + "\n").utf8), timeout: timeout,
+      stop: .terminate(grace: killGrace), answer: { BillingResult(line: $0, id: 2) })
+    guard let result = result?.value else { return nil }
     return GrokFiles.limits(result, observedAt: .now)
   }
 
-  /// See `ClaudeControl.armWatchdog`: ending the process is what unblocks a silent read.
-  private static func armWatchdog(for process: Process) -> DispatchWorkItem {
-    let pid = process.processIdentifier
-    let watchdog = DispatchWorkItem {
-      guard process.isRunning else { return }
-      process.terminate()
-      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) {
-        if process.isRunning { kill(pid, SIGKILL) }
-      }
-    }
-    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
-    return watchdog
-  }
+  /// The JSON-RPC response with one id, carried out of the line reader: its `result`, or nil
+  /// for an error response, which still ends the wait. Lines with any other id are not it.
+  private struct BillingResult: @unchecked Sendable {
+    let value: [String: Any]?
 
-  /// The `result` of the JSON-RPC response with this id. Nil on an error response or EOF.
-  private static func readResult(id: Int, from handle: FileHandle) -> [String: Any]? {
-    let deadline = Date().addingTimeInterval(timeout)
-    var buffer = Data()
-    while Date() < deadline {
-      let chunk = handle.availableData
-      if chunk.isEmpty { return nil }
-      buffer.append(chunk)
-      while let newline = buffer.firstIndex(of: 0x0A) {
-        let line = buffer[buffer.startIndex..<newline]
-        buffer.removeSubrange(buffer.startIndex...newline)
-        guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-          (object["id"] as? NSNumber)?.intValue == id
-        else { continue }
-        return object["result"] as? [String: Any]
-      }
+    init?(line: Data, id: Int) {
+      guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+        (object["id"] as? NSNumber)?.intValue == id
+      else { return nil }
+      value = object["result"] as? [String: Any]
     }
-    return nil
   }
 
   static func environment(for home: GrokHome) -> [String: String] {

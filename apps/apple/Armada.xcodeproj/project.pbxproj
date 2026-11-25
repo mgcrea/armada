@@ -12,6 +12,7 @@
 		0FA8DA000000000000000022 /* SupportKitSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000019 /* SupportKitSettings */; };
 		0FA8DA000000000000000042 /* ArmadaMCP in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000041 /* ArmadaMCP */; };
 		0FA8DA000000000000000045 /* ArmadaSupervisor in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000044 /* ArmadaSupervisor */; };
+		0FA8DA0000000000000000A2 /* ArmadaProcess in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA0000000000000000A1 /* ArmadaProcess */; };
 		0FA8DA000000000000000048 /* ArmadaSpeech in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000047 /* ArmadaSpeech */; };
 		0FA8DA000000000000000049 /* ArmadaSpeech in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA000000000000000047 /* ArmadaSpeech */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0FA8DA00000000000000004C /* MCPKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA8DA00000000000000004B /* MCPKitUI */; };
@@ -89,6 +90,7 @@
 				0FA8DA000000000000000022 /* SupportKitSettings in Frameworks */,
 				0FA8DA000000000000000042 /* ArmadaMCP in Frameworks */,
 				0FA8DA000000000000000045 /* ArmadaSupervisor in Frameworks */,
+				0FA8DA0000000000000000A2 /* ArmadaProcess in Frameworks */,
 				0FA8DA000000000000000048 /* ArmadaSpeech in Frameworks */,
 				0FA8DA00000000000000004C /* MCPKitUI in Frameworks */,
 				0FA8DA00000000000000004F /* BuildSlotCore in Frameworks */,
@@ -163,6 +165,7 @@
 				0FA8DA000000000000000019 /* SupportKitSettings */,
 				0FA8DA000000000000000041 /* ArmadaMCP */,
 				0FA8DA000000000000000044 /* ArmadaSupervisor */,
+				0FA8DA0000000000000000A1 /* ArmadaProcess */,
 				0FA8DA000000000000000047 /* ArmadaSpeech */,
 				0FA8DA00000000000000004B /* MCPKitUI */,
 				0FA8DA00000000000000004E /* BuildSlotCore */,
@@ -225,6 +228,7 @@
 				0FA8DA000000000000000016 /* XCRemoteSwiftPackageReference "swift-support-kit" */,
 				0FA8DA000000000000000040 /* XCLocalSwiftPackageReference "Packages/ArmadaMCP" */,
 				0FA8DA000000000000000043 /* XCLocalSwiftPackageReference "Packages/ArmadaSupervisor" */,
+				0FA8DA0000000000000000A0 /* XCLocalSwiftPackageReference "Packages/ArmadaProcess" */,
 				0FA8DA000000000000000046 /* XCLocalSwiftPackageReference "Packages/ArmadaSpeech" */,
 				0FA8DA00000000000000004D /* XCLocalSwiftPackageReference "Packages/BuildSlot" */,
 				0FA8DA00000000000000004A /* XCRemoteSwiftPackageReference "swift-mcp-kit" */,
@@ -543,6 +547,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/ArmadaSupervisor;
 		};
+		0FA8DA0000000000000000A0 /* XCLocalSwiftPackageReference "Packages/ArmadaProcess" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ArmadaProcess;
+		};
 		0FA8DA000000000000000046 /* XCLocalSwiftPackageReference "Packages/ArmadaSpeech" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/ArmadaSpeech;
@@ -595,6 +603,10 @@
 		0FA8DA000000000000000044 /* ArmadaSupervisor */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ArmadaSupervisor;
+		};
+		0FA8DA0000000000000000A1 /* ArmadaProcess */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ArmadaProcess;
 		};
 		0FA8DA000000000000000047 /* ArmadaSpeech */ = {
 			isa = XCSwiftPackageProductDependency;

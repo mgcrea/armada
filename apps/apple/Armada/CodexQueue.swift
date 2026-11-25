@@ -14,9 +14,10 @@ import SQLite3
 ///
 /// So "delivered" is read the way the Claude Code inbox reads it: the row is gone, which means a
 /// client took it.
+///
+/// Running `codex queue` is `CodexQueueSubmit.swift`'s, apart from this file so that `make unit`
+/// compiles the parsers and the queue reads here without the package that runs it.
 nonisolated enum CodexQueue {
-  static let timeout: TimeInterval = 15
-
   enum Submission: Equatable {
     /// The queued item's id, as `codex queue` printed it.
     case queued(item: String)
@@ -28,72 +29,6 @@ nonisolated enum CodexQueue {
 
   static let tooOldSentence =
     "This Mac's codex is too old to queue a message: `codex queue` came with codex-cli 0.163."
-
-  /// `submit` with each copy in turn while the copy is too old, so an old `codex` early on the
-  /// search path does not hide a newer one in ChatGPT or VS Code.
-  static func submit(thread: String, text: String, home: String, executables: [URL])
-    -> Submission
-  {
-    for executable in executables {
-      let submission = submit(thread: thread, text: text, home: home, executable: executable)
-      if submission != .tooOld { return submission }
-    }
-    return executables.isEmpty ? .failed("Armada cannot find codex on this Mac.") : .tooOld
-  }
-
-  /// Runs `codex queue` against `home`. Blocks for as long as the CLI does, which is a fraction
-  /// of a second, and never longer than `timeout`.
-  static func submit(thread: String, text: String, home: String, executable: URL) -> Submission {
-    let process = Process()
-    process.executableURL = executable
-    // `--message=` rather than `--message` and a separate argument: a text that starts with a
-    // dash would otherwise be read as a flag.
-    process.arguments = ["queue", "--thread", thread, "--message=\(text)"]
-    var environment = ProcessInfo.processInfo.environment
-    environment["CODEX_HOME"] = home
-    process.environment = environment
-    process.standardInput = FileHandle.nullDevice
-    let output = Pipe()
-    let errors = Pipe()
-    process.standardOutput = output
-    process.standardError = errors
-
-    do { try process.run() } catch {
-      return .failed("Armada could not run codex: \(error.localizedDescription)")
-    }
-    // To the process group, which a `Process` child leads, so anything it started that holds
-    // the pipes goes too and the reads below can end. Only while the leader is unreaped.
-    let pid = process.processIdentifier
-    let group = getpgid(pid) == pid && pid != getpgrp() ? -pid : pid
-    let watchdog = DispatchWorkItem {
-      guard process.isRunning else { return }
-      kill(group, SIGTERM)
-      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
-        if process.isRunning { kill(group, SIGKILL) }
-      }
-    }
-    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
-
-    // stderr on another thread while this one reads stdout, so a CLI that fills one pipe while
-    // Armada waits on the other cannot stall.
-    nonisolated(unsafe) var stderr = Data()
-    let drained = DispatchGroup()
-    drained.enter()
-    DispatchQueue.global(qos: .utility).async {
-      stderr = errors.fileHandleForReading.readDataToEndOfFile()
-      drained.leave()
-    }
-    let stdout = output.fileHandleForReading.readDataToEndOfFile()
-    drained.wait()
-    process.waitUntilExit()
-    watchdog.cancel()
-
-    if let item = queuedItem(in: String(decoding: stdout, as: UTF8.self)) {
-      return .queued(item: item)
-    }
-    let message = String(decoding: stderr, as: UTF8.self)
-    return isTooOld(stderr: message) ? .tooOld : .failed(failure(stderr: message))
-  }
 
   /// An older Codex has no `queue` command: its interactive CLI takes `queue` as a prompt and
   /// refuses `--thread` (clap's wording; not measured against an old copy).

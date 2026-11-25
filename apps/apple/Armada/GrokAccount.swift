@@ -38,7 +38,7 @@ final class GrokAccount: Identifiable {
 
   @concurrent
   private nonisolated static func probe(_ home: GrokHome) async -> GrokFiles.Limits? {
-    GrokControl.limits(home: home)
+    await GrokControl.limits(home: home)
   }
 
   var displayName: String { home.displayName }

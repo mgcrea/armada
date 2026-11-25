@@ -1,5 +1,5 @@
 {
-  "originHash" : "76f0708ae7ea1dbffe01932aa52389a290697b37ab6de38984247490ccef295f",
+  "originHash" : "04e9ff4aef07c32f5883d99c41b43b6a9a7cd175d47e34adcf6886a52b873608",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -19,12 +19,30 @@
       }
     },
     {
+      "identity" : "swift-subprocess",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-subprocess.git",
+      "state" : {
+        "revision" : "dbe21bd7dfd4ffef8c32588918542a8abfa1b54c",
+        "version" : "1.0.2"
+      }
+    },
+    {
       "identity" : "swift-support-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-support-kit.git",
       "state" : {
         "revision" : "2ec1eda43a5f54655cfa31fb2113ac95cc27126f",
         "version" : "1.23.0"
+      }
+    },
+    {
+      "identity" : "swift-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-system",
+      "state" : {
+        "revision" : "640e5755b5826f4437eaeedd366fd776737db62c",
+        "version" : "1.9.0"
       }
     }
   ],

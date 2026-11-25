@@ -97,13 +97,16 @@ build: sparkle ## Build the app (CONFIG=Debug by default; the root's build-relea
 # The local packages' own suites. ArmadaMCP: its tool table, run against a fake fleet with no
 # app, no config folder and no bound port. ArmadaSupervisor: the voice supervisor's stream-json
 # decoding, argument lockdown, sentence chunking and shortcut rules, with no microphone, no
-# panel and no spawned `claude`. BuildSlot: which invocations queue and the holder label, with
-# no slot taken. `swift test` rather than `xcodebuild test`, because the packages are plain
+# panel and no spawned `claude`. ArmadaProcess: the deadline, cancellation and process-group
+# teardown of the commands Armada asks for an answer, and the login shell cases measured on
+# 2026-10-12, against /bin/sh and zsh only. BuildSlot: which invocations queue and the holder
+# label, with no slot taken. `swift test` rather than `xcodebuild test`, because the packages are plain
 # SwiftPM and the app target has no test bundle — a protocol and a pure reducer are what moved
 # everything worth testing out of it. The app's own pure files are
 # checked separately, by `unit` below.
 test: ## Run the local Swift package tests
 	swift test --package-path Packages/ArmadaMCP
+	swift test --package-path Packages/ArmadaProcess
 	swift test --package-path Packages/ArmadaSupervisor
 	swift test --package-path Packages/BuildSlot
 
@@ -159,7 +162,8 @@ clean: ## Remove build products
 # above reformats other people's code. Recompute with fleet-apple-conventions'
 # scripts/swift_src.py rather than editing this by hand.
 SWIFT_SRC := Armada UnitChecks Packages/ArmadaMCP/Package.swift Packages/ArmadaMCP/Sources \
-	Packages/ArmadaMCP/Tests Packages/ArmadaSupervisor/Package.swift \
+	Packages/ArmadaMCP/Tests Packages/ArmadaProcess/Package.swift Packages/ArmadaProcess/Sources \
+	Packages/ArmadaProcess/Tests Packages/ArmadaSupervisor/Package.swift \
 	Packages/ArmadaSupervisor/Sources Packages/ArmadaSupervisor/Tests \
 	Packages/ArmadaSpeech/Package.swift Packages/ArmadaSpeech/Sources \
 	Packages/BuildSlot/Package.swift Packages/BuildSlot/Sources Packages/BuildSlot/Tests
@@ -276,7 +280,6 @@ UNIT_SRC := \
 	Armada/RecentSessions.swift \
 	Armada/SessionHistory.swift \
 	Armada/LaunchScript.swift \
-	Armada/LoginShell.swift \
 	Armada/SessionClosePolicy.swift \
 	Armada/SessionBatch.swift \
 	Armada/NewAccount.swift \

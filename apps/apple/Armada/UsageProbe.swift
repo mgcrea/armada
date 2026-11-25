@@ -27,7 +27,7 @@ import Foundation
 /// costs is a process and about a second, which is why it runs on a slow timer and on
 /// the popover opening rather than on the 30-second file poll.
 ///
-/// `nonisolated` and never called from the main actor: this blocks on a subprocess.
+/// `@concurrent`: the probe and its decoding run off the main actor.
 nonisolated enum UsageProbe {
   /// Ask one config folder's account for its current windows, or nil.
   ///
@@ -43,9 +43,10 @@ nonisolated enum UsageProbe {
   /// **Isolated for the same reason.** The person's hooks and MCP servers have no say in
   /// an account's limits, and on a 3-minute timer they were eleven processes and a
   /// plugin's failed save every time — see `ClaudeControl.isolation`.
-  static func run(folder: ClaudeConfigFolder) -> UsageSnapshot? {
+  @concurrent
+  static func run(folder: ClaudeConfigFolder) async -> UsageSnapshot? {
     guard
-      let payload = ClaudeControl.request(
+      let payload = await ClaudeControl.request(
         subtype: "get_usage", folder: folder,
         cwd: FileManager.default.homeDirectoryForCurrentUser, isolated: true)
     else { return nil }

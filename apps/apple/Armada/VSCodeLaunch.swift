@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import ArmadaProcess
 import os
 
 /// Start a fresh Claude Code session in the project's own Visual Studio Code window, opening
@@ -206,22 +207,16 @@ enum VSCodeLaunch {
   private static func run(_ executable: URL, arguments: [String], environment: [String: String])
     async -> String?
   {
-    await Task.detached {
-      let process = Process()
-      process.executableURL = executable
-      process.arguments = arguments
-      process.environment = environment
-      process.standardOutput = FileHandle.nullDevice
-      process.standardError = FileHandle.nullDevice
-      process.standardInput = FileHandle.nullDevice
-      do { try process.run() } catch { return error.localizedDescription }
-      let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
-      DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: timeout)
-      process.waitUntilExit()
-      timeout.cancel()
-      return process.terminationStatus == 0
-        ? nil : "its command line exited with status \(process.terminationStatus)."
-    }.value
+    // Awaited, not waited on: the `code` CLI used to be `waitUntilExit()`ed inside
+    // `Task.detached`, which held one of the cooperative pool's few threads for as long as it
+    // took, up to the 20 seconds allowed.
+    guard
+      let finished = await ChildProcess.collect(
+        executable, arguments: arguments, environment: environment, output: .discard,
+        timeout: .seconds(20))
+    else { return "its command line could not be run, or did not return within 20 seconds." }
+    return finished.succeeded
+      ? nil : "its command line exited with status \(finished.status)."
   }
 
   // MARK: - The window that is open

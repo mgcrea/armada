@@ -94,6 +94,7 @@ transcripts, separate rate limits.
 | `ContextWindow` | how big the window is, and which of four sources said so |
 | `UsageSnapshot` / `AccountIdentity` | the two halves of `.claude.json` |
 | `ClaudeControl` | one control request to a headless `claude`, and its answer |
+| `ArmadaProcess` (package) | `ChildProcess`, on swift-subprocess: the short commands Armada asks for an answer (`claude` and `grok` control requests, `codex queue`, VS Code's `code`), each bounded by a deadline, stopped with its task, and stopped by its process group; and `LoginShell`, the login profile read. The voice supervisor and headless Grok turns stay on `Process`; `make -C apps/apple test` |
 | `UsageProbe` | `get_usage` — the live figures, the way the VS Code extension gets them |
 | `ContextProbe` | `get_context_usage` — the prefix breakdown a transcript cannot give |
 | `ContextCompositions` | those breakdowns per project, cached for the life of the process |

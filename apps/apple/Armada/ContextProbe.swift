@@ -65,9 +65,10 @@ nonisolated enum ContextProbe {
   ]
 
   /// Ask what a session in `cwd` under `folder` would load. Nil on any failure.
-  static func run(folder: ClaudeConfigFolder, cwd: URL) -> ContextComposition? {
+  @concurrent
+  static func run(folder: ClaudeConfigFolder, cwd: URL) async -> ContextComposition? {
     guard
-      let payload = ClaudeControl.request(
+      let payload = await ClaudeControl.request(
         // `summary` rather than the default `full`: `full` counts every category
         // through the `/v1/messages/count_tokens` endpoint, which is a network round
         // trip per category for a breakdown this already answers locally.

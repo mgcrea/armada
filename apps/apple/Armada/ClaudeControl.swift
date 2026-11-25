@@ -1,3 +1,4 @@
+import ArmadaProcess
 import Foundation
 
 /// One control request to a headless `claude`, and the payload it answers with.
@@ -22,14 +23,20 @@ import Foundation
 /// sessions can afford, and neither thing it is asked about changes often enough to
 /// poll. See `ContextProbe` for how that is cached instead.
 ///
-/// `nonisolated` and never called from the main actor: this blocks on a subprocess.
+/// The process is run by `ChildProcess`, off the main actor, and stopped with the task
+/// that asked.
 nonisolated enum ClaudeControl {
   /// Long enough for a cold `claude` start on a busy Mac, short enough that a hung
-  /// one does not pin a background task for a minute. Warm responses land in ~1s.
-  static let timeout: TimeInterval = 20
+  /// one does not hold a probe for a minute. Warm responses land in ~1s.
+  ///
+  /// The deadline is enforced on the process, not on the read: a `claude` that goes
+  /// silent without exiting would park any read for good, so at the deadline it gets
+  /// `SIGTERM`, so it can take its MCP servers down with it, then `SIGKILL` after
+  /// `killGrace` for one wedged past answering that.
+  static let timeout: Duration = .seconds(20)
 
-  /// How long a process that ignored `terminate()` has before it is killed outright.
-  static let killGrace: TimeInterval = 2
+  /// How long a process that ignored `SIGTERM` has before it is killed outright.
+  static let killGrace: Duration = .seconds(2)
 
   /// What `isolated` adds: no settings files, so none of the person's hooks or plugins,
   /// and no MCP servers.
@@ -44,7 +51,7 @@ nonisolated enum ClaudeControl {
   ///
   /// **Both halves are needed.** `--setting-sources ''` alone stopped the hooks and kept
   /// all 11 servers: they are configured in `~/.claude.json`, not in a settings file.
-  /// The empty string is an argument of its own, which `Process` passes as one.
+  /// The empty string is an argument of its own, and is passed as one.
   static let isolation = [
     "--setting-sources", "", "--strict-mcp-config", "--mcp-config", #"{"mcpServers":{}}"#,
   ]
@@ -72,107 +79,44 @@ nonisolated enum ClaudeControl {
   static func request(
     subtype: String, extra: String = "", folder: ClaudeConfigFolder, cwd: URL,
     isolated: Bool = false
-  ) -> [String: Any]? {
+  ) async -> [String: Any]? {
     guard let executable = executable() else { return nil }
-
-    let process = Process()
-    process.executableURL = executable
-    // `--verbose` is required alongside stream-json output, not optional detail.
-    process.arguments =
-      ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
-      + (isolated ? isolation : [])
-    process.environment = environment(for: folder)
-    process.currentDirectoryURL = cwd
-
-    let input = Pipe()
-    let output = Pipe()
-    process.standardInput = input
-    process.standardOutput = output
-    // Swallowed rather than inherited: an unreadable warning on Armada's stderr is
-    // noise, and an unread pipe is a process that blocks once it fills one.
-    process.standardError = FileHandle.nullDevice
-
-    // The last moment before a process exists. `Accounts.stop()` cancels the probe
-    // that led here when the entitlement is refused, and one already queued on the
-    // utility pool would otherwise start `claude` behind a locked panel.
-    guard !Task.isCancelled else { return nil }
-    do { try process.run() } catch { return nil }
-    let watchdog = armWatchdog(for: process)
-    defer {
-      watchdog.cancel()
-      // The CLI exits when stdin closes, but not instantly, so one still running once
-      // the answer is in is terminated here. Both are needed — closing alone leaves a
-      // process behind, and killing alone can race a clean exit into a spurious error.
-      try? input.fileHandleForWriting.close()
-      if process.isRunning { process.terminate() }
-    }
-
     let body =
       #"{"type":"control_request","request_id":"armada","request":{"subtype":"\#(subtype)"\#(extra)}}"#
-    guard let line = (body + "\n").data(using: .utf8),
-      (try? input.fileHandleForWriting.write(contentsOf: line)) != nil
-    else { return nil }
 
-    return readResponse(from: output.fileHandleForReading)
+    // Cancelling the caller's task stops `claude`, not only one not started yet:
+    // `Accounts.stop()` cancels the probe that led here when the entitlement is refused,
+    // and a probe left running would go on talking to the network behind a locked panel.
+    let payload = await ChildProcess.ask(
+      executable,
+      // `--verbose` is required alongside stream-json output, not optional detail.
+      arguments: ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+        + (isolated ? isolation : []),
+      environment: environment(for: folder), directory: cwd, input: Data((body + "\n").utf8),
+      timeout: timeout, stop: .terminate(grace: killGrace), answer: { Payload(line: $0) })
+    return payload?.value
   }
 
-  /// The deadline, enforced on the process rather than on the read.
-  ///
-  /// `availableData` blocks until the pipe has something or reaches its end, so a
-  /// `claude` that goes silent without exiting parks `readResponse` for good: the
-  /// loop's own deadline check never gets another turn, and the `terminate()` in the
-  /// caller's `defer` only runs once the read has returned. Ending the process is what
-  /// unblocks it. Its end of the pipe closes, the read comes back empty, and
-  /// `readResponse` returns nil.
-  ///
-  /// `SIGTERM` first, so the CLI can take its MCP servers down with it, then `SIGKILL`
-  /// for one wedged past answering that. The `isRunning` check in front of the kill is
-  /// what keeps it from reaching a pid the system has already handed to someone else.
-  private static func armWatchdog(for process: Process) -> DispatchWorkItem {
-    let pid = process.processIdentifier
-    let watchdog = DispatchWorkItem {
-      guard process.isRunning else { return }
-      process.terminate()
-      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) {
-        if process.isRunning { kill(pid, SIGKILL) }
-      }
+  /// A control response's payload, carried out of the line reader. `[String: Any]` is
+  /// not `Sendable`, and JSON objects are never shared, so the box says so.
+  private struct Payload: @unchecked Sendable {
+    let value: [String: Any]
+
+    /// The payload of a successful control response, or nil for any other line.
+    ///
+    /// The CLI emits an `init` system message and may emit more before answering, so
+    /// the first line is not the answer. This matches on the one key it needs and
+    /// leaves everything else unparsed.
+    init?(line: Data) {
+      // Cheap reject before a JSON parse, as the transcript readers do.
+      guard line.range(of: Data("control_response".utf8)) != nil,
+        let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+        let response = object["response"] as? [String: Any],
+        response["subtype"] as? String == "success",
+        let payload = response["response"] as? [String: Any]
+      else { return nil }
+      value = payload
     }
-    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
-    return watchdog
-  }
-
-  /// Read stream-json until the control response arrives or the deadline passes.
-  ///
-  /// The CLI emits an `init` system message and may emit more before answering, so
-  /// this cannot take the first line. It matches on the one key it needs and leaves
-  /// everything else unparsed.
-  private static func readResponse(from handle: FileHandle) -> [String: Any]? {
-    let deadline = Date().addingTimeInterval(timeout)
-    var buffer = Data()
-
-    while Date() < deadline {
-      // `availableData` blocks until there is something, which is why the deadline
-      // is checked around it rather than trusted to bound it: a silent process
-      // parks here until it writes or exits. The watchdog `request` arms is what
-      // bounds that, by making sure it exits.
-      let chunk = handle.availableData
-      if chunk.isEmpty { return nil }  // EOF: the process gave up first.
-      buffer.append(chunk)
-
-      while let newline = buffer.firstIndex(of: 0x0A) {
-        let line = buffer[buffer.startIndex..<newline]
-        buffer.removeSubrange(buffer.startIndex...newline)
-        // Cheap reject before a JSON parse, as the transcript readers do.
-        guard line.range(of: Data("control_response".utf8)) != nil,
-          let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-          let response = object["response"] as? [String: Any],
-          response["subtype"] as? String == "success",
-          let payload = response["response"] as? [String: Any]
-        else { continue }
-        return payload
-      }
-    }
-    return nil
   }
 
   /// `CLAUDE_CONFIG_DIR` for a custom folder, and pointedly **removed** for the

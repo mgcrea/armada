@@ -271,8 +271,8 @@ it hands to a terminal, and, with Build Slots on, the `swift` and `xcodebuild` s
   format, and the Sparkle signature check), the licence Worker under vitest in the Workers runtime,
   the app's pure files under `make unit` (the transcript parsers, forecasts, sort order and
   licence refusals, compiled beside a check driver), and the local packages under `swift test`:
-  ArmadaMCP against a fake fleet, ArmadaSupervisor, and BuildSlot, whose binary tests take real
-  locks in a temporary folder. The app target has no test
+  ArmadaMCP against a fake fleet, ArmadaProcess against real shells, ArmadaSupervisor, and
+  BuildSlot, whose binary tests take real locks in a temporary folder. The app target has no test
   bundle, and `make license-check`, which runs a minted key through the real `License.swift`, needs
   the signing key and so is not part of it.
 - **Folder discovery is not watched**: a config folder created while Armada is running does not

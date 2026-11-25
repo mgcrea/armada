@@ -49,8 +49,12 @@ final class ContextCompositions {
 
     let folder = self.folder
     let url = URL(filePath: cwd, directoryHint: .isDirectory)
+    // Detached, so the probe outlives the `.task` that asked: the selection moving on cancels
+    // that task, and a probe it took down with it would cache nothing, leaving `inFlight` to
+    // turn away the very row that asks next. Finished, the answer serves every session in the
+    // project. Nothing blocks a thread while it runs.
     let probed = await Task.detached(priority: .utility) {
-      ContextProbe.run(folder: folder, cwd: url)
+      await ContextProbe.run(folder: folder, cwd: url)
     }.value
 
     if let probed {

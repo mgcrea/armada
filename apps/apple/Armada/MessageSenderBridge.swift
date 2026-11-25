@@ -119,8 +119,10 @@ nonisolated struct MessageSenderBridge: MessageSender {
     case .ready(let ready): target = ready
     }
 
+    // Detached, so a tool call abandoned mid-send cannot stop `codex` after it queued the row
+    // and report as refused a message that will be delivered.
     let submission = await Task.detached(priority: .userInitiated) {
-      CodexQueue.submit(
+      await CodexQueue.submit(
         thread: target.threadID, text: Self.label + "\n\n" + request.text, home: target.home,
         executables: target.executables)
     }.value

@@ -138,7 +138,7 @@ final class Account: Identifiable {
   /// Off the main actor, as a child of the caller's task.
   @concurrent
   private nonisolated static func probe(_ folder: ClaudeConfigFolder) async -> UsageSnapshot? {
-    UsageProbe.run(folder: folder)
+    await UsageProbe.run(folder: folder)
   }
 
   /// Take a new reading, unless it would be a step backwards.
