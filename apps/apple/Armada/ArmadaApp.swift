@@ -60,6 +60,9 @@ private struct MenuBarLabel: View {
   @State private var grok = GrokAccounts.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
   @AppStorage(MenuBarLimit.defaultsKey) private var storedLimit = ""
+  @AppStorage(MenuBarBuilds.defaultsKey) private var showsBuilds = MenuBarBuilds.shownByDefault
+  @State private var buildSlots = BuildSlots.shared
+  @State private var buildMonitor = BuildSlotMonitor.shared
 
   /// For `UsageWindow.hasRolled` alone: a starred window that turns over while
   /// nothing is polling must still drop its figure for the dash. A minute is finer
@@ -68,9 +71,12 @@ private struct MenuBarLabel: View {
   private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
+    let figure = figure
+    let builds = builds
     Group {
-      if let figure {
-        Image(nsImage: MenuBarFigureImage.image(asset: assetName, figure: figure))
+      if figure != nil || builds != nil {
+        Image(
+          nsImage: MenuBarFigureImage.image(asset: assetName, figure: figure, builds: builds))
       } else {
         Image(assetName)
       }
@@ -88,6 +94,15 @@ private struct MenuBarLabel: View {
 
   private var figure: String? {
     starred.map { MenuBarLimit.figure($0.window, now: now) }
+  }
+
+  /// The queue's marks, under the rule the panel's Build slots row follows: only while the switch
+  /// is on, and never in a capture, whose staged sessions have no builds behind them.
+  private var builds: MenuBarBuilds? {
+    guard showsBuilds, buildSlots.isEnabled, !ScreenshotMode.isEnabled else { return nil }
+    let builds = MenuBarBuilds(
+      running: buildMonitor.holders.count, waiting: buildMonitor.waiters.count)
+    return builds.isEmpty ? nil : builds
   }
 
   /// Across every account and every vendor: the menu bar answers "is anything of
@@ -128,14 +143,19 @@ private struct MenuBarLabel: View {
       case (false, true): "Armada — a session is waiting on you"
       case (false, false): "Armada — all sessions idle"
       }
-    guard let starred else { return state }
-    let name = starred.limit.spokenName
-    if starred.window.hasRolled(asOf: now) { return "\(state), \(name) has reset" }
-    return "\(state), \(name) at \(starred.window.utilization) percent"
+    var parts = [state]
+    if let starred {
+      let name = starred.limit.spokenName
+      parts.append(
+        starred.window.hasRolled(asOf: now)
+          ? "\(name) has reset" : "\(name) at \(starred.window.utilization) percent")
+    }
+    if let spoken = builds?.spoken { parts.append(spoken) }
+    return parts.joined(separator: ", ")
   }
 }
 
-/// The glyph and the starred figure, drawn into one template image.
+/// The glyph, the starred figure and the build marks, drawn into one template image.
 ///
 /// **One image rather than an `Image` and a `Text` side by side in the label**, for
 /// the reason `MenuBarLabel` gives about the halo: SwiftUI turns a `MenuBarExtra`
@@ -145,19 +165,25 @@ private struct MenuBarLabel: View {
 /// the status item is set in the menu bar's own 13pt, which is as loud as the clock.
 ///
 /// Black on transparent and marked as a template, so AppKit tints it exactly as it
-/// tints the assets. Cached per asset and figure, because the label's body runs on
-/// every session update and there are only three glyphs and about a hundred figures.
+/// tints the assets. Cached per asset, figure and marks, because the label's body runs on
+/// every session update and there are only three glyphs, about a hundred figures and a few
+/// dozen rows of marks.
 @MainActor
 enum MenuBarFigureImage {
   private static var cache: [String: NSImage] = [:]
 
-  static func image(asset: String, figure: String) -> NSImage {
-    let key = "\(asset)|\(figure)"
+  static func image(asset: String, figure: String?, builds: MenuBarBuilds?) -> NSImage {
+    let key = "\(asset)|\(figure ?? "")|\(builds?.marksKey ?? "")"
     if let cached = cache[key] { return cached }
     let renderer = ImageRenderer(
       content: HStack(spacing: 2) {
         Image(asset).renderingMode(.template)
-        Text(figure).font(.system(size: 11, weight: .medium).monospacedDigit())
+        if let figure {
+          Text(figure).font(.system(size: 11, weight: .medium).monospacedDigit())
+        }
+        if let builds {
+          MenuBarBuildMarks(builds: builds).padding(.leading, 1)
+        }
       }
       .foregroundStyle(.black))
     // 2x whatever the display, which is every Mac menu bar that ships: the 18pt glyph
@@ -169,6 +195,29 @@ enum MenuBarFigureImage {
     image.isTemplate = true
     cache[key] = image
     return image
+  }
+}
+
+/// `●●○`: see `MenuBarBuilds`. A ring is stroked inside its frame, so it is exactly as wide as
+/// a dot and the row keeps one pitch whatever the mix.
+private struct MenuBarBuildMarks: View {
+  let builds: MenuBarBuilds
+
+  private static let diameter: CGFloat = 4.5
+
+  var body: some View {
+    HStack(spacing: 2) {
+      ForEach(0..<builds.filled, id: \.self) { _ in
+        Circle().frame(width: Self.diameter, height: Self.diameter)
+      }
+      ForEach(0..<builds.rings, id: \.self) { _ in
+        Circle().strokeBorder(lineWidth: 1.1)
+          .frame(width: Self.diameter, height: Self.diameter)
+      }
+      if builds.overflows {
+        Text("+").font(.system(size: 9, weight: .semibold))
+      }
+    }
   }
 }
 

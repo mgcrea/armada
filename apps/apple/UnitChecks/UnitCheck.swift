@@ -1341,6 +1341,34 @@ struct UnitCheck {
         == [claude])
     check("nothing stored hides nothing", PanelVisibility.hidden(stored: "").isEmpty)
 
+    section("MenuBarBuilds")
+    let quiet = MenuBarBuilds(running: 0, waiting: 0)
+    check("an empty queue draws nothing and says nothing", quiet.isEmpty && quiet.spoken == nil)
+    let mixed = MenuBarBuilds(running: 2, waiting: 1)
+    check(
+      "two running and one waiting draw two dots and a ring, no plus",
+      mixed.filled == 2 && mixed.rings == 1 && !mixed.overflows)
+    check("and say so", mixed.spoken == "2 builds running, 1 waiting")
+    check(
+      "one waiting alone is singular",
+      MenuBarBuilds(running: 0, waiting: 1).spoken == "1 build waiting")
+    let full = MenuBarBuilds(running: 2, waiting: 7)
+    check(
+      "past five marks the rings stop and a plus follows",
+      full.filled == 2 && full.rings == 3 && full.overflows)
+    let busy = MenuBarBuilds(running: 8, waiting: 3)
+    check(
+      "running builds take the row first", busy.filled == 5 && busy.rings == 0 && busy.overflows)
+    check(
+      "exactly five marks is no overflow",
+      !MenuBarBuilds(running: 3, waiting: 2).overflows)
+    check(
+      "the cache key tells apart rows that draw differently, and only those",
+      full.marksKey != mixed.marksKey
+        && MenuBarBuilds(running: 2, waiting: 7).marksKey
+          == MenuBarBuilds(running: 2, waiting: 9).marksKey
+    )
+
     section("MenuBarHalo with Grok")
     check(
       "a working Grok session lights the default halo",

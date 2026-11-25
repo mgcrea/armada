@@ -2,13 +2,15 @@ import BuildSlotCore
 import SwiftUI
 
 /// Settings ▸ Build Slots: the switch that installs the `swift` and `xcodebuild` shims, how many
-/// builds run at once, the memory rule, and the queue as it stands.
+/// builds run at once, the memory rule, and the queue as it stands, with whether the menu bar
+/// shows it.
 ///
 /// The two wait caps in `settings.json` have no control here: they are the tool's safety net,
 /// not something to tune.
 struct BuildSlotsPane: View {
   @State private var buildSlots = BuildSlots.shared
   @State private var monitor = BuildSlotMonitor.shared
+  @AppStorage(MenuBarBuilds.defaultsKey) private var showsInMenuBar = MenuBarBuilds.shownByDefault
 
   var body: some View {
     Form {
@@ -84,6 +86,10 @@ struct BuildSlotsPane: View {
           ForEach(monitor.holders + monitor.waiters) { entry in
             BuildSlotEntryRow(entry: entry)
           }
+        }
+        Toggle(isOn: $showsInMenuBar) {
+          Text("Show builds in the menu bar")
+          Text("A dot for each build running and a ring for each one waiting, after the icon.")
         }
       } header: {
         Text("Queue")
