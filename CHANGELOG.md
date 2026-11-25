@@ -5,8 +5,22 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.14.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.15.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.15.0] - 2026-11-25
+
+**Your builds, in the menu bar.** With Build Slots on, a dot beside Armada's icon stands
+for each build running and a ring for each one waiting, so a glance says whether your agents'
+builds are moving or stuck in line.
+
+### Added
+
+- **Builds in the menu bar.** While Build Slots is on and anything is queued, the menu bar icon
+  is followed by a filled dot for each build holding a slot and a ring for each one waiting,
+  running builds first. Past five marks a `+` takes over, and the exact count is in the panel.
+  With the queue empty the icon looks as it always did. VoiceOver reads the counts. Settings ▸
+  Build Slots ▸ Queue has a "Show builds in the menu bar" switch, on by default.
 
 ## [1.14.0] - 2026-11-24
 

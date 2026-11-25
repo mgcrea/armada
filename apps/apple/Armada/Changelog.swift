@@ -212,7 +212,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_14_0, v1_13_0, v1_12_1, v1_12_0, v1_11_1]
+  static let releases: [Release] = [v1_15_0, v1_14_0, v1_13_0, v1_12_1, v1_12_0]
+
+  // swift-format-ignore
+  private static let v1_15_0: Release = Release(
+    version: "1.15.0",
+    date: "2026-11-25",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Builds in the menu bar.",
+            body: [
+              "While Build Slots is on and anything is queued, the menu bar icon is followed by a filled dot for each build holding a slot and a ring for each one waiting, running builds first. Past five marks a `+` takes over, and the exact count is in the panel. With the queue empty the icon looks as it always did. VoiceOver reads the counts. Settings ▸ Build Slots ▸ Queue has a \"Show builds in the menu bar\" switch, on by default.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_14_0: Release = Release(
@@ -352,41 +370,6 @@ nonisolated enum Changelog {
             headline: "No empty 5h row in the menu bar panel.",
             body: [
               "Max 20x stopped reporting a five-hour limit in November 2026, but the panel still showed \"5h —\" under the account, which looked like a missing figure. It now shows only the limits an account reports, as the sidebar and the Usage pane already did.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_11_1: Release = Release(
-    version: "1.11.1",
-    date: "2026-10-27",
-    sections: [
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "macOS 27's name for the Accessibility grant.",
-            body: [
-              "macOS 27 renamed the pane in System Settings to Device Control and Data Access, so Armada's Settings told you to allow something you could not find there. Settings ▸ General, Settings ▸ Mouse, the note under Focus and the error when a session cannot start in VS Code now use the name your Mac shows; on macOS 26 it is still Accessibility. The button opens the right pane on both.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "MCP tools:",
-            body: [
-              "`armada_focus_session` names both, since the agent relaying it does not know which macOS you run.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "The icon matches its siblings.",
-            body: [
-              "Its plate ran a shade lighter and pinker than Bastion's and Cupertino's, and beside them in the Dock it read as a near miss. It is now the same.",
             ]),
         ]),
     ])
