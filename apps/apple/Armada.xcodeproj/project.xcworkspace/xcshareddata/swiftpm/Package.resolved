@@ -1,5 +1,5 @@
 {
-  "originHash" : "04e9ff4aef07c32f5883d99c41b43b6a9a7cd175d47e34adcf6886a52b873608",
+  "originHash" : "1b64ee80a666ba06c873416d802869515ef3f1842e6d90d34be7a7c15661aabc",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-mcp-kit.git",
       "state" : {
-        "revision" : "78f47d90eb1e60128dff34ee586054b167bbcbe7",
-        "version" : "1.4.0"
+        "revision" : "85de7ee3d97747eb1e7e4b029fb5dca68fa9226b",
+        "version" : "1.8.1"
       }
     },
     {
