@@ -10,8 +10,8 @@ import SwiftUI
 /// colour, and a dot composed over it is never drawn (`MenuBarLabel`); the glyph's three rungs
 /// and the starred figure already say what the sessions are doing. The panel is an ordinary
 /// window, so the light keeps the colour it has on the main window's toolbar button, and means
-/// the same: green while the server listens, pulsing for a minute after a request, orange when a
-/// request was turned away for its token, red when the listener failed.
+/// the same: green while the server listens, pulsing once at each request, orange when a request
+/// was turned away for its token, red when the listener failed.
 ///
 /// Nothing while the server is off or the entitlement refuses it: the server is opt-in, and a
 /// row about something nobody switched on is the panel's summary spent on chrome. Nothing in a
@@ -39,7 +39,11 @@ struct MCPPanelRow: View {
           Image(systemName: "circle.fill")
             .font(.system(size: 7))
             .foregroundStyle(status.tint ?? .secondary)
-            .symbolEffect(.pulse, isActive: status.isWorking)
+            // Once for each request served, as the kit's toolbar light does since swift-mcp-kit
+            // 1.8.1, never for the minute the status reads working: an effect left running makes
+            // AppKit lay out what holds it at every frame, and with agents calling every minute
+            // or two the minute never ends.
+            .symbolEffect(.pulse, options: .nonRepeating, value: controller.activity.lastServed)
           Text(line(status))
             .font(.callout)
             .foregroundStyle(.secondary)
