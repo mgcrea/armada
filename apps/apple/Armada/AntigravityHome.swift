@@ -64,3 +64,45 @@ nonisolated struct AntigravityHome: Sendable, Hashable {
     (base.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
   }
 }
+
+extension AntigravityHome {
+  /// `agy`: `~/.local/bin`, where its installer puts it, then `PATH` and the Homebrew
+  /// folders, as `GrokControl.executable()` looks for `grok`.
+  nonisolated static func executable() -> URL? {
+    let fileManager = FileManager.default
+    let home = fileManager.homeDirectoryForCurrentUser
+    var candidates = [home.appending(path: ".local/bin/agy", directoryHint: .notDirectory)]
+    if let path = ProcessInfo.processInfo.environment["PATH"] {
+      candidates += path.split(separator: ":").map {
+        URL(filePath: String($0)).appending(path: "agy", directoryHint: .notDirectory)
+      }
+    }
+    candidates += [URL(filePath: "/opt/homebrew/bin/agy"), URL(filePath: "/usr/local/bin/agy")]
+    return candidates.first { fileManager.isExecutableFile(atPath: $0.path(percentEncoded: false)) }
+  }
+}
+
+/// What follows `agy` on a launch script's command line, apart from `NewSession`, which needs
+/// AppKit, so `make unit` can check it.
+///
+/// The values arrive as shell words already: `NewSession` quotes the id and the model, and the
+/// prompt is `LaunchScript.promptLines`' `"$prompt"`. This only orders them.
+///
+/// Flags from `agy --help` on 1.5.18 (2026-11-27): `--conversation=<id>` continues a
+/// conversation, `--model <id>` picks the model, and `-i <prompt>` opens the TUI on a first
+/// prompt, where `-p` would run it headless and exit. There is no flag that names a new
+/// conversation and none that forks one.
+nonisolated enum AntigravityLaunch {
+  enum Start: Hashable, Sendable {
+    case fresh
+    case resume(String)
+  }
+
+  static func arguments(start: Start, model: String?, prompt: String?) -> [String] {
+    var arguments: [String] = []
+    if case .resume(let id) = start { arguments.append("--conversation=" + id) }
+    if let model { arguments += ["--model", model] }
+    if let prompt { arguments += ["-i", prompt] }
+    return arguments
+  }
+}

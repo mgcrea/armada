@@ -11,12 +11,14 @@ nonisolated enum ProjectAgent: Hashable, Sendable {
   case claude(accountID: String)
   case codex(homeID: String)
   case grok(homeID: String)
+  case antigravity(homeID: String)
 
   var accountID: String {
     switch self {
     case .claude(let id): id
     case .codex(let id): id
     case .grok(let id): id
+    case .antigravity(let id): id
     }
   }
 
@@ -25,6 +27,7 @@ nonisolated enum ProjectAgent: Hashable, Sendable {
     case .claude: "Claude Code"
     case .codex: "Codex"
     case .grok: "Grok Build"
+    case .antigravity: "Antigravity"
     }
   }
 
@@ -34,6 +37,7 @@ nonisolated enum ProjectAgent: Hashable, Sendable {
     case .claude: "claude"
     case .codex: "codex"
     case .grok: "grok"
+    case .antigravity: "antigravity"
     }
   }
 }
@@ -133,6 +137,7 @@ nonisolated enum ProjectsFile {
       case "claude": agent = .claude(accountID: entry.a)
       case "codex": agent = .codex(homeID: entry.a)
       case "grok": agent = .grok(homeID: entry.a)
+      case "antigravity": agent = .antigravity(homeID: entry.a)
       default: throw DecodeError.unknownAgent(entry.g)
       }
       return Project(id: entry.id, path: entry.p, name: entry.n, agent: agent, addedAt: entry.t)

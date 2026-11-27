@@ -35,6 +35,7 @@ nonisolated enum NewSession {
     case claude(ClaudeConfigFolder)
     case codex(CodexHome)
     case grok(GrokHome)
+    case antigravity(AntigravityHome)
 
     /// What the button says, and what an error message calls the missing binary.
     var commandName: String {
@@ -42,6 +43,7 @@ nonisolated enum NewSession {
       case .claude: "claude"
       case .codex: "codex"
       case .grok: "grok"
+      case .antigravity: "agy"
       }
     }
 
@@ -50,6 +52,7 @@ nonisolated enum NewSession {
       case .claude: "Claude Code"
       case .codex: "Codex"
       case .grok: "Grok Build"
+      case .antigravity: "Antigravity"
       }
     }
   }
@@ -207,6 +210,7 @@ nonisolated enum NewSession {
     case .claude: ClaudeControl.executable()
     case .codex: CodexCLI.executable()
     case .grok: GrokControl.executable()
+    case .antigravity: AntigravityHome.executable()
     }
   }
 
@@ -235,15 +239,37 @@ nonisolated enum NewSession {
     ]
     lines += accountLines(for: agent)
     lines += prompt?.setup ?? []
-    lines += [
-      // The message last: both CLIs take it as the trailing positional word.
-      ([quoted(binary.path(percentEncoded: false))]
-        + arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name, model: model)
-        + (prompt.map { [$0.argument] } ?? []))
-        .joined(separator: " ")
-    ]
+    let invocation: [String]
+    if case .antigravity = agent {
+      // `agy` takes its prompt behind `-i`, so `AntigravityLaunch` places it.
+      invocation = antigravityArguments(start: start, model: model, prompt: prompt?.argument)
+    } else {
+      // The message last: the other CLIs take it as the trailing positional word.
+      invocation =
+        arguments(for: agent, start: start, mcpConfig: mcpConfig, name: name, model: model)
+        + (prompt.map { [$0.argument] } ?? [])
+    }
+    lines += [([quoted(binary.path(percentEncoded: false))] + invocation).joined(separator: " ")]
     lines += LaunchScript.exitLines(command: agent.commandName)
     return lines.joined(separator: "\n") + "\n"
+  }
+
+  /// `agy`'s invocation, through `AntigravityLaunch`, with the values quoted here as every other
+  /// value reaching the script is. `agy` cannot be given a new conversation's id, so
+  /// `.identified` starts a fresh one (`SessionStarterBridge` mints none for it), and it cannot
+  /// fork (`ForkAvailability.antigravity`), so `.fork` never reaches here.
+  private static func antigravityArguments(start: Start, model: String?, prompt: String?)
+    -> [String]
+  {
+    let launch: AntigravityLaunch.Start
+    switch start {
+    case .fresh, .identified: launch = .fresh
+    case .resume(let sessionID): launch = .resume(quoted(sessionID))
+    case .fork:
+      assertionFailure("The Antigravity CLI cannot fork a conversation.")
+      launch = .fresh
+    }
+    return AntigravityLaunch.arguments(start: launch, model: model.map(quoted), prompt: prompt)
   }
 
   /// What comes after the binary on the invocation line.
@@ -284,6 +310,9 @@ nonisolated enum NewSession {
         ["--resume", quoted(sessionID)]
       case (.grok, .fork(let sessionID)):
         ["--resume", quoted(sessionID), "--fork-session"]
+      // `body` builds `agy`'s line through `antigravityArguments`.
+      case (.antigravity, _):
+        []
       }
     // `--name=<value>` in one word, so a name that begins with a dash cannot be read as a flag.
     // Parsed beside `--resume <id> --fork-session` on 2.1.283 (2026-09-28). Never for the
@@ -344,6 +373,9 @@ nonisolated enum NewSession {
       ["unset GROK_HOME"]
     case .grok(let home):
       ["export GROK_HOME=\(quoted(home.path))"]
+    // `agy` has one home and no variable to move it.
+    case .antigravity:
+      []
     }
   }
 

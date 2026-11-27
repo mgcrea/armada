@@ -12,6 +12,7 @@ struct ProjectSession: Identifiable {
     case claude(Session, Account)
     case codex(CodexSession, CodexAccount)
     case grok(GrokSession, GrokAccount)
+    case antigravity(AntigravitySession, AntigravityAccount)
   }
 
   let source: Source
@@ -21,6 +22,7 @@ struct ProjectSession: Identifiable {
     case .claude(let session, _): "claude:" + session.id
     case .codex(let session, _): "codex:" + session.id
     case .grok(let session, _): "grok:" + session.id
+    case .antigravity(let session, _): "antigravity:" + session.id
     }
   }
 
@@ -29,6 +31,7 @@ struct ProjectSession: Identifiable {
     case .claude(let session, _): session.displayName
     case .codex(let session, _): session.displayName
     case .grok(let session, _): session.displayName
+    case .antigravity(let session, _): session.displayName
     }
   }
 
@@ -37,6 +40,7 @@ struct ProjectSession: Identifiable {
     case .claude(let session, _): session.registry.cwd
     case .codex(let session, _): session.meta.cwd
     case .grok(let session, _): session.summary.cwd
+    case .antigravity(let session, _): session.cwd
     }
   }
 
@@ -45,6 +49,7 @@ struct ProjectSession: Identifiable {
     case .claude(_, let account): account.displayName
     case .codex(_, let account): account.displayName
     case .grok(_, let account): account.displayName
+    case .antigravity(_, let account): account.displayName
     }
   }
 
@@ -53,6 +58,7 @@ struct ProjectSession: Identifiable {
     case .claude(let session, _): session.lastActivity
     case .codex(let session, _): session.lastActivity
     case .grok(let session, _): session.lastEventAt ?? session.summary.updatedAt
+    case .antigravity(let session, _): session.lastActivity
     }
   }
 
@@ -63,6 +69,7 @@ struct ProjectSession: Identifiable {
     case .claude(let session, _): session.state != .idle
     case .codex(let session, _): session.state == .working
     case .grok(let session, _): session.state == .working
+    case .antigravity(let session, _): session.state == .working
     }
   }
 
@@ -75,6 +82,8 @@ struct ProjectSession: Identifiable {
       MainWindowRoute.shared.open(.codex(account.id), session: session.id)
     case .grok(let session, let account):
       MainWindowRoute.shared.open(.grok(account.id), session: session.id)
+    case .antigravity(let session, let account):
+      MainWindowRoute.shared.open(.antigravity(account.id), session: session.id)
     }
   }
 
@@ -102,6 +111,11 @@ struct ProjectSession: Identifiable {
     for account in GrokAccounts.shared.all {
       for session in account.sessions.liveSessions where belongs(session.summary.cwd) {
         found.append(ProjectSession(source: .grok(session, account)))
+      }
+    }
+    for account in AntigravityAccounts.shared.all {
+      for session in account.sessions.liveSessions where belongs(session.cwd) {
+        found.append(ProjectSession(source: .antigravity(session, account)))
       }
     }
     return found.sorted {
@@ -440,6 +454,7 @@ struct ProjectDetail: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @State private var name = ""
 
   var body: some View {
@@ -482,7 +497,9 @@ struct ProjectDetail: View {
         // so there is no one-click launch, only the choice.
         Menu("Start a Session") { otherAgents }
           .fixedSize()
-          .disabled(accounts.all.isEmpty && codex.all.isEmpty && grok.all.isEmpty)
+          .disabled(
+            accounts.all.isEmpty && codex.all.isEmpty && grok.all.isEmpty
+              && antigravity.all.isEmpty)
         Text(
           "The account this project starts on is not on this Mac. Choose another under Project."
         )
@@ -513,6 +530,11 @@ struct ProjectDetail: View {
         launcher.start(.grok(account.home), in: project.url)
       }
     }
+    ForEach(antigravity.all) { account in
+      Button("Antigravity on \(account.displayName)") {
+        launcher.start(.antigravity(account.home), in: project.url)
+      }
+    }
   }
 
   // MARK: Live sessions
@@ -532,6 +554,7 @@ struct ProjectDetail: View {
               case .claude(let claude, _): StateDot(state: claude.state)
               case .codex(let codex, _): CodexStateDot(state: codex.state)
               case .grok(let grok, _): GrokStateDot(state: grok.state)
+              case .antigravity(let session, _): AntigravityStateDot(state: session.state)
               }
               VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayName)
@@ -603,6 +626,10 @@ struct ProjectDetail: View {
         ForEach(grok.all) { account in
           Text("Grok Build on \(account.displayName)")
             .tag(ProjectAgent.grok(homeID: account.id))
+        }
+        ForEach(antigravity.all) { account in
+          Text("Antigravity on \(account.displayName)")
+            .tag(ProjectAgent.antigravity(homeID: account.id))
         }
         if store.resolve(project.agent) == nil {
           Text("\(project.agent.vendorName), an account not on this Mac").tag(project.agent)

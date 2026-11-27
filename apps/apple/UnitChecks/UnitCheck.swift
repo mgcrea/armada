@@ -1539,6 +1539,24 @@ struct UnitCheck {
 
   static func antigravityFiles() {
     section("AntigravityFiles")
+    // `agy`'s flags, 1.5.18: `--conversation=<id>` resumes, `-i` opens the TUI on a prompt.
+    expectEqual(
+      "a resume names the conversation in one word",
+      AntigravityLaunch.arguments(start: .resume("abc"), model: nil, prompt: nil),
+      ["--conversation=abc"])
+    expectEqual(
+      "a fresh start takes the model as two words",
+      AntigravityLaunch.arguments(start: .fresh, model: "m", prompt: nil), ["--model", "m"])
+    expectEqual(
+      "a prompt goes through -i, so the TUI stays open",
+      AntigravityLaunch.arguments(start: .fresh, model: nil, prompt: "p"), ["-i", "p"])
+    expectEqual(
+      "the model comes before the prompt",
+      AntigravityLaunch.arguments(start: .fresh, model: "m", prompt: "p"),
+      ["--model", "m", "-i", "p"])
+    expectEqual(
+      "a fresh start with nothing else has no arguments",
+      AntigravityLaunch.arguments(start: .fresh, model: nil, prompt: nil), [])
     // Shapes from the Antigravity CLI 1.5.18, 2026-11-27. See docs/antigravity-sessions.md.
     let parsed = AntigravityFiles.date("2026-11-27 07:56:39.575551+00:00")
     let expected = utc.date(
@@ -1855,6 +1873,9 @@ struct UnitCheck {
       Project(
         id: "C", path: "/work/cadence", name: nil, agent: .grok(homeID: "/Users/me/.grok"),
         addedAt: added),
+      Project(
+        id: "D", path: "/work/orbit", name: nil, agent: .antigravity(homeID: "/h"),
+        addedAt: added),
     ]
     let data = try? ProjectsFile.encode(saved)
     expectEqual("a list round-trips", data.flatMap { try? ProjectsFile.decode($0) }, saved)
@@ -1869,6 +1890,10 @@ struct UnitCheck {
     check(
       "a Grok Build project is stored as grok",
       data.map { String(decoding: $0, as: UTF8.self).contains(#""g":"grok""#) } == true)
+    check(
+      "an Antigravity project is stored as antigravity",
+      data.map { String(decoding: $0, as: UTF8.self).contains(#""g":"antigravity""#) } == true)
+    expectEqual("and is labelled Antigravity", saved[3].agent.vendorName, "Antigravity")
   }
 
   // MARK: - Usage ledger

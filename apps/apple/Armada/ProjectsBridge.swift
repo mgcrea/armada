@@ -64,6 +64,15 @@ nonisolated struct ProjectsCapture: Sendable {
             state: session.state.rawValue, cwd: session.summary.cwd))
       }
     }
+    for account in AntigravityAccounts.shared.all {
+      names[account.id] = account.displayName
+      for session in account.sessions.liveSessions {
+        live.append(
+          Live(
+            id: session.id, vendor: "antigravity", name: session.displayName,
+            state: session.state.rawValue, cwd: session.cwd))
+      }
+    }
     return ProjectsCapture(
       takenAt: now, isEntitled: EntitlementMonitor.shared.current.isEntitled,
       projects: ProjectStore.shared.projects, candidates: ProjectStore.shared.candidates,

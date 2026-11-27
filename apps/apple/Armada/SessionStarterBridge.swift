@@ -14,7 +14,8 @@ import Foundation
 /// **Names the session when it can.** A fresh Claude Code session bound for a terminal gets an id
 /// minted here and passed as `--session-id`, so the agent can watch or close exactly the session
 /// it started. Grok Build takes the same (`--session-id`). VS Code opens its tab through the
-/// extension's link, which takes no id, and Codex has no such flag; both still come back without one.
+/// extension's link, which takes no id, and Codex and the Antigravity CLI have no such flag; all
+/// three still come back without one.
 ///
 /// **Resumes only what nothing has open.** See `resume`.
 nonisolated struct SessionStarterBridge: SessionStarter {
@@ -38,6 +39,9 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     if let id = request.resume {
       if request.vendor == "grok" {
         return resumeGrok(id, prompt: request.prompt, model: request.model, now: now)
+      }
+      if request.vendor == "antigravity" {
+        return resumeAntigravity(id, prompt: request.prompt, model: request.model, now: now)
       }
       return resume(
         id, prompt: request.prompt, model: request.model, now: now,
@@ -65,7 +69,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       switch agent {
       case .claude: !launcher.opensInVSCode(agent)
       case .grok: true
-      case .codex: false
+      case .codex, .antigravity: false
       }
     if takesID {
       let minted = UUID().uuidString.lowercased()
@@ -86,11 +90,13 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       case .claude(let folder): ("claude", folder.path)
       case .codex(let home): ("codex", home.id)
       case .grok(let home): ("grok", home.id)
+      case .antigravity(let home): ("antigravity", home.id)
       }
     let account =
       Accounts.shared.account(id: accountID)?.displayName
       ?? CodexAccounts.shared.account(id: accountID)?.displayName
-      ?? GrokAccounts.shared.account(id: accountID)?.displayName ?? accountID
+      ?? GrokAccounts.shared.account(id: accountID)?.displayName
+      ?? AntigravityAccounts.shared.account(id: accountID)?.displayName ?? accountID
     return .started(
       StartedSession(
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
@@ -197,6 +203,79 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         resumed: true, model: model))
   }
 
+  /// Continue an Antigravity CLI conversation in a terminal, in the folder it ran in, under
+  /// `resume`'s checks: nothing holds it, nothing wrote it lately, and its folder is in a saved
+  /// project and still there.
+  ///
+  /// **Open is the presence lock, read now.** The watcher's state can be a sweep behind, so the
+  /// holders are listed again rather than trusted from its last scan; the transcript's age covers
+  /// an `agy` that has not locked the conversation yet. The row is read from the index itself,
+  /// since the watcher lists only the last 12 hours.
+  @MainActor
+  private static func resumeAntigravity(_ id: String, prompt: String?, model: String?, now: Date)
+    -> StartSessionOutcome
+  {
+    let id = id.lowercased()
+    guard let account = AntigravityAccounts.shared.all.first else {
+      return .refused("There is no Antigravity CLI home on this Mac.")
+    }
+    let home = account.home
+    let watched = account.sessions.sessions.first { $0.id == id }
+    if let watched, watched.state.isLive {
+      return .refused(
+        "\(watched.displayName) is still open in \(watched.projectName). Close it first, or "
+          + "start a fresh session.")
+    }
+    if AntigravityPresence.holders(presenceDir: home.presenceDir)[id] != nil {
+      return .refused(
+        "Session \(id) is still open in an agy process. Close it first, or start a fresh session.")
+    }
+    let summary =
+      watched?.summary
+      ?? AntigravityFiles.summaries(databaseAt: home.summariesDB, since: .distantPast)
+      .first { $0.id == id }
+    guard summary != nil || watched != nil else {
+      return .refused("The Antigravity CLI home on this Mac has no conversation \(id).")
+    }
+    let transcript = home.transcript(id: id).path(percentEncoded: false)
+    if let modified = try? FileManager.default.attributesOfItem(atPath: transcript)[
+      .modificationDate] as? Date, now.timeIntervalSince(modified) < recentWrite
+    {
+      return .refused(
+        "Session \(id) wrote to its transcript \(max(0, Int(now.timeIntervalSince(modified)))) "
+          + "seconds ago, so something may still have it open. Try again in a minute.")
+    }
+    let cwd = watched?.cwd ?? summary?.cwd ?? ""
+    guard !cwd.isEmpty else {
+      return .refused("Session \(id) records no folder to resume it in.")
+    }
+    guard let project = ProjectStore.shared.project(containing: cwd) else {
+      return .refused(
+        "Session \(id) ran in \((cwd as NSString).abbreviatingWithTildeInPath), which is not in "
+          + "a saved project. Only sessions in saved projects are resumed.")
+    }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      return .refused("\((cwd as NSString).abbreviatingWithTildeInPath) is not there any more.")
+    }
+
+    if let refusal = throttled(now) { return .refused(refusal) }
+    let launcher = NewSessionLauncher.shared
+    if let message = launcher.startForAgent(
+      .antigravity(home), in: URL(filePath: cwd, directoryHint: .isDirectory),
+      start: .resume(sessionID: id), prompt: prompt, model: model)
+    {
+      return .refused(message)
+    }
+    return .started(
+      StartedSession(
+        project: project.displayName, path: cwd, vendor: "antigravity", accountID: account.id,
+        account: account.displayName, terminal: launcher.terminal.name, withPrompt: prompt != nil,
+        sessionID: id, resumed: true, model: model))
+  }
+
   struct GrokResumeTarget {
     let account: GrokAccount
     let cwd: String
@@ -285,6 +364,10 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   {
     guard EntitlementMonitor.shared.current.isEntitled else {
       return .refused("Armada has no licence and no trial running, so it starts nothing.")
+    }
+    if request.vendor == "antigravity" {
+      return .refused(
+        "Antigravity sessions start in a terminal; headless turns are not supported yet.")
     }
     guard let prompt = request.prompt else {
       return .refused("A headless turn needs an opening message.")
@@ -384,6 +467,18 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         }
         return (.grok(matches[0].home), nil)
       }
+      if vendor == "antigravity" {
+        let all = AntigravityAccounts.shared.all
+        let matches = all.filter {
+          $0.id.lowercased() == lowered || $0.displayName.lowercased() == lowered
+        }
+        guard matches.count == 1 else {
+          return (
+            nil, noAccount(query, vendor: "Antigravity CLI home", names: all.map(\.displayName))
+          )
+        }
+        return (.antigravity(matches[0].home), nil)
+      }
       let all = Accounts.shared.all
       let matches = all.filter {
         $0.id.lowercased() == lowered || $0.displayName.lowercased() == lowered
@@ -415,6 +510,12 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         return (nil, "There is no Grok Build home on this Mac.")
       }
       return (.grok(home.home), nil)
+    }
+    if vendor == "antigravity" {
+      guard let home = AntigravityAccounts.shared.all.first else {
+        return (nil, "There is no Antigravity CLI home on this Mac.")
+      }
+      return (.antigravity(home.home), nil)
     }
     guard let account = Accounts.shared.all.first else {
       return (nil, "There is no Claude Code account on this Mac.")

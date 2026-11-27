@@ -109,10 +109,10 @@ final class BuildSlotMonitor {
     if pressure != next.pressure { pressure = next.pressure }
   }
 
-  /// Every session that could have started a build now. Claude Code's registry and Grok Build's
-  /// `active_sessions.json` name a pid; Codex names none, so its open threads are matched by cwd.
-  /// Codex subagents are left out: they share their parent's cwd, and two candidates at one
-  /// depth are a tie that names neither.
+  /// Every session that could have started a build now. Claude Code's registry, Grok Build's
+  /// `active_sessions.json` and the Antigravity CLI's presence locks name a pid; Codex names
+  /// none, so its open threads are matched by cwd. Codex subagents are left out: they share
+  /// their parent's cwd, and two candidates at one depth are a tie that names neither.
   private static func liveCandidates() -> [MatchCandidate] {
     let claude = Accounts.shared.allSessions.map {
       MatchCandidate(
@@ -132,7 +132,16 @@ final class BuildSlotMonitor {
           title: session.displayName)
       }
     }
-    return claude + codex + grok
+    // A pid only while an `agy` process holds the conversation's presence lock.
+    let antigravity = AntigravityAccounts.shared.all.flatMap(\.sessions.sessions).compactMap {
+      session in
+      session.pid.map {
+        MatchCandidate(
+          id: session.id, vendor: "antigravity", pid: $0, cwd: session.cwd,
+          title: session.displayName)
+      }
+    }
+    return claude + codex + grok + antigravity
   }
 
   nonisolated struct Reading: Sendable {

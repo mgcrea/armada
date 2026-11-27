@@ -4,7 +4,9 @@ import SwiftUI
 /// The Antigravity CLI home: what its conversations have been doing.
 ///
 /// `GrokPaneView`'s layout without what `agy` does not have or Armada does not do for it yet:
-/// no allowance (it writes no plan limits to disk), no fork and no headless runs.
+/// no allowance (it writes no plan limits to disk), no fork and no headless runs. An ended
+/// conversation resumes in place (`agy --conversation=<id>`): no process holds it, so there is
+/// no second writer to fear.
 struct AntigravityPaneView: View {
   let account: AntigravityAccount
 
@@ -24,6 +26,10 @@ struct AntigravityPaneView: View {
     }
     .navigationTitle(account.displayName)
     .navigationSubtitle(subtitle)
+    .toolbar {
+      NewSessionToolbarItem(
+        agent: .antigravity(account.home), suggestion: account.recentProjects.first?.url)
+    }
     .onReceive(clock) { _ in now = AppClock.now }
     .onChange(of: account.sessions.sessions.map(\.id)) { _, ids in
       if let selection, !ids.contains(selection) { self.selection = nil }
@@ -58,9 +64,26 @@ struct AntigravityPaneView: View {
           AntigravitySessionRow(session: session, now: now)
             .tag(session.id)
         }
+        // Ordered as in `GrokPaneView`, with Resume where Fork is there.
         .contextMenu(forSelectionType: String.self) { ids in
-          if let id = ids.first, ids.count == 1 {
-            CopySessionIDButton(id: id)
+          if let id = ids.first, ids.count == 1,
+            let session = account.sessions.sessions.first(where: { $0.id == id })
+          {
+            if !session.cwd.isEmpty {
+              let folder = URL(filePath: session.cwd, directoryHint: .isDirectory)
+              Button("New Session in \(session.projectName)") {
+                NewSessionLauncher.shared.start(.antigravity(account.home), in: folder)
+              }
+              if !session.state.isLive {
+                Button("Resume Session") {
+                  NewSessionLauncher.shared.start(
+                    .antigravity(account.home), in: folder, start: .resume(sessionID: session.id))
+                }
+              }
+              Divider()
+            }
+            CopySessionIDButton(id: session.id)
+            ProjectContextButton(path: session.cwd, agent: .antigravity(homeID: account.id))
           }
         }
         .onChange(of: scrollTarget) { _, target in
@@ -161,11 +184,6 @@ struct AntigravitySummary: View {
     }
     return live.count == 1 ? "1 session open" : "\(live.count) sessions open"
   }
-}
-
-extension AntigravitySession {
-  /// The newest transcript step, else the row's last write: what "last activity" means here.
-  var lastActivity: Date? { lastEventAt ?? summary?.lastModified }
 }
 
 struct AntigravitySessionRow: View {

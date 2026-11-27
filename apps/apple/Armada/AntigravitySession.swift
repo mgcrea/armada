@@ -56,5 +56,8 @@ final class AntigravitySession: Identifiable {
 
   var pid: Int32? { holder?.pid }
 
+  /// The newest transcript step, else the row's last write: what "last activity" means here.
+  var lastActivity: Date? { lastEventAt ?? summary?.lastModified }
+
   var totalTokens: Int { inputTokens + outputTokens + cacheReadTokens }
 }

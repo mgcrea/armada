@@ -113,6 +113,13 @@ extension ForkAvailability {
           "Grok Build opens a copy in a terminal and this session is not touched. It records this session as the copy's parent."
       ))
   }
+
+  /// `agy` 1.5.18 has no fork flag, and Armada copies no conversation itself.
+  static func antigravity(_ session: AntigravitySession, in account: AntigravityAccount)
+    -> ForkAvailability
+  {
+    .unavailable("The Antigravity CLI cannot fork a conversation.")
+  }
 }
 
 /// "Fork Session", or why this one cannot be.
