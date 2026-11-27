@@ -15,6 +15,7 @@ struct UsagePaneView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @State private var history = UsageHistory.shared
   @State private var now = AppClock.now
 
@@ -28,12 +29,24 @@ struct UsagePaneView: View {
   var body: some View {
     Group {
       if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty {
-        ContentUnavailableView {
-          Label("No agents found", systemImage: "folder.badge.questionmark")
-        } description: {
-          Text(
-            "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok."
-          )
+        // Antigravity has no card: `agy` writes no limits to disk. A Mac with only its
+        // home still has an agent, so it is told why the pane is empty, not that it has none.
+        if antigravity.isEmpty {
+          ContentUnavailableView {
+            Label("No agents found", systemImage: "folder.badge.questionmark")
+          } description: {
+            Text(
+              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, for ~/.grok, and for ~/.gemini/antigravity-cli."
+            )
+          }
+        } else {
+          ContentUnavailableView {
+            Label("No limits to show", systemImage: "gauge.with.dots.needle.0percent")
+          } description: {
+            Text(
+              "Armada reads no limits for the Antigravity CLI yet: it keeps none on this Mac. Its sessions are in the sidebar."
+            )
+          }
         }
       } else {
         ScrollView {
@@ -75,6 +88,8 @@ struct UsagePaneView: View {
     let codexCount = codex.all.count
     let grokCount = grok.all.count
     if codexCount == 0 && grokCount == 0 {
+      // No cards at all, Antigravity's home included: "0 accounts" over an empty pane.
+      if claude == 0 { return "" }
       return claude == 1 ? "1 account" : "\(claude) accounts"
     }
     return [
