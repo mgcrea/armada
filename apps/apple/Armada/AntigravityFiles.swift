@@ -109,6 +109,45 @@ nonisolated enum AntigravityFiles {
     return ""
   }
 
+  /// How long a conversation no process holds stays listed after its row's last write.
+  static let recentWindow: TimeInterval = 12 * 3600
+
+  /// `cache/last_conversations.json`: each folder's last conversation, `{"<cwd>": "<id>"}`.
+  static func lastConversations(_ data: Data) -> [String: String] {
+    guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return [:]
+    }
+    return object.compactMapValues { ($0 as? String)?.lowercased() }
+  }
+
+  /// What a scan lists: every held conversation, with or without a row, and every row written
+  /// within `recentWindow`. A held conversation with no row was opened in a TUI and not
+  /// prompted yet; its folder, like that of a row naming none, comes from
+  /// `last_conversations.json` when that names it. Newest row first, then the rowless by id.
+  static func merge(
+    summaries: [Summary], holders: [String: AntigravityPresence.Holder],
+    lastConversations: [String: String], now: Date
+  ) -> [(id: String, summary: Summary?, holder: AntigravityPresence.Holder?, cwd: String)] {
+    // Sorted, so two folders naming one conversation always give the same answer.
+    var folders: [String: String] = [:]
+    for (cwd, id) in lastConversations.sorted(by: { $0.key < $1.key }) where folders[id] == nil {
+      folders[id] = cwd
+    }
+    let cutoff = now.addingTimeInterval(-recentWindow)
+    var seen: Set<String> = []
+    var listed:
+      [(id: String, summary: Summary?, holder: AntigravityPresence.Holder?, cwd: String)] = []
+    for row in summaries where seen.insert(row.id).inserted {
+      let holder = holders[row.id]
+      guard holder != nil || (row.lastModified ?? .distantPast) >= cutoff else { continue }
+      listed.append((row.id, row, holder, row.cwd.isEmpty ? folders[row.id] ?? "" : row.cwd))
+    }
+    for (id, holder) in holders.sorted(by: { $0.key < $1.key }) where !seen.contains(id) {
+      listed.append((id, nil, holder, folders[id] ?? ""))
+    }
+    return listed
+  }
+
   /// What the whole lines of a stretch of `transcript.jsonl` add up to.
   struct TranscriptDelta: Sendable, Equatable {
     /// Bytes up to and including the last newline: where the next read starts.
@@ -178,7 +217,7 @@ nonisolated enum AntigravityFiles {
 /// What an Antigravity conversation appears to be doing: Grok Build's vocabulary, because
 /// `agy` answers the same halves of the question. The row says whether a turn runs, the
 /// presence lock whether a process still owns the conversation.
-enum AntigravitySessionState: String, Sendable {
+nonisolated enum AntigravitySessionState: String, Sendable {
   /// Held, and its row says a turn is running.
   case working
   /// Held, with no turn running: an idle TUI, or one not prompted yet.

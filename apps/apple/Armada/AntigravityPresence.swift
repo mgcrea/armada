@@ -48,12 +48,11 @@ nonisolated enum AntigravityPresence {
     return found
   }
 
-  /// `agy` by its executable's name, or by the name a symlink to it resolves to.
+  /// `agy` by its executable's name. `proc_pidpath` already gives the resolved path, so a
+  /// symlink named `agy` to a binary under another name would not be recognised.
   private static func isAgy(_ pid: pid_t) -> Bool {
     guard let path = ProcessAncestry.executablePath(of: pid) else { return false }
-    let url = URL(filePath: path)
-    return url.lastPathComponent == "agy"
-      || url.resolvingSymlinksInPath().lastPathComponent == "agy"
+    return URL(filePath: path).lastPathComponent == "agy"
   }
 
   /// The paths of a process's open files, or none when the kernel will not say (another

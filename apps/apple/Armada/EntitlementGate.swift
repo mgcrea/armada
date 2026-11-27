@@ -37,6 +37,7 @@ final class EntitlementMonitor {
       Accounts.shared.start()
       CodexAccounts.shared.start()
       GrokAccounts.shared.start()
+      AntigravityAccounts.shared.start()
       // After the accounts, whose folders it reads.
       UsageIndex.shared.start()
       // After the index, whose first read it lets go first. Idle until an account is switched on.
@@ -49,6 +50,7 @@ final class EntitlementMonitor {
       Accounts.shared.stop()
       CodexAccounts.shared.stop()
       GrokAccounts.shared.stop()
+      AntigravityAccounts.shared.stop()
     }
     MouseTap.shared.sync()
     // After the watchers, for the same reason as the tap: an unlicensed Armada holds no

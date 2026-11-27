@@ -26,6 +26,11 @@ nonisolated struct AntigravityHome: Sendable, Hashable {
   /// `<id>.lock`, zero bytes, held open while a process owns the conversation.
   var presenceDir: URL { base.appending(path: "presence", directoryHint: .isDirectory) }
 
+  /// `{"<cwd>": "<conversation id>"}`: each folder's last conversation.
+  var lastConversations: URL {
+    base.appending(path: "cache/last_conversations.json", directoryHint: .notDirectory)
+  }
+
   var brainDir: URL { base.appending(path: "brain", directoryHint: .isDirectory) }
 
   /// The readable transcript, one JSON object per step.

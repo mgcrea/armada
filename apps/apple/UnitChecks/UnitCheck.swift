@@ -1673,6 +1673,57 @@ struct UnitCheck {
     expectEqual(
       "and so does a held conversation with no row yet",
       AntigravitySessionState.of(holder: holder, summary: nil), .awaitingInput)
+
+    // The scan's listing. `now` is a minute after the newest measured row.
+    let now = AntigravityFiles.date("2026-11-27 07:58:49+00:00")!
+    let stale = AntigravityFiles.Summary(
+      id: "00000000-0000-4000-8000-000000000001", title: nil, preview: "Old.",
+      cwd: "/work/old", status: "CASCADE_RUN_STATUS_IDLE", stepCount: 2,
+      lastModified: now.addingTimeInterval(-13 * 3600), lastUserInput: nil, parentId: nil)
+    let staleHeld = AntigravityFiles.Summary(
+      id: "00000000-0000-4000-8000-000000000002", title: nil, preview: "Old, open.",
+      cwd: "/work/open", status: "CASCADE_RUN_STATUS_IDLE", stepCount: 2,
+      lastModified: now.addingTimeInterval(-13 * 3600), lastUserInput: nil, parentId: nil)
+    let unprompted = "00000000-0000-4000-8000-000000000003"
+    let orphan = "00000000-0000-4000-8000-000000000004"
+    let merged = AntigravityFiles.merge(
+      summaries: all + [stale, staleHeld],
+      holders: [unprompted: holder, orphan: holder, staleHeld.id: holder],
+      lastConversations: [
+        "/work/tui": unprompted, "/private/tmp/agyprobe/ws": "7bde737a-d7cc-400a-b7e0-3e628f0611d5",
+      ],
+      now: now)
+    let listed = Dictionary(merged.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    expectEqual("each id is listed once", merged.count, listed.count)
+    check(
+      "a held id with no row is kept, its folder from last_conversations.json",
+      listed[unprompted]?.summary == nil && listed[unprompted]?.holder == holder
+        && listed[unprompted]?.cwd == "/work/tui")
+    check(
+      "and with no folder when last_conversations.json does not name it",
+      listed[orphan]?.summary == nil && listed[orphan]?.cwd == "")
+    check("an unheld row older than 12 h is dropped", listed[stale.id] == nil)
+    check(
+      "a held row older than 12 h is kept",
+      listed[staleHeld.id]?.summary == staleHeld && listed[staleHeld.id]?.cwd == "/work/open")
+    let recentIdle = listed["657374e8-d811-4cd7-bbf5-b41c297de8f4"]
+    check(
+      "an unheld row within 12 h is kept, and ended",
+      recentIdle?.holder == nil && recentIdle?.cwd == "/private/tmp/agyprobe/ws"
+        && AntigravitySessionState.of(holder: recentIdle?.holder, summary: recentIdle?.summary)
+          == .ended
+    )
+    expectEqual(
+      "a row with no workspace takes its folder from last_conversations.json",
+      listed["7bde737a-d7cc-400a-b7e0-3e628f0611d5"]?.cwd, "/private/tmp/agyprobe/ws")
+
+    expectEqual(
+      "last_conversations.json maps folders to conversations, lowercased",
+      AntigravityFiles.lastConversations(
+        Data(#"{"/work/a": "7BDE737A-D7CC-400A-B7E0-3E628F0611D5", "/work/b": 3}"#.utf8)),
+      ["/work/a": "7bde737a-d7cc-400a-b7e0-3e628f0611d5"])
+    expectEqual(
+      "and anything else maps nothing", AntigravityFiles.lastConversations(Data("[]".utf8)), [:])
   }
 
   static func codexRollout() {
