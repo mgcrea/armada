@@ -195,7 +195,10 @@ import SwiftUI
     /// and a fixture account folder that exists is somebody's real history.
     private static func refuseRealFolders() {
       let paths =
-        [Fixture.personal.path, Fixture.acme.path, Fixture.codexHome.path, Fixture.grokHome.path]
+        [
+          Fixture.personal.path, Fixture.acme.path, Fixture.codexHome.path, Fixture.grokHome.path,
+          Fixture.antigravityHome.path,
+        ]
         + Fixture.projects.map(\.path)
       for path in paths where FileManager.default.fileExists(atPath: path) {
         fatalError("screenshot fixture \(path) exists on this Mac — rename it in DemoSeed.Fixture")
@@ -363,6 +366,9 @@ import SwiftUI
       /// be under the real home: `home` is a directory no Mac has.
       static let grokHome = GrokHome(
         base: home.appending(path: ".grok", directoryHint: .isDirectory))
+      /// `.gemini/antigravity-cli`, the one home `agy` has, under the same home no Mac has.
+      static let antigravityHome = AntigravityHome(
+        base: home.appending(path: ".gemini/antigravity-cli", directoryHint: .isDirectory))
 
       static let billingSessionID = "7c1e4a52-9b0d-4f3e-8a61-2d5c9e0b7f14"
       static let billingTitle = "Migrate billing webhooks to Stripe v2 events"
@@ -493,6 +499,11 @@ import SwiftUI
           utilization: 27, resetsAt: ahead(minutes: (4 * 24 + 6) * 60 + 19), period: "weekly",
           tier: "X Premium", observedAt: ago(minutes: 3)))
       GrokAccounts.shared.demoInstall([grok])
+
+      // No limits: `agy` writes none to disk, so the Usage pane has no card for it.
+      let antigravity = AntigravityAccount(home: Fixture.antigravityHome)
+      antigravity.sessions.demoInstall(antigravitySessions)
+      AntigravityAccounts.shared.demoInstall([antigravity])
 
       ProjectStore.shared.demoInstall(Fixture.projects)
       UsageIndex.shared.demoInstall(ledger)
@@ -738,6 +749,47 @@ import SwiftUI
       session.lastEventAt = last
       session.usage = GrokFiles.Usage(totalTokens: tokens, costUSD: cost, turnCount: turns)
       session.context = GrokFiles.Context(used: used, window: 500_000)
+      return session
+    }
+
+    // MARK: - Antigravity CLI
+
+    /// One running, one ended: the CLI's `awaitingInput` reads like Codex's, which the
+    /// capture already shows. The model is the one `docs/antigravity-sessions.md` measured.
+    @MainActor private static var antigravitySessions: [AntigravitySession] {
+      [
+        antigravitySession(
+          id: "5e2c9a14-8b3d-4f6e-a1c7-0d9b2e4f6a83", cwd: Fixture.ledger,
+          started: ago(minutes: 18), title: "Add a monthly summary to ledger-cli", state: .working,
+          pid: 52187, last: ago(minutes: 0.4), tokens: (64_200, 7_900, 188_400)),
+        antigravitySession(
+          id: "9a7f3c2e-1d4b-4e8a-b6f0-3c5d7e9a1b24", cwd: Fixture.infra,
+          started: ago(minutes: 4 * 60 + 12), title: "Explain the Terraform drift in staging",
+          state: .ended, pid: nil, last: ago(minutes: 3 * 60 + 40),
+          tokens: (38_600, 4_100, 92_300)),
+      ]
+    }
+
+    @MainActor private static func antigravitySession(
+      id: String, cwd: String, started: Date, title: String, state: AntigravitySessionState,
+      pid: Int32?, last: Date, tokens: (input: Int, output: Int, cacheRead: Int)
+    ) -> AntigravitySession {
+      let session = AntigravitySession(
+        id: id,
+        // Never read: the watcher that would tail it is never started.
+        transcriptURL: URL(filePath: "/dev/null"),
+        summary: AntigravityFiles.Summary(
+          id: id, title: title, preview: title, cwd: cwd,
+          status: state == .working ? "CASCADE_RUN_STATUS_RUNNING" : "CASCADE_RUN_STATUS_IDLE",
+          stepCount: 24, lastModified: last, lastUserInput: last, parentId: nil),
+        cwd: cwd)
+      session.state = state
+      session.holder = pid.map { AntigravityPresence.Holder(pid: $0, startedAt: started) }
+      session.lastEventAt = last
+      session.model = "gemini-4-hydrogen-high"
+      session.inputTokens = tokens.input
+      session.outputTokens = tokens.output
+      session.cacheReadTokens = tokens.cacheRead
       return session
     }
 
