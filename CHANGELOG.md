@@ -8,6 +8,15 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.17.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Investigation rooms.** The MCP server can open a shared log for one investigation, with one
+  seat per provider. Seats post notes and read the others back; a post is not delivered to
+  anyone. A round sends each unfinished seat one fixed sentence telling it to read the room and
+  answer, and Armada notifies you once every seat has posted done.
+
 ## [1.17.0] - 2026-11-27
 
 **Antigravity quotas and one-click MCP setup.** Armada now reads your Antigravity CLI plan limits

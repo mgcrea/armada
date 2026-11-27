@@ -128,9 +128,10 @@ attached. That session is the chat: ask it which sessions need you, what one of 
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in
-the Keychain. Ten tools read, among them `armada_wait`, which holds a call open until a session
-needs you, and `armada_list_schedules`, which lists every Codex automation and Claude desktop
-scheduled task on the Mac. Six more exist only while you turn on Allow writes: `armada_start_session`
+the Keychain. Eleven tools read, among them `armada_wait`, which holds a call open until a session
+needs you, `armada_list_schedules`, which lists every Codex automation and Claude desktop
+scheduled task on the Mac, and `armada_room_read`, which reads one investigation's shared log.
+Nine more exist only while you turn on Allow writes: `armada_start_session`
 opens a fresh session in one of your saved projects, optionally with an opening message, or
 resumes a closed one there, and that session asks you for every permission as usual;
 `armada_send_message` puts a message in front of a running Claude Code session once you also turn
@@ -139,7 +140,10 @@ ends a Claude Code session the way quitting it would, and a busy one only when t
 `force`; `armada_focus_session` brings a session's window to the front, as Focus does, which is
 how voice answers "show me that one"; `armada_save_schedule` and `armada_delete_schedule` create,
 change and remove Codex automations by writing the Codex app's own `automation.toml` files, which
-Codex then runs, and Armada posts a notification each time. None of them can change what a running
+Codex then runs, and Armada posts a notification each time. `armada_room_open`,
+`armada_room_post` and `armada_room_round` keep that shared log and nudge its seats; a round
+reaches them only while Deliver messages is also on, and it sends one fixed sentence, never a
+post. None of them can change what a running
 session does, and the supervisor is not pre-allowed to start or close a session or save a schedule.
 The supervisor itself is an ordinary `claude` on your own plan: its connection details go on its command
 line and in a file beside its startup script, nothing is added to your Claude configuration, and it
@@ -150,7 +154,7 @@ Settings ▸ Voice asks without a terminal: press a shortcut anywhere, or hold i
 a card at the top of the screen shows the question and then the answer while it is spoken. Your
 speech becomes text on the Mac, with Parakeet v3, which works out which of 25 languages you are
 speaking, or with Apple's dictation until you download Parakeet, and the audio is never kept. The question goes to Anthropic as text,
-through a `claude` Armada runs on the account you pick, with no built-in tools and only the six
+through a `claude` Armada runs on the account you pick, with no built-in tools and only the seven
 read tools, and closed after five idle minutes. It is the one place Armada runs an agent instead of
 watching one, and it is off until you turn it on; [SECURITY.md](SECURITY.md) says what it may and
 may not do.

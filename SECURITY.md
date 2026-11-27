@@ -35,7 +35,7 @@ Three properties, each of which is checkable rather than asserted:
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
   in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
-  and ten of its sixteen tools are read-only. The other six are listed and callable only while
+  and eleven of its twenty tools are read-only. The other nine are listed and callable only while
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
   opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
   that nothing has open, and that session asks you for every permission as usual.
@@ -47,8 +47,10 @@ Three properties, each of which is checkable rather than asserted:
   saw. `armada_send_message` also needs Deliver messages to
   sessions, and is described under Messaging below. `armada_save_schedule` and
   `armada_delete_schedule` write Codex automation files, fenced as "The schedule tools" under In
-  scope describes. `make audit` checks the listener's source for the loopback address and refuses
-  a wildcard.
+  scope describes. `armada_room_open`, `armada_room_post` and `armada_room_round` keep a shared
+  investigation log. A post is not delivered, and a round sends one fixed sentence only while
+  Deliver messages is on. `make audit` checks the listener's source for the loopback address and
+  refuses a wildcard.
 
   Voice, once you turn it on in Settings ▸ Voice, opens the microphone only from a press of its
   shortcut to the end of the question, and, with Keep listening on, from a spoken reply's first
@@ -157,9 +159,10 @@ attacker-influenced text meets something that acts on it:
   removed before the agent starts, and passed as one double-quoted word, and a message that
   begins with `-`, `!` or `/` is refused. Anything that gets that message into the script's
   text, or read by the CLI as a flag, a shell escape or a slash command, is in scope.
-- **The MCP endpoint.** Switched on, Armada serves ten read-only tools on `127.0.0.1` to
-  whoever presents the token, and six that start, close, bring forward and message a session,
-  or save and delete a Codex schedule, only while Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
+- **The MCP endpoint.** Switched on, Armada serves eleven read-only tools on `127.0.0.1` to
+  whoever presents the token, and nine that start, close, bring forward and message a session,
+  save and delete a Codex schedule, or open, post to and round an investigation room, only while
+  Allow writes is on. Anything that reaches a tool without the token, gets past the kit's `Host` and `Origin`
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
   writes off, starts or resumes a session in a folder that is not a saved project, resumes a session that is
   still open, gets `armada_close_session` to
@@ -198,9 +201,10 @@ attacker-influenced text meets something that acts on it:
 - **The voice `claude`.** `SupervisorProcess` runs the user's own `claude` headless for as long
   as a voice conversation is active, and closes it after five idle minutes. It is started with
   no built-in tools (`--tools ""`), with Armada's MCP server and no other
-  (`--strict-mcp-config`), with six read tools allowed by name, `armada_start_session` and
+  (`--strict-mcp-config`), with seven read tools allowed by name, `armada_start_session` and
   `armada_focus_session` allowed only while Allow writes is on, `armada_close_session`,
-  `armada_send_message`, `armada_save_schedule` and `armada_delete_schedule` denied by name,
+  `armada_send_message`, `armada_save_schedule`, `armada_delete_schedule`, `armada_room_open`,
+  `armada_room_post` and `armada_room_round` denied by name,
   without the person's user settings or hooks, and with no permission bypass;
   `SupervisorArgumentsTests` pins every one of those. Its system prompt holds the person's
   instructions from Settings ▸ Voice followed by rules they cannot edit out: its tools, a spoken
@@ -288,6 +292,12 @@ What stands in front of it:
   you, and asks the recipient to check with you before anything destructive. A label is an
   instruction to a model, not a control, which is why the switches above are the boundary.
 - **Messages expire.** One nothing picks up in an hour is deleted unread.
+- **Investigation rooms.** `armada_room_open`, `armada_room_post` and `armada_room_round` are
+  write tools. A room is one file, mode 0600, under Application Support. A post is not delivered
+  to any session: the other seats read it back. A round sends one fixed sentence through the same
+  sender as `armada_send_message`, naming the room and the round, never a post. A round sentence
+  that contained a post body would be in scope. Voice may call `armada_room_read` and is denied
+  the three write tools by name.
 
 Not built from the earlier design: agent-to-agent messaging, a per-pair policy, and an audit log
 of message contents. The unified log records each tool call's name and outcome, never its
