@@ -31,6 +31,7 @@ struct UnitCheck {
     transcriptQuota()
     contextWindow()
     usageForecast()
+    usageCountdown()
     usageChartSeries()
     dayWeights()
     workingHours()
@@ -890,6 +891,40 @@ struct UnitCheck {
     check(
       "a minute later, another",
       UsageChartSeries.minute(at.addingTimeInterval(53)) != UsageChartSeries.minute(at))
+  }
+
+  // MARK: - UsageCountdown
+
+  static func usageCountdown() {
+    section("UsageCountdown")
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func narrow(_ seconds: TimeInterval) -> String {
+      UsageCountdown.text(from: now, to: now.addingTimeInterval(seconds), style: .narrow)
+    }
+    func spelled(_ seconds: TimeInterval, _ fields: Set<Date.ComponentsFormatStyle.Field>) -> String
+    {
+      let end = now.addingTimeInterval(seconds)
+      return (now..<end).formatted(.components(style: .narrow, fields: fields))
+    }
+    // The relative style these replace. 4h 40m rounds to "in 5h"; 6d 14h rounds to "in 1w".
+    expectEqual(
+      "four hours forty minutes keeps the minutes", narrow(4 * 3600 + 40 * 60),
+      spelled(4 * 3600 + 40 * 60, [.hour, .minute]))
+    expectEqual(
+      "six days fourteen hours stays in days", narrow(6 * 86400 + 14 * 3600),
+      spelled(6 * 86400 + 14 * 3600, [.day, .hour]))
+    expectEqual("a full week is seven days", narrow(7 * 86400), spelled(7 * 86400, [.day, .hour]))
+    expectEqual("five hours is five hours", narrow(5 * 3600), spelled(5 * 3600, [.hour, .minute]))
+    expectEqual("under a minute is seconds", narrow(12), spelled(12, [.second]))
+    let sixDays = now.addingTimeInterval(6 * 86400 + 14 * 3600)
+    check(
+      "six days does not round up to a week",
+      narrow(6 * 86400 + 14 * 3600)
+        != sixDays.formatted(.relative(presentation: .numeric, unitsStyle: .narrow)))
+    expectEqual(
+      "the wide caption spells the same fields",
+      UsageCountdown.text(from: now, to: sixDays, style: .wide),
+      (now..<sixDays).formatted(.components(style: .wide, fields: [.day, .hour])))
   }
 
   // MARK: - UsageForecast

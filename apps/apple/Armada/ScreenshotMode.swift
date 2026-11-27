@@ -67,9 +67,9 @@ nonisolated enum AppClock {
 /// is exactly the system style; on one it anchors the same presentation to the
 /// pinned instant.
 ///
-/// Search for `RelativeFormatStyle(` as well as `.relative(` when auditing: the panel's
-/// compact reset label was built the long way, missed by the first sweep, and printed
-/// "1w ago" beside a window resetting in two hours.
+/// Search for `RelativeFormatStyle(` as well as `.relative(` when auditing. The compact
+/// reset beside a usage bar is not one of these: it formats the interval
+/// (`UsageCountdown`), because a relative style rounds 6 days 14 hours up to "1w".
 nonisolated struct ClockRelativeFormat: FormatStyle {
   let presentation: Date.RelativeFormatStyle.Presentation
   var unitsStyle: Date.RelativeFormatStyle.UnitsStyle = .wide

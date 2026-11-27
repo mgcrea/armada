@@ -261,3 +261,37 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
   private static let withFractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
   private static let plain = Date.ISO8601FormatStyle()
 }
+
+/// How long until a window resets, for the meter captions.
+///
+/// Two widths of the same fields. The panes spell them out ("6 days, 14 hours"). The
+/// sidebar and the menu bar use the narrow form ("6d 14h"), because that column is
+/// sized for the longest of those and the clock glyph already says "resets".
+///
+/// **Days, never weeks, and the fields floor.** A relative date style rounds to one
+/// unit and steps up to weeks, so 4 hours 40 minutes reads "in 5h" and 6 days 14
+/// hours reads "in 1w". A five-hour window then sits on "5h" for its first hour, and
+/// a seven-day one sits on "1w" for its first half day — the length of the window,
+/// which is what the label already says. The components below keep the remainder.
+nonisolated enum UsageCountdown {
+  /// The units `text` renders for an interval of this many seconds.
+  static func fields(_ remaining: TimeInterval) -> Set<Date.ComponentsFormatStyle.Field> {
+    switch remaining {
+    case 86400...: [.day, .hour]
+    case 3600...: [.hour, .minute]
+    case 60...: [.minute]
+    default: [.second]
+    }
+  }
+
+  /// - Parameters:
+  ///   - style: `.wide` for "6 days, 14 hours", `.narrow` for "6d 14h". A field worth
+  ///     zero is dropped by the formatter, so six days and four minutes is "6 days".
+  static func text(
+    from now: Date, to resetsAt: Date, style: Date.ComponentsFormatStyle.Style
+  ) -> String {
+    // The caller branches on `hasRolled` first: `now..<resetsAt` traps on a reversed range.
+    let remaining = resetsAt.timeIntervalSince(now)
+    return (now..<resetsAt).formatted(.components(style: style, fields: fields(remaining)))
+  }
+}

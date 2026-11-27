@@ -224,14 +224,10 @@ struct UsageResetLine: View {
   let now: Date
   var style: Style = .full
 
-  /// `.compact` is for the menu bar popover, where the reset sits at the end of a
-  /// row beside the bar. It renders the same instant as "in 19h" where the panes say
-  /// "in 19 hours", and it lets a clock glyph say "resets" — which is what keeps the
-  /// row short enough to leave the bar room.
+  /// `.compact` is for the menu bar popover and the sidebar, where the reset sits at
+  /// the end of a row beside the bar. It renders the same remainder as the panes,
+  /// "6d 14h" where they say "6 days, 14 hours", and a clock glyph says "resets".
   enum Style { case full, compact }
-
-  private static let compactFormat = ClockRelativeFormat(
-    presentation: .numeric, unitsStyle: .narrow)
 
   var body: some View {
     if let window, let resetsAt = window.resetsAt {
@@ -248,9 +244,11 @@ struct UsageResetLine: View {
             compact("clock.arrow.circlepath", Text("reset"), label: "already reset")
           }
         } else if style == .full {
-          Text("resets in \(Self.countdown(from: now, to: resetsAt))")
+          Text("resets in \(UsageCountdown.text(from: now, to: resetsAt, style: .wide))")
         } else {
-          compact("clock", Text(resetsAt, format: Self.compactFormat), label: "resets")
+          compact(
+            "clock", Text(UsageCountdown.text(from: now, to: resetsAt, style: .narrow)),
+            label: "resets")
         }
       }
       .font(.caption2)
@@ -284,28 +282,6 @@ struct UsageResetLine: View {
     let moment = "Resets \(resetsAt.formatted(date: .complete, time: .shortened))"
     guard let rejectedAt = window?.rejectedAt else { return moment }
     return "\(moment). " + UsageFigure.rejectionHelp(rejectedAt)
-  }
-
-  /// How long is left, to two units — "6 days, 23 hours", not "in 6 days".
-  ///
-  /// **The last day of a weekly window is the one worth planning around, and a
-  /// single unit rounds it away.** "in 6 days" covers everything from six days to
-  /// nearly seven, which is the difference between an allowance that turns over
-  /// before Monday's work and one that does not. Two units settle that; a third is
-  /// noise on a caption, so the fields narrow as the interval does — and a field
-  /// worth zero is dropped, so a window six days and four minutes out says "6 days"
-  /// rather than "6 days, 0 hours".
-  static func countdown(from now: Date, to resetsAt: Date) -> String {
-    let fields: Set<Date.ComponentsFormatStyle.Field> =
-      switch resetsAt.timeIntervalSince(now) {
-      case 86400...: [.day, .hour]
-      case 3600...: [.hour, .minute]
-      case 60...: [.minute]
-      default: [.second]
-      }
-    // Safe against a reset in the past only because the caller branches on
-    // `hasRolled` first: `now..<resetsAt` traps on a reversed range.
-    return (now..<resetsAt).formatted(.components(style: .wide, fields: fields))
   }
 
   /// Vendor-neutral on purpose: the same line now sits under Codex meters, where

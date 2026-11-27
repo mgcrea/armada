@@ -958,12 +958,13 @@ struct CompactUsage: View {
   /// Fits "100%" at `.caption` with a point to spare.
   private static let figureWidth: CGFloat = 30
 
-  /// Fits the longest reset this renders — a clock glyph and "in 19h" — with enough
+  /// Fits the longest reset this renders — a clock glyph and "23h 59m" — with enough
   /// slack that it stays one line rather than truncating. Fixed rather than hugging
   /// its text so a row whose window has no reset leaves the column empty instead of
   /// handing the space to its bar and making that one row's meter longer than the
-  /// others.
-  private static let resetWidth: CGFloat = 52
+  /// others. "23h 59m" is the long one: two narrow units, and hours run up to 23
+  /// before the caption switches to days.
+  private static let resetWidth: CGFloat = 64
 
   var body: some View {
     HStack(spacing: 6) {
