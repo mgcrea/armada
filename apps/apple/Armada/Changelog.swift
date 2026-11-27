@@ -212,7 +212,36 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_15_0, v1_14_0, v1_13_0, v1_12_1, v1_12_0]
+  static let releases: [Release] = [v1_16_0, v1_15_0, v1_14_0, v1_13_0, v1_12_1]
+
+  // swift-format-ignore
+  private static let v1_16_0: Release = Release(
+    version: "1.16.0",
+    date: "2026-11-27",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Antigravity CLI sessions.",
+            body: [
+              "Conversations you run with Google's Antigravity CLI (`agy`) now show in the sidebar and the menu bar beside your Claude Code, Codex and Grok Build sessions, each one working, waiting for input or ended, with its folder, model and tokens. A project can start a new `agy` session or resume an earlier one from Projects, and agents see these sessions through the MCP tools: in the fleet, in their transcripts, and when one is started, resumed, focused or closed. Armada reads no Antigravity limits yet, so there is no usage card for it.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "The MCP light pulses once per request.",
+            body: [
+              "The light on the MCP toolbar button and in the menu bar panel used to pulse for a full minute after each request. With agents calling every minute or two it never stopped, and the animation kept the window redrawing in the background. It now pulses once each time a request is served.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_15_0: Release = Release(
@@ -333,71 +362,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_12_0: Release = Release(
-    version: "1.12.0",
-    date: "2026-11-04",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Skill usage.",
-            body: [
-              "Armada counts each Agent Skill and custom command used in Claude Code, whether Claude loaded it or you typed it, per project and account. History goes back as far as the transcripts on this Mac, and the transcript archive when one is set.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A Skills pane.",
-            body: [
-              "The sidebar's new Skills row lists every skill used in the chosen window, most used first. Select one to see its totals, the projects and accounts that used it, and its last 20 uses, each with what you typed next. Each project's pane lists its own top ten, and clicking a skill there opens it in the Skills pane.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "MCP tools:",
-            body: [
-              "`armada_get_skill_usage` gives an agent the same counts, for every project or one, over 7 days, 30 days or all time.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "No empty 5h row in the menu bar panel.",
-            body: [
-              "Max 20x stopped reporting a five-hour limit in November 2026, but the panel still showed \"5h —\" under the account, which looked like a missing figure. It now shows only the limits an account reports, as the sidebar and the Usage pane already did.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Antigravity CLI sessions.",
-            body: [
-              "Conversations you run with Google's Antigravity CLI (`agy`) now show in the sidebar and the menu bar beside your Claude Code, Codex and Grok Build sessions, each one working, waiting for input or ended, with its folder, model and tokens. A project can start a new `agy` session or resume an earlier one from Projects, and agents see these sessions through the MCP tools: in the fleet, in their transcripts, and when one is started, resumed, focused or closed. Armada reads no Antigravity limits yet, so there is no usage card for it.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

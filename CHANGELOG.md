@@ -5,10 +5,14 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.15.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.16.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.16.0] - 2026-11-27
+
+**The Antigravity CLI joins the fleet.** Conversations you run with Google's Antigravity CLI
+now show beside your Claude Code, Codex and Grok Build sessions, and you can start or resume one
+from Projects.
 
 ### Added
 
@@ -18,6 +22,20 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   start a new `agy` session or resume an earlier one from Projects, and agents see these sessions
   through the MCP tools: in the fleet, in their transcripts, and when one is started, resumed,
   focused or closed. Armada reads no Antigravity limits yet, so there is no usage card for it.
+
+### Fixed
+
+- **The MCP light pulses once per request.** The light on the MCP toolbar button and in the menu
+  bar panel used to pulse for a full minute after each request. With agents calling every minute
+  or two it never stopped, and the animation kept the window redrawing in the background. It now
+  pulses once each time a request is served.
+
+### Internal
+
+- The short commands Armada runs and waits on (`claude` and `grok` control requests, `codex queue`,
+  VS Code's `code`, the login shell) move to a new `ArmadaProcess` package built on
+  swift-subprocess 1.0.2. Each child leads its own process group and has a deadline, and none
+  blocks a thread while it runs. swift-mcp-kit moves from 1.4.0 to 1.8.1.
 
 ## [1.15.0] - 2026-11-25
 
