@@ -39,9 +39,12 @@ Three properties, each of which is checkable rather than asserted:
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
   opens Terminal on a fresh session in a folder you saved as a project, or resumes a session there
   that nothing has open, and that session asks you for every permission as usual.
-  `armada_close_session` sends `SIGTERM` to a Claude Code session's own process, and `SIGKILL` if
-  it is still there eight seconds later. `armada_focus_session` raises the window a Claude Code
-  session runs in and changes nothing in it. `armada_send_message` also needs Deliver messages to
+  `armada_close_session` sends `SIGTERM` to a Claude Code session's own process, or to the `agy`
+  process holding an Antigravity CLI conversation's presence lock, and `SIGKILL` if it is still
+  there eight seconds later. `armada_focus_session` raises the window a Claude Code session, or
+  that `agy` process, runs in and changes nothing in it. An `agy` process is found from the lock
+  it holds open, and is reached only while its start time still matches the one the last scan
+  saw. `armada_send_message` also needs Deliver messages to
   sessions, and is described under Messaging below. `armada_save_schedule` and
   `armada_delete_schedule` write Codex automation files, fenced as "The schedule tools" under In
   scope describes. `make audit` checks the listener's source for the loopback address and refuses
@@ -158,8 +161,9 @@ attacker-influenced text meets something that acts on it:
   checks from a web page, binds another interface, calls `armada_start_session` with Allow
   writes off, starts or resumes a session in a folder that is not a saved project, resumes a session that is
   still open, gets `armada_close_session` to
-  signal a process that is not the live session it named (a stale registry file naming a reused
-  pid is the case it checks start times for), adds another tool that writes, or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
+  signal, or `armada_focus_session` to raise the window of, a process that is not the live
+  session it named (a stale registry file naming a reused pid, or an `agy` pid a scan saw that
+  has since been handed to another process, is the case both check start times for), adds another tool that writes, or leaks the token is in scope. That includes the supervisor's MCP configuration, which holds
   the token: it is created 0600 in the launch's own temporary directory and pruned with the
   script, and anything that makes it readable by another user or puts the token on a command
   line is in scope.
@@ -230,7 +234,7 @@ attacker-influenced text meets something that acts on it:
 
 ## Not in scope
 
-- **What the `claude`, `codex` or `grok` process does.** It talks to its vendor over the user's own
+- **What the `claude`, `codex`, `grok` or `agy` process does.** It talks to its vendor over the user's own
   sign-in — that is the program's job, and running it unmodified is the arrangement
   [docs/limits-accounts-and-terms.md](docs/limits-accounts-and-terms.md) is built around.
   Armada spawns it and reads its answers.
