@@ -255,6 +255,8 @@ UNIT_SRC := \
 	Armada/CodexContext.swift \
 	Armada/CodexRollout.swift \
 	Armada/GrokFiles.swift \
+	Armada/AntigravityFiles.swift \
+	Armada/AntigravityPresence.swift \
 	Armada/PanelVisibility.swift \
 	Armada/MenuBarHalo.swift \
 	Armada/MenuBarBuilds.swift \
@@ -289,6 +291,7 @@ UNIT_SRC := \
 	Armada/CodexQueue.swift \
 	Armada/ClaudeDesktopSchedules.swift \
 	Armada/GrokHome.swift \
+	Armada/AntigravityHome.swift \
 	Armada/GrokHeadlessCommand.swift \
 	Armada/EditorLaunch.swift \
 	Armada/ClaudeTrust.swift \

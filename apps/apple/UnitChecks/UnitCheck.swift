@@ -42,6 +42,7 @@ struct UnitCheck {
     hostWindow()
     codexRollout()
     grokFiles()
+    antigravityFiles()
     panelVisibility()
     keepAwake()
     licenseKey()
@@ -1516,6 +1517,162 @@ struct UnitCheck {
       "session directories are UUIDs",
       GrokFiles.isSessionId("01a0af59-ee50-7b73-a473-2f2bcf56012e")
         && !GrokFiles.isSessionId("session_search.sqlite"))
+  }
+
+  static func antigravityFiles() {
+    section("AntigravityFiles")
+    // Shapes from the Antigravity CLI 1.5.18, 2026-11-27. See docs/antigravity-sessions.md.
+    let parsed = AntigravityFiles.date("2026-11-27 07:56:39.575551+00:00")
+    let expected = utc.date(
+      from: DateComponents(year: 2026, month: 11, day: 27, hour: 7, minute: 56, second: 39))!
+      .addingTimeInterval(0.575551)
+    check(
+      "a summary time has six fractional digits and a spaced offset",
+      close(parsed?.timeIntervalSince1970, expected.timeIntervalSince1970, within: 0.001))
+    check(
+      "a time without a fraction is read too",
+      AntigravityFiles.date("2026-11-27 07:56:32+00:00") != nil)
+    check("anything else is no time", AntigravityFiles.date("x") == nil)
+
+    expectEqual(
+      "the folder is the first file URL, percent-decoded",
+      AntigravityFiles.cwd(workspaceURIs: #"["file:///private/tmp/a%20b/ws"]"#),
+      "/private/tmp/a b/ws")
+    expectEqual("no workspace is no folder", AntigravityFiles.cwd(workspaceURIs: "[]"), "")
+
+    let directory = FileManager.default.temporaryDirectory.appending(
+      path: "armada-unit-agy-\(ProcessInfo.processInfo.processIdentifier)",
+      directoryHint: .isDirectory)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let database = directory.appending(path: "conversation_summaries.db")
+    var db: OpaquePointer?
+    sqlite3_open(database.path(percentEncoded: false), &db)
+    // The real schema, and the three measured rows with the second caught mid-turn.
+    sqlite3_exec(
+      db,
+      #"""
+      CREATE TABLE `conversation_summaries` (`conversation_id` text,`title` text NOT NULL DEFAULT "",`preview` text NOT NULL DEFAULT "",`step_count` integer NOT NULL DEFAULT 0,`last_modified_time` datetime NOT NULL,`workspace_uris` text NOT NULL,`status` text NOT NULL DEFAULT "",`source` text NOT NULL DEFAULT "",`project_id` text NOT NULL DEFAULT "",`agent_name` text NOT NULL DEFAULT "",`parent_conversation_id` text NOT NULL DEFAULT "",`nesting_depth` integer NOT NULL DEFAULT 0,`battle_id` text NOT NULL DEFAULT "",`winning_conversation_id` text NOT NULL DEFAULT "",`not_fully_idle` numeric NOT NULL DEFAULT false,`killed` numeric NOT NULL DEFAULT false,`last_user_input_time` datetime NOT NULL,`last_user_input_step_index` integer NOT NULL DEFAULT -1,`app_data_dir` text NOT NULL DEFAULT "",`raw_summary` blob,`group_id` text NOT NULL DEFAULT "",PRIMARY KEY (`conversation_id`));
+      INSERT INTO conversation_summaries (conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, last_user_input_time) VALUES
+      ('657374e8-d811-4cd7-bbf5-b41c297de8f4', '', 'Read README.md and tell me its content in one line.', 4, '2026-11-27 07:56:39.575551+00:00', '["file:///private/tmp/agyprobe/ws"]', 'CASCADE_RUN_STATUS_IDLE', '2026-11-27 07:56:32.799469+00:00'),
+      ('33a760cd-88ed-464b-8f42-2051d73812ab', '', 'Say hi in one word.', 2, '2026-11-27 07:57:16.601741+00:00', '["file:///private/tmp/agyprobe/ws"]', 'CASCADE_RUN_STATUS_RUNNING', '2026-11-27 07:57:09.810133+00:00'),
+      ('7bde737a-d7cc-400a-b7e0-3e628f0611d5', 'Run Command Probe Ok', 'Run Command Probe Ok', 4, '2026-11-27 07:57:49.028972+00:00', '', 'CASCADE_RUN_STATUS_IDLE', '2026-11-27 07:57:45.838986+00:00');
+      """#, nil, nil, nil)
+    sqlite3_close(db)
+    let all = AntigravityFiles.summaries(databaseAt: database, since: .distantPast)
+    let byId = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    expectEqual("every row is read", all.count, 3)
+    let headless = byId["657374e8-d811-4cd7-bbf5-b41c297de8f4"]
+    check(
+      "a headless row has no title, its prompt as preview, and its folder",
+      headless?.title == nil
+        && headless?.preview == "Read README.md and tell me its content in one line."
+        && headless?.cwd == "/private/tmp/agyprobe/ws" && headless?.projectName == "ws"
+        && headless?.stepCount == 4 && headless?.isRunning == false
+        && headless?.lastUserInput != nil && headless?.parentId == nil)
+    check(
+      "a RUNNING row is running",
+      byId["33a760cd-88ed-464b-8f42-2051d73812ab"]?.isRunning == true)
+    let titled = byId["7bde737a-d7cc-400a-b7e0-3e628f0611d5"]
+    check(
+      "a TUI row keeps its title, and no workspace is no folder",
+      titled?.title == "Run Command Probe Ok" && titled?.cwd == ""
+        && titled?.projectName == "Unknown folder")
+    expectEqual(
+      "rows modified before since are left out",
+      Set(
+        AntigravityFiles.summaries(
+          databaseAt: database, since: AntigravityFiles.date("2026-11-27 07:57:00+00:00")!
+        ).map(\.id)),
+      ["33a760cd-88ed-464b-8f42-2051d73812ab", "7bde737a-d7cc-400a-b7e0-3e628f0611d5"])
+    check(
+      "a missing database is no rows",
+      AntigravityFiles.summaries(
+        databaseAt: directory.appending(path: "missing.db"), since: .distantPast
+      ).isEmpty)
+
+    let transcript = [
+      #"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-27T07:56:32Z","content":"<USER_REQUEST>\nRead README.md and tell me its content in one line.\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-11-27T08:56:32+01:00.\n</ADDITIONAL_METADATA>\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 4 Hydrogen (High).\n</USER_SETTINGS_CHANGE>"}"#,
+      #"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-27T07:56:32Z","model":"gemini-4-hydrogen-high","input_tokens":11635,"cache_read_tokens":0,"output_tokens":168,"tool_calls":[{"name":"read_file","args":{"Path":"\"/private/tmp/agyprobe/ws/README.md\""}}]}"#,
+      #"{"step_index":2,"source":"MODEL","type":"GENERIC","status":"ERROR","error":"tool call denied by pre-tool hook: ","created_at":"2026-11-27T07:56:34Z","content":"Created At: 2026-11-27T08:56:34+01:00\nCompleted At: 2026-11-27T08:56:35+01:00\nEncountered error in step execution: tool call denied by pre-tool hook: "}"#,
+      #"{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-27T07:56:35Z","model":"gemini-4-hydrogen-high","input_tokens":2251,"cache_read_tokens":9586,"output_tokens":747,"content":"I am blocked from reading README.md.","thinking":"Halting execution."}"#,
+    ]
+    let whole = ndjson(transcript)
+    let delta = AntigravityFiles.transcriptDelta(whole)
+    check(
+      "a transcript counts its steps and adds its tokens",
+      delta.steps == 4 && delta.inputTokens == 11635 + 2251 && delta.outputTokens == 168 + 747
+        && delta.cacheReadTokens == 9586)
+    check(
+      "and gives the model, the prompt and the last step's time",
+      delta.model == "gemini-4-hydrogen-high"
+        && delta.lastPrompt == "Read README.md and tell me its content in one line."
+        && delta.lastStepAt == UsageSnapshot.parseTimestamp("2026-11-27T07:56:35Z"))
+    expectEqual("every whole line is consumed", delta.consumed, whole.count)
+    let cut = AntigravityFiles.transcriptDelta(
+      whole + Data(#"{"step_index":4,"source":"MODEL","type":"PLANNER_RESPONSE","input_t"#.utf8))
+    expectEqual(
+      "a line cut mid-write is neither counted nor consumed", cut, delta)
+    expectEqual(
+      "nothing whole is nothing", AntigravityFiles.transcriptDelta(Data(#"{"step"#.utf8)),
+      AntigravityFiles.TranscriptDelta(
+        consumed: 0, steps: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, model: nil,
+        lastStepAt: nil, lastPrompt: nil))
+
+    expectEqual(
+      "the prompt is the text inside USER_REQUEST, without the metadata",
+      AntigravityFiles.promptText(
+        "<USER_REQUEST>\n  Say hi.\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nlocal time\n</ADDITIONAL_METADATA>"
+      ), "Say hi.")
+    expectEqual(
+      "a prompt with no wrapper is kept whole", AntigravityFiles.promptText("  plain \n"), "plain")
+
+    let presence = "/Users/x/.gemini/antigravity-cli/presence"
+    expectEqual(
+      "a lock in the presence folder names its conversation, lowercased",
+      AntigravityPresence.conversationId(
+        lockPath: presence + "/33A760CD-88ED-464B-8F42-2051D73812AB.lock", presenceDir: presence),
+      "33a760cd-88ed-464b-8f42-2051d73812ab")
+    let uuid = "33a760cd-88ed-464b-8f42-2051d73812ab"
+    check(
+      "a resolved lock path matches the resolved folder",
+      AntigravityPresence.conversationId(
+        lockPath: "/private/tmp/p/\(uuid).lock", presenceDir: "/private/tmp/p") == uuid)
+    check(
+      "an unresolved one does not",
+      AntigravityPresence.conversationId(
+        lockPath: "/tmp/p/\(uuid).lock", presenceDir: "/private/tmp/p") == nil)
+    check(
+      "a name that is not a UUID is no conversation",
+      AntigravityPresence.conversationId(
+        lockPath: "/private/tmp/p/settings.lock", presenceDir: "/private/tmp/p") == nil)
+    check(
+      "nor is a lock in another folder, or below this one",
+      AntigravityPresence.conversationId(
+        lockPath: "/private/tmp/q/\(uuid).lock", presenceDir: "/private/tmp/p") == nil
+        && AntigravityPresence.conversationId(
+          lockPath: "/private/tmp/p/sub/\(uuid).lock", presenceDir: "/private/tmp/p") == nil
+    )
+    check(
+      "nor a lock being written",
+      AntigravityPresence.conversationId(
+        lockPath: "/private/tmp/p/\(uuid).lock.tmp", presenceDir: "/private/tmp/p") == nil)
+
+    let holder = AntigravityPresence.Holder(pid: 26944, startedAt: .distantPast)
+    let running = byId["33a760cd-88ed-464b-8f42-2051d73812ab"]
+    let idle = byId["657374e8-d811-4cd7-bbf5-b41c297de8f4"]
+    expectEqual(
+      "a RUNNING row nobody holds is a crashed agy, so ended",
+      AntigravitySessionState.of(holder: nil, summary: running), .ended)
+    expectEqual(
+      "a held RUNNING row is working", AntigravitySessionState.of(holder: holder, summary: running),
+      .working)
+    expectEqual(
+      "a held idle row awaits input", AntigravitySessionState.of(holder: holder, summary: idle),
+      .awaitingInput)
+    expectEqual(
+      "and so does a held conversation with no row yet",
+      AntigravitySessionState.of(holder: holder, summary: nil), .awaitingInput)
   }
 
   static func codexRollout() {
