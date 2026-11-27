@@ -14,12 +14,12 @@ public protocol SessionStarter: Sendable {
 public struct StartSessionRequest: Sendable, Equatable {
   /// Nil when resuming: the session's own transcript says where it ran.
   public let projectID: String?
-  /// `claude`, `codex` or `grok`; nil for the project's own agent.
+  /// `claude`, `codex`, `grok` or `antigravity`; nil for the project's own agent.
   public let vendor: String?
   /// An account id or name; nil for the project's own account.
   public let account: String?
   public let prompt: String?
-  /// A Claude Code or Grok Build session id to continue rather than start fresh. The app refuses one that is
+  /// A Claude Code, Grok Build or Antigravity session id to continue rather than start fresh. The app refuses one that is
   /// still live anywhere: two processes on one transcript is what forking exists to avoid.
   public let resume: String?
   /// A model id as the vendor's CLI takes it (`opus`, `gpt-6-astra`), vetted by

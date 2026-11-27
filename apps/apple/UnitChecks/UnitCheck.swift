@@ -1545,18 +1545,29 @@ struct UnitCheck {
       AntigravityLaunch.arguments(start: .resume("abc"), model: nil, prompt: nil),
       ["--conversation=abc"])
     expectEqual(
-      "a fresh start takes the model as two words",
-      AntigravityLaunch.arguments(start: .fresh, model: "m", prompt: nil), ["--model", "m"])
+      "a fresh start takes the model as one word",
+      AntigravityLaunch.arguments(start: .fresh, model: "m", prompt: nil), ["--model=m"])
     expectEqual(
       "a prompt goes through -i, so the TUI stays open",
       AntigravityLaunch.arguments(start: .fresh, model: nil, prompt: "p"), ["-i", "p"])
     expectEqual(
       "the model comes before the prompt",
       AntigravityLaunch.arguments(start: .fresh, model: "m", prompt: "p"),
-      ["--model", "m", "-i", "p"])
+      ["--model=m", "-i", "p"])
     expectEqual(
       "a fresh start with nothing else has no arguments",
       AntigravityLaunch.arguments(start: .fresh, model: nil, prompt: nil), [])
+    // Review Focus 5: a close or focus reaches only the `agy` a scan saw, not a reused pid.
+    let scanned = Date(timeIntervalSince1970: 1_800_000_000)
+    check(
+      "a start 10 s away from the scan's is another process",
+      !AntigravityPresence.startMatches(claimed: scanned, actual: scanned.addingTimeInterval(10)))
+    check(
+      "a pid the kernel no longer knows matches nothing",
+      !AntigravityPresence.startMatches(claimed: scanned, actual: nil))
+    check(
+      "a start 1 s away is the same process",
+      AntigravityPresence.startMatches(claimed: scanned, actual: scanned.addingTimeInterval(1)))
     // Shapes from the Antigravity CLI 1.5.18, 2026-11-27. See docs/antigravity-sessions.md.
     let parsed = AntigravityFiles.date("2026-11-27 07:56:39.575551+00:00")
     let expected = utc.date(

@@ -11,12 +11,13 @@ public protocol SessionCloser: Sendable {
 }
 
 public struct CloseSessionRequest: Sendable, Equatable {
-  /// A Claude Code session id, or a headless Grok Build session's, exact: the tool has already
-  /// resolved any prefix or name.
+  /// A Claude Code session id, a headless Grok Build session's or an Antigravity conversation's,
+  /// exact: the tool has already resolved any prefix or name.
   public let sessionID: String
   /// Close it even while it is working or probably running a tool.
   public let force: Bool
-  /// `grok` for a headless Grok Build turn, which only the app that started it can stop.
+  /// `grok` for a headless Grok Build turn, which only the app that started it can stop;
+  /// `antigravity` for the `agy` process holding an Antigravity conversation.
   public let vendor: String
 
   public init(sessionID: String, force: Bool, vendor: String = "claude") {

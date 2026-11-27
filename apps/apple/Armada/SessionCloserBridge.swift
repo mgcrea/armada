@@ -50,7 +50,63 @@ nonisolated struct SessionCloserBridge: SessionCloser {
 
   func closeSession(_ request: CloseSessionRequest) async -> CloseSessionOutcome {
     if request.vendor == "grok" { return await Self.stopGrok(request, now: Date()) }
+    if request.vendor == "antigravity" {
+      switch await MainActor.run(body: { Self.prepareAntigravity(request, now: Date()) }) {
+      case .refused(let message): return .refused(message)
+      case .ready(let target): return await Self.terminate(target)
+      }
+    }
     return await Self.close(request, origin: .agent)
+  }
+
+  /// The `agy` process holding an Antigravity conversation's presence lock, with Claude Code's
+  /// checks made on the holder the last scan found, then the same `terminate`. The conversation
+  /// stays on disk under `brain/`, so it can be resumed.
+  @MainActor
+  static func prepareAntigravity(_ request: CloseSessionRequest, now: Date) -> Preparation {
+    guard EntitlementMonitor.shared.current.isEntitled else {
+      return .refused("Armada has no licence and no trial running, so it closes nothing.")
+    }
+    guard
+      let session = AntigravityAccounts.shared.all.lazy.compactMap({ account in
+        account.sessions.sessions.first { $0.id == request.sessionID }
+      }).first
+    else {
+      return .refused("That session has already ended, or Armada no longer sees it.")
+    }
+    let name = session.displayName
+    guard let holder = session.holder, session.state.isLive else {
+      return .refused("\(name) has already ended: no Antigravity process holds it.")
+    }
+    if !request.force, session.state == .working {
+      return .refused(
+        "\(name) is working now, so closing it would stop that work mid-turn. Ask the "
+          + "person, then pass `force: true` to close it anyway.")
+    }
+
+    // Review Focus 5: the pid is the one the scan saw only while its start time still is.
+    let pid = holder.pid
+    let actual = ProcessAncestry.startTime(of: pid)
+    guard pid > 1, pid != getpid(),
+      AntigravityPresence.startMatches(claimed: holder.startedAt, actual: actual), let actual
+    else {
+      return .refused(
+        "Armada cannot confirm that process \(pid) is still \(name), so it sends it nothing.")
+    }
+
+    if let elapsed = SessionClosePolicy.recentClose(
+      for: .agent, last: lastCloseAt, now: now, throttle: throttle)
+    {
+      return .refused(
+        "An agent closed a session \(Int(elapsed)) seconds ago. Wait a moment before closing "
+          + "another.")
+    }
+    lastCloseAt = now
+
+    return .ready(
+      Target(
+        pid: pid, startedAt: actual, name: name, project: session.projectName,
+        state: session.state.rawValue))
   }
 
   /// A headless Grok Build turn Armada is running (`GrokHeadless`). Only Armada can stop one: it

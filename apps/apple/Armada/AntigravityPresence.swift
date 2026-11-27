@@ -17,6 +17,17 @@ nonisolated enum AntigravityPresence {
     let startedAt: Date
   }
 
+  /// `SessionCloserBridge.startTolerance`'s value, repeated because this file is checked by
+  /// `make unit` without the bridge: how far a scan's start time may sit from the kernel's.
+  static let startTolerance: TimeInterval = 5
+
+  /// The `agy` a close or focus is about to reach is the one a scan saw: its pid has not been
+  /// handed to another process since. A pid the kernel no longer knows (`actual` nil) is not.
+  static func startMatches(claimed: Date, actual: Date?) -> Bool {
+    guard let actual else { return false }
+    return abs(actual.timeIntervalSince(claimed)) < startTolerance
+  }
+
   /// The conversation id, lowercased, when `lockPath` is `<presenceDir>/<uuid>.lock`.
   ///
   /// The kernel hands back resolved paths (`/private/tmp`, not `/tmp`), so the caller passes

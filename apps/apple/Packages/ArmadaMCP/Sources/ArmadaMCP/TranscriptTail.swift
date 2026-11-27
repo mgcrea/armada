@@ -15,6 +15,7 @@ public enum TranscriptTail {
     case claude
     case codex
     case grok
+    case antigravity
   }
 
   public struct Read: Sendable {
@@ -99,6 +100,8 @@ public enum TranscriptTail {
         entries += codex(object, model: codexModel, maxChars: maxChars)
       case .grok:
         grok(object, into: &entries, maxChars: maxChars)
+      case .antigravity:
+        entries += antigravity(object, maxChars: maxChars)
       }
     }
     return entries
@@ -164,6 +167,63 @@ public enum TranscriptTail {
     default:
       // Thoughts, hook runs, plans, background tasks: not the conversation.
       return
+    }
+  }
+
+  // MARK: - Antigravity CLI
+
+  /// One step of a conversation's `transcript.jsonl`, measured on agy 1.5.18
+  /// (docs/antigravity-sessions.md). A `PLANNER_RESPONSE` carries the answer and the tool calls
+  /// it made, a `GENERIC` the tool's result, or its `error` when the step failed.
+  static func antigravity(_ object: [String: Any], maxChars: Int) -> [Entry] {
+    guard let type = object["type"] as? String else { return [] }
+    let at = object["created_at"] as? String
+    let content = object["content"] as? String
+
+    switch type {
+    case "USER_INPUT":
+      return [entry(.user, at: at, text: content.map(antigravityPrompt), maxChars)]
+        .compactMap { $0 }
+    case "PLANNER_RESPONSE":
+      // `thinking` is left out, as Claude's thinking blocks are.
+      let model = object["model"] as? String
+      var made = [entry(.assistant, at: at, text: content, model: model, maxChars)]
+      for call in blocks(object["tool_calls"]) {
+        made.append(
+          entry(
+            .toolUse, at: at, text: summary(antigravityArguments(call["args"])),
+            tool: call["name"] as? String ?? "tool", model: model,
+            min(maxChars, toolInputChars)))
+      }
+      return made.compactMap { $0 }
+    case "GENERIC":
+      if let error = object["error"] as? String {
+        return [entry(.toolResult, at: at, text: "Error: " + error, maxChars)].compactMap { $0 }
+      }
+      return [entry(.toolResult, at: at, text: content, maxChars)].compactMap { $0 }
+    default:
+      return []
+    }
+  }
+
+  /// A prompt without the metadata `agy` wraps it in: what is inside `<USER_REQUEST>`, as the
+  /// app's `AntigravityFiles.promptText` reads it for the row.
+  static func antigravityPrompt(_ content: String) -> String {
+    guard let open = content.range(of: "<USER_REQUEST>") else { return content }
+    let rest = content[open.upperBound...]
+    let end = rest.range(of: "</USER_REQUEST>")?.lowerBound ?? rest.endIndex
+    return String(rest[..<end])
+  }
+
+  /// `transcript.jsonl` writes each argument JSON-encoded (`"\"README.md\""`); decoded here so
+  /// the summary reads as the call was made. One that does not decode is kept as written.
+  static func antigravityArguments(_ args: Any?) -> Any? {
+    guard let args = args as? [String: Any] else { return args }
+    return args.mapValues { value -> Any in
+      guard let text = value as? String, let data = text.data(using: .utf8),
+        let decoded = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+      else { return value }
+      return decoded
     }
   }
 

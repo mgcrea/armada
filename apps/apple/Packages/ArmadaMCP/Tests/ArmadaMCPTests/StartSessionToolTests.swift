@@ -89,7 +89,7 @@ struct StartSessionToolTests {
     #expect(starter.requests.isEmpty)
   }
 
-  @Test("A vendor that is not claude, codex or grok is refused")
+  @Test("A vendor that is not claude, codex, grok or antigravity is refused")
   func refusedVendor() async {
     let starter = FakeSessionStarter()
     let result = await call(["project": "armada", "vendor": "gemini"], starter: starter)

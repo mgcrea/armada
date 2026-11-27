@@ -71,7 +71,8 @@ nonisolated struct FleetBridge: FleetSource {
       isEntitled: EntitlementMonitor.shared.current.isEntitled,
       claude: Accounts.shared.all.map { claude($0, now: now) },
       codex: CodexAccounts.shared.all.map { codex($0, now: now) },
-      grok: GrokAccounts.shared.all.map { grok($0, now: now) })
+      grok: GrokAccounts.shared.all.map { grok($0, now: now) },
+      antigravity: AntigravityAccounts.shared.all.map(antigravity))
   }
 
   // MARK: - Claude Code
@@ -221,6 +222,41 @@ nonisolated struct FleetBridge: FleetSource {
       totalTokens: session.usage?.totalTokens,
       costUSD: session.usage?.costUSD,
       updatesPath: session.directory.appending(path: "updates.jsonl").path(percentEncoded: false))
+  }
+
+  // MARK: - Antigravity CLI
+
+  @MainActor
+  private static func antigravity(_ account: AntigravityAccount)
+    -> FleetSnapshot.AntigravityAccount
+  {
+    FleetSnapshot.AntigravityAccount(
+      id: account.id, name: account.displayName,
+      sessions: account.sessions.sessions.map(antigravitySession))
+  }
+
+  @MainActor
+  private static func antigravitySession(_ session: AntigravitySession)
+    -> FleetSnapshot.AntigravitySession
+  {
+    FleetSnapshot.AntigravitySession(
+      id: session.id,
+      pid: session.pid,
+      name: session.displayName,
+      title: session.summary?.title,
+      project: session.projectName,
+      cwd: session.cwd,
+      state: session.state.rawValue,
+      stateLabel: session.state.label,
+      isLive: session.state.isLive,
+      startedAt: session.holder?.startedAt,
+      lastActivity: session.lastActivity,
+      model: session.model,
+      // Nothing read yet is no figure, not zero: an unprompted conversation has no transcript.
+      totalTokens: session.transcriptSize > 0 ? session.totalTokens : nil,
+      // From the watcher's last read, so the hop does no I/O: a transcript it found has a size.
+      transcriptPath: session.transcriptSize > 0
+        ? session.transcriptURL.path(percentEncoded: false) : nil)
   }
 
   // MARK: - Shared

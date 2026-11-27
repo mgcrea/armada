@@ -284,6 +284,12 @@ nonisolated enum NewSession {
   private static func arguments(
     for agent: Agent, start: Start, mcpConfig: URL?, name: String?, model: String? = nil
   ) -> [String] {
+    // `body` builds `agy`'s line through `antigravityArguments`. Returned before the flags below,
+    // which are the other CLIs' and would give `agy` a Grok-style `--model=`.
+    if case .antigravity = agent {
+      assertionFailure("The Antigravity CLI's arguments come from AntigravityLaunch.")
+      return []
+    }
     var arguments: [String] =
       switch (agent, start) {
       case (_, .fresh), (.codex, .identified):
@@ -310,7 +316,7 @@ nonisolated enum NewSession {
         ["--resume", quoted(sessionID)]
       case (.grok, .fork(let sessionID)):
         ["--resume", quoted(sessionID), "--fork-session"]
-      // `body` builds `agy`'s line through `antigravityArguments`.
+      // Unreachable: returned above.
       case (.antigravity, _):
         []
       }
@@ -320,9 +326,10 @@ nonisolated enum NewSession {
     if case .claude = agent, mcpConfig == nil, let name {
       arguments.append(quoted("--name=" + name))
     }
-    // All three CLIs take `--model`, and Codex takes it after `resume` or `fork` as well as
-    // before (`codex resume --help`, 0.163). One word for the reason `--name=` is: an id that
-    // begins with a dash cannot become a flag. `Tools.modelRefusal` has vetted it already.
+    // Claude Code, Codex and Grok Build take `--model`, and Codex takes it after `resume` or
+    // `fork` as well as before (`codex resume --help`, 0.163). One word for the reason `--name=`
+    // is: an id that begins with a dash cannot become a flag. `Tools.modelRefusal` has vetted it
+    // already.
     if let model {
       arguments.append(quoted("--model=" + model))
     }

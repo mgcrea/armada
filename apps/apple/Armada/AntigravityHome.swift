@@ -89,9 +89,9 @@ extension AntigravityHome {
 /// prompt is `LaunchScript.promptLines`' `"$prompt"`. This only orders them.
 ///
 /// Flags from `agy --help` on 1.5.18 (2026-11-27): `--conversation=<id>` continues a
-/// conversation, `--model <id>` picks the model, and `-i <prompt>` opens the TUI on a first
-/// prompt, where `-p` would run it headless and exit. There is no flag that names a new
-/// conversation and none that forks one.
+/// conversation, `--model=<id>` picks the model (one word, so an id that begins with a dash
+/// cannot become a flag), and `-i <prompt>` opens the TUI on a first prompt, where `-p` would run
+/// it headless and exit. There is no flag that names a new conversation and none that forks one.
 nonisolated enum AntigravityLaunch {
   enum Start: Hashable, Sendable {
     case fresh
@@ -101,7 +101,7 @@ nonisolated enum AntigravityLaunch {
   static func arguments(start: Start, model: String?, prompt: String?) -> [String] {
     var arguments: [String] = []
     if case .resume(let id) = start { arguments.append("--conversation=" + id) }
-    if let model { arguments += ["--model", model] }
+    if let model { arguments.append("--model=" + model) }
     if let prompt { arguments += ["-i", prompt] }
     return arguments
   }

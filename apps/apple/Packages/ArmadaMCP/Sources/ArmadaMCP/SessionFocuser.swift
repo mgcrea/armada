@@ -4,18 +4,22 @@ import Foundation
 ///
 /// **Only reachable past the kit's write gate**, like `SessionCloser`: raising a window changes
 /// nothing in a session, but it takes the screen from whatever the person was doing. The tool has
-/// already found the session and refused Codex; the app finds the application the session runs
-/// in and raises it.
+/// already found the session and refused Codex, Grok Build and an ended Antigravity session; the
+/// app finds the application the session runs in and raises it.
 public protocol SessionFocuser: Sendable {
   func focusSession(_ request: FocusSessionRequest) async -> FocusSessionOutcome
 }
 
 public struct FocusSessionRequest: Sendable, Equatable {
-  /// A Claude Code session id, exact: the tool has already resolved any prefix or name.
+  /// A Claude Code session id or an Antigravity conversation's, exact: the tool has already
+  /// resolved any prefix or name.
   public let sessionID: String
+  /// `antigravity` for an Antigravity CLI conversation, found by the `agy` process holding it.
+  public let vendor: String
 
-  public init(sessionID: String) {
+  public init(sessionID: String, vendor: String = "claude") {
     self.sessionID = sessionID
+    self.vendor = vendor
   }
 }
 

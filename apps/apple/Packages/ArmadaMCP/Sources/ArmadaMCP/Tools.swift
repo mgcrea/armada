@@ -17,7 +17,8 @@ import MCPKit
 /// nor callable until the person turns on Allow writes.
 /// Starting is confined to folders the person saved as projects, and what it opens is an ordinary
 /// session, in their terminal or in VS Code when they chose it, that asks them for every
-/// permission. Closing reaches Claude Code only, and a busy session only with `force`. Sending a
+/// permission. Closing reaches Claude Code and Antigravity CLI processes, and a busy session only
+/// with `force`. Sending a
 /// keystroke stays out: in VS Code an opening message waits in the input for the person to send.
 /// `armada_save_schedule` and `armada_delete_schedule` write only Codex's own automation files;
 /// the Codex app runs them.
@@ -25,15 +26,14 @@ public enum Tools {
 
   /// Said once per client instead of once per tool description.
   public static let instructions = """
-    Armada is a menu bar app watching every Claude Code, Codex and Grok Build session on this \
-    Mac, across \
-    every account. These tools read what it already holds, and none reaches the network. The \
+    Armada is a menu bar app watching every Claude Code, Codex, Grok Build and Antigravity CLI \
+    session on this Mac, across every account. These tools read what it already holds, and none reaches the network. The \
     six that act are listed only when the person has turned on Allow writes in Armada. \
     armada_start_session opens a fresh session in one of their saved projects, or resumes a \
     closed one, in their terminal or VS Code, and that session still asks them for every \
     permission, unless it is a headless Grok Build turn, which has nobody to ask and so may do \
     only what the person's own allow rules permit. armada_close_session ends a Claude Code \
-    session's process or a headless turn Armada started. armada_send_message puts a message in \
+    or Antigravity session's process, or a headless turn Armada started. armada_send_message puts a message in \
     front of a running Claude Code session, an open Codex thread, or a headless Grok Build \
     session between turns. Start one when the person asks \
     for it, their asking being the go-ahead rather than something to put back to them, and \
@@ -53,6 +53,8 @@ public enum Tools {
     - Codex and Grok Build `awaitingInput` means open and not busy. It is not a request for \
     attention, which is why armada_needs_attention leaves both out. A Grok Build session run \
     headless (`headless: true`) is listed while it writes, and ends when its turn does.
+    - Antigravity (vendor `antigravity`) uses the same states as Codex and Grok Build (working, \
+    awaitingInput, ended), and Armada reads no usage or limits for it yet.
     - `waitingFor` is display text. Quote it rather than interpreting it.
     - A null `usage` means Armada has not read that account's limits yet. It is not zero use.
     - A context `limit` is sometimes assumed from the model name; `limitNote` says when.
@@ -65,6 +67,9 @@ public enum Tools {
     Start with armada_needs_attention for "what needs me" and armada_get_fleet for an overview. \
     To watch, call armada_wait in a loop rather than polling the fleet.
     """
+
+  /// The `vendor` values the fleet and start tools take, as the app's vendor strings spell them.
+  static let vendors = ["claude", "codex", "grok", "antigravity"]
 
   public static let defaultTranscriptBytes = 64 * 1024
   public static let maxTranscriptBytes = 512 * 1024
@@ -254,6 +259,9 @@ public enum Tools {
       }
       let openCodex = snapshot.codex.reduce(0) { $0 + $1.sessions.count { $0.isLive } }
       let openGrok = snapshot.grok.reduce(0) { $0 + $1.sessions.count { $0.isLive } }
+      let openAntigravity = snapshot.antigravity.reduce(0) {
+        $0 + $1.sessions.count { $0.isLive }
+      }
 
       let lede: String
       if found.isEmpty {
@@ -290,6 +298,13 @@ public enum Tools {
               "Armada does not read a Grok Build session waiting on a permission yet. Its "
                 + "awaitingInput means open and not busy, as Codex's does."),
           ],
+          "antigravity": [
+            "excluded": true,
+            "openSessions": .int(openAntigravity),
+            "reason": .string(
+              "Armada does not read an Antigravity session waiting on a permission yet. Its "
+                + "awaitingInput means open and not busy, as Codex's does."),
+          ],
         ], snapshot: snapshot, lede: lede)
     }
   }
@@ -302,13 +317,13 @@ public enum Tools {
         name: "armada_get_fleet",
         title: "Fleet overview",
         description:
-          "Every account and session Armada is watching, across Claude Code, Codex and Grok "
-          + "Build: each "
+          "Every account and session Armada is watching, across Claude Code, Codex, Grok Build "
+          + "and Antigravity: each "
           + "session's state, how full its context is and when it last moved, ordered by what "
           + "wants the person first, then by recency. Use the ids with the other tools.",
         properties: [
           "vendor": [
-            "type": "string", "enum": ["claude", "codex", "grok"],
+            "type": "string", "enum": .array(vendors.map(JSONValue.string)),
             "description": "Only this vendor. Default all.",
           ],
           "include_idle": [
@@ -316,7 +331,8 @@ public enum Tools {
           ],
           "include_ended": [
             "type": "boolean",
-            "description": "Include Codex and Grok Build sessions that ended. Default false.",
+            "description":
+              "Include Codex, Grok Build and Antigravity sessions that ended. Default false.",
           ],
           "include_subagents": [
             "type": "boolean", "description": "Include Codex subagents. Default false.",
@@ -325,8 +341,8 @@ public enum Tools {
         annotations: .readOnly)
     ) { arguments in
       let vendor = arguments["vendor"]?.stringValue
-      if let vendor, !["claude", "codex", "grok"].contains(vendor) {
-        return .failure("`vendor` is claude, codex or grok, not \"\(vendor)\".")
+      if let vendor, !vendors.contains(vendor) {
+        return .failure("`vendor` is claude, codex, grok or antigravity, not \"\(vendor)\".")
       }
       let snapshot = await source.snapshot()
       let slots = buildSlotFields(await source.buildSlots())
@@ -404,6 +420,24 @@ public enum Tools {
           }
         }
       }
+      if vendor == nil || vendor == "antigravity" {
+        for account in snapshot.antigravity {
+          let visible = account.sessions.filter { includeEnded || $0.isLive }
+          accounts.append(
+            object([
+              "id": .string(account.id), "vendor": "antigravity", "name": .string(account.name),
+              "sessionCounts": counts(visible.map(\.state)),
+            ]))
+          for session in visible {
+            rows.append(
+              (
+                session.rank, session.lastActivity ?? .distantPast, session.id,
+                row(session, account: account)
+              ))
+            if session.state == "working" { working += 1 }
+          }
+        }
+      }
       rows.sort { ($0.rank, $1.activity, $1.id) < ($1.rank, $0.activity, $0.id) }
 
       var parts: [String] = []
@@ -459,6 +493,10 @@ public enum Tools {
           session.id, detail(session, account: account),
           lede: "\(session.name), in \(session.project): \(session.stateLabel).")
       case .grok(let session, let account):
+        return answer(
+          session.id, detail(session, account: account),
+          lede: "\(session.name), in \(session.project): \(session.stateLabel).")
+      case .antigravity(let session, let account):
         return answer(
           session.id, detail(session, account: account),
           lede: "\(session.name), in \(session.project): \(session.stateLabel).")
@@ -937,18 +975,18 @@ public enum Tools {
         name: "armada_start_session",
         title: "Start a session",
         description:
-          "Open a Claude Code, Codex or Grok Build session in a saved project, in the person's "
-          + "terminal or VS Code, on the project's account or the one named. `resume` continues "
-          + "a closed Claude Code or Grok Build session. It asks the person for permissions and "
+          "Open a Claude Code, Codex, Grok Build or Antigravity session in a saved project, in "
+          + "the person's terminal or VS Code, on the project's account or one named. `resume` "
+          + "continues a closed session (not Codex). It asks the person for permissions and "
           + "shows in armada_get_fleet within seconds, under `sessionId` when known. `headless` "
-          + "runs a Grok Build turn with no terminal, limited to existing allow rules.",
+          + "runs a Grok Build turn with no terminal, held to existing allow rules.",
         properties: [
           "project": [
             "type": "string",
             "description": "A saved project's id, path or exact name, from armada_get_projects.",
           ],
           "vendor": [
-            "type": "string", "enum": ["claude", "codex", "grok"],
+            "type": "string", "enum": .array(vendors.map(JSONValue.string)),
             "description": "Default: the project's own agent.",
           ],
           "account": [
@@ -980,8 +1018,8 @@ public enum Tools {
       guard snapshot.isEntitled else { return .failure(notEntitled) }
 
       let vendor = arguments["vendor"]?.stringValue
-      if let vendor, !["claude", "codex", "grok"].contains(vendor) {
-        return .failure("`vendor` is claude, codex or grok, not \"\(vendor)\".")
+      if let vendor, !vendors.contains(vendor) {
+        return .failure("`vendor` is claude, codex, grok or antigravity, not \"\(vendor)\".")
       }
       let prompt = arguments["prompt"]?.stringValue
       if let prompt, let refusal = promptRefusal(prompt) { return .failure(refusal) }
@@ -991,8 +1029,8 @@ public enum Tools {
       if headless {
         if let vendor, vendor != "grok" {
           return .failure(
-            "Only a Grok Build turn runs headless. A Claude Code or Codex session opens in a "
-              + "terminal, and armada_send_message reaches it there.")
+            "Only a Grok Build turn runs headless. A Claude Code, Codex or Antigravity session "
+              + "opens in a terminal.")
         }
         guard prompt != nil else {
           return .failure("A headless turn needs `prompt`: it has nobody else to take one from.")
@@ -1008,7 +1046,8 @@ public enum Tools {
               + "where it ran before, on the account that holds its transcript.")
         }
         guard vendor != "codex" else {
-          return .failure("Only a Claude Code or Grok Build session can be resumed here.")
+          return .failure(
+            "Only a Claude Code, Grok Build or Antigravity session can be resumed here.")
         }
         // It reaches a script, quoted, but a session id has exactly one shape.
         guard UUID(uuidString: resume) != nil else {
@@ -1039,6 +1078,7 @@ public enum Tools {
           switch started.vendor {
           case "codex": "Codex"
           case "grok": "Grok Build"
+          case "antigravity": "Antigravity"
           default: "Claude Code"
           }
         let message =
@@ -1125,6 +1165,13 @@ public enum Tools {
       for session in account.sessions where session.isLive {
         all[session.id] = Watched(
           id: session.id, vendor: "grok", name: session.name, project: session.project,
+          state: session.state, wantsAttention: false, waitingFor: nil, statusChangedAt: nil)
+      }
+    }
+    for account in snapshot.antigravity {
+      for session in account.sessions where session.isLive {
+        all[session.id] = Watched(
+          id: session.id, vendor: "antigravity", name: session.name, project: session.project,
           state: session.state, wantsAttention: false, waitingFor: nil, statusChangedAt: nil)
       }
     }
@@ -1216,6 +1263,7 @@ public enum Tools {
           case .claude(let session, _): found.insert(session.id)
           case .codex(let session, _): found.insert(session.id)
           case .grok(let session, _): found.insert(session.id)
+          case .antigravity(let session, _): found.insert(session.id)
           }
         }
         ids = found
@@ -1476,9 +1524,10 @@ public enum Tools {
           "End a Claude Code session's process, as quitting it would: the transcript stays and "
           + "the session can be resumed later. A session that is working or probably running a "
           + "tool is refused unless `force` is true, because closing it stops that work "
-          + "mid-turn. A headless Grok Build turn Armada started is stopped the same way, always "
-          + "with `force`. Codex sessions, and Grok Build sessions in a terminal, cannot be "
-          + "closed. The session leaves armada_get_fleet within a few seconds.",
+          + "mid-turn. An open Antigravity session is closed the same way, and a working one "
+          + "only with `force`. A headless Grok Build turn Armada started is stopped the same "
+          + "way, always with `force`. Codex sessions, and Grok Build sessions in a terminal, "
+          + "cannot be closed. The session leaves armada_get_fleet within a few seconds.",
         properties: [
           "session": sessionArgument,
           "force": [
@@ -1521,6 +1570,18 @@ public enum Tools {
               + "mid-turn. Ask the person, then pass `force: true` to stop it anyway.")
         }
         (sessionID, vendor) = (grok.id, "grok")
+      case .antigravity(let session, _):
+        guard session.isLive else {
+          return .failure(
+            "\(session.name) has already ended: no Antigravity process holds it. There is "
+              + "nothing to close.")
+        }
+        if session.state == "working", !force {
+          return .failure(
+            "\(session.name) is working, so closing it would stop that work mid-turn. Ask the "
+              + "person, then pass `force: true` to close it anyway.")
+        }
+        (sessionID, vendor) = (session.id, "antigravity")
       case .claude(let session, _):
         if busyStates.contains(session.state), !force {
           let doing = session.stateIsInferred ? "probably running a tool" : "working"
@@ -1570,7 +1631,8 @@ public enum Tools {
           + "session sees it labelled as coming from a supervisor agent through Armada, not from "
           + "the person. Needs Settings ▸ Supervisor to deliver messages. A headless Grok Build "
           + "session whose turn has ended gets the message as its next headless turn. Grok Build "
-          + "sessions in a terminal, closed Codex threads and Codex subagents cannot be reached.",
+          + "sessions in a terminal, Antigravity sessions, closed Codex threads and Codex "
+          + "subagents cannot be reached.",
         properties: [
           "session": sessionArgument,
           "text": [
@@ -1625,6 +1687,8 @@ public enum Tools {
               + "armada_wait and `until: change`, then send.")
         }
         (sessionID, vendor) = (grok.id, .grok)
+      case .antigravity:
+        return .failure("Armada cannot send messages to Antigravity CLI sessions yet.")
       case .claude(let found, _):
         (sessionID, vendor) = (found.id, .claude)
       }
@@ -1661,8 +1725,8 @@ public enum Tools {
         name: "armada_focus_session",
         title: "Bring a session forward",
         description:
-          "Bring the window a Claude Code session runs in to the front, on the session's own tab "
-          + "in VS Code when Armada can find it. Nothing in the session changes. Use it when the "
+          "Bring the window a Claude Code or open Antigravity session runs in to the front, on a "
+          + "Claude Code session's own tab in VS Code when Armada can find it. Nothing in the session changes. Use it when the "
           + "person asks to see a session. Codex sessions, and sessions with no app window "
           + "(tmux, ssh, headless), cannot be brought forward.",
         properties: ["session": sessionArgument],
@@ -1673,7 +1737,8 @@ public enum Tools {
       let snapshot = await source.snapshot()
       guard snapshot.isEntitled else { return .failure(notEntitled) }
 
-      let session: FleetSnapshot.ClaudeSession
+      let sessionID: String
+      let vendor: String
       switch lookup(arguments["session"], in: snapshot) {
       case .refused(let refusal):
         return refusal
@@ -1684,18 +1749,24 @@ public enum Tools {
       case .grok(let grok, _):
         return .failure(
           "\(grok.name) is a Grok Build session, and Armada does not bring one forward yet.")
+      case .antigravity(let session, _):
+        guard session.isLive else {
+          return .failure(
+            "\(session.name) has ended: no Antigravity process holds it, so it has no window.")
+        }
+        (sessionID, vendor) = (session.id, "antigravity")
       case .claude(let found, _):
-        session = found
+        (sessionID, vendor) = (found.id, "claude")
       }
 
-      switch await focuser.focusSession(FocusSessionRequest(sessionID: session.id)) {
+      switch await focuser.focusSession(FocusSessionRequest(sessionID: sessionID, vendor: vendor)) {
       case .refused(let message):
         return .failure(message)
       case .focused(let focused):
         return envelope(
           [
             "focused": object([
-              "id": .string(session.id), "name": .string(focused.name),
+              "id": .string(sessionID), "name": .string(focused.name),
               "project": .string(focused.project), "app": .string(focused.app),
               "reach": .string(focused.reach.rawValue),
               "accessibilityGranted": focused.accessibilityGranted ? .none : .bool(false),
@@ -1764,6 +1835,10 @@ public enum Tools {
         (id, name, path, vendor) = (session.id, session.name, session.rolloutPath, .codex)
       case .grok(let session, _):
         (id, name, path, vendor) = (session.id, session.name, session.updatesPath, .grok)
+      case .antigravity(let session, _):
+        (id, name, path, vendor) = (
+          session.id, session.name, session.transcriptPath, .antigravity
+        )
       }
       guard let path else {
         return .failure("\(name) has never been prompted, so it has no transcript yet.")
@@ -1814,6 +1889,7 @@ public enum Tools {
     case claude(FleetSnapshot.ClaudeSession, FleetSnapshot.ClaudeAccount)
     case codex(FleetSnapshot.CodexSession, FleetSnapshot.CodexAccount)
     case grok(FleetSnapshot.GrokSession, FleetSnapshot.GrokAccount)
+    case antigravity(FleetSnapshot.AntigravitySession, FleetSnapshot.AntigravityAccount)
     case refused(ToolResult)
   }
 
@@ -1859,6 +1935,14 @@ public enum Tools {
           Candidate(
             id: session.id, names: [session.name, session.title].compactMap { $0 },
             vendor: "grok", lookup: .grok(session, account)))
+      }
+    }
+    for account in snapshot.antigravity {
+      for session in account.sessions {
+        candidates.append(
+          Candidate(
+            id: session.id, names: [session.name, session.title].compactMap { $0 },
+            vendor: "antigravity", lookup: .antigravity(session, account)))
       }
     }
 
@@ -2058,6 +2142,37 @@ public enum Tools {
         "id": .string(account.id), "name": .string(account.name),
         "plan": account.plan.map(JSONValue.string),
       ]),
+    ])
+  }
+
+  static func row(
+    _ session: FleetSnapshot.AntigravitySession, account: FleetSnapshot.AntigravityAccount
+  ) -> JSONValue {
+    object([
+      "id": .string(session.id), "vendor": "antigravity", "account": .string(account.name),
+      "name": .string(session.name), "project": .string(session.project),
+      "state": .string(session.state),
+      "lastActivity": session.lastActivity.map(isoValue),
+      "model": session.model.map(JSONValue.string),
+    ])
+  }
+
+  static func detail(
+    _ session: FleetSnapshot.AntigravitySession, account: FleetSnapshot.AntigravityAccount
+  ) -> JSONValue {
+    object([
+      "id": .string(session.id), "vendor": "antigravity",
+      "pid": session.pid.map { .int(Int($0)) },
+      "name": .string(session.name), "title": session.title.map(JSONValue.string),
+      "project": .string(session.project), "cwd": .string(session.cwd),
+      "state": .string(session.state), "stateLabel": .string(session.stateLabel),
+      "live": .bool(session.isLive),
+      "startedAt": session.startedAt.map(isoValue),
+      "lastActivity": session.lastActivity.map(isoValue),
+      "model": session.model.map(JSONValue.string),
+      "totalTokens": session.totalTokens.map { .int($0) },
+      "transcriptPath": session.transcriptPath.map(JSONValue.string),
+      "account": object(["id": .string(account.id), "name": .string(account.name)]),
     ])
   }
 

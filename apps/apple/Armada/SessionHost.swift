@@ -65,17 +65,22 @@ enum SessionHostLookup {
   }
 
   static func host(for registry: SessionRegistry) -> SessionHost? {
+    host(pid: registry.pid, startedAt: registry.startedAtDate)
+  }
+
+  /// The host of any agent process, by pid and the start time it was seen with: a Claude Code
+  /// registry's, or the `agy` an Antigravity scan found holding a conversation.
+  static func host(pid: pid_t, startedAt claimed: Date?) -> SessionHost? {
     // A capture's pids are invented, and a lookup would walk whatever real process
     // happens to hold one. The start-time guard in `resolve` would reject it, but a
     // screenshot should not depend on which processes are running when it is taken.
     if ScreenshotMode.isEnabled { return nil }
-    let pid = registry.pid
     let start = ProcessAncestry.startTime(of: pid)
     // One syscall, and it covers both a session that has ended and a pid that has
     // been handed to something else since. Revalidating here is what lets this cache
     // live on its own rather than needing `SessionWatcher` to invalidate it.
     if let hit = cache[pid], hit.agentStart == start { return hit.host }
-    let host = resolve(registry, agentStart: start)
+    let host = resolve(pid: pid, claimed: claimed, agentStart: start)
     cache[pid] = Entry(host: host, agentStart: start)
     return host
   }
@@ -99,17 +104,17 @@ enum SessionHostLookup {
     }
   }
 
-  private static func resolve(_ registry: SessionRegistry, agentStart: Date?) -> SessionHost? {
+  private static func resolve(pid: pid_t, claimed: Date?, agentStart: Date?) -> SessionHost? {
     // The pid-reuse guard. Without it a registry file left behind by a crashed
     // session can name a pid that now belongs to a stranger, and Focus would raise
     // an application that has nothing to do with Claude Code.
-    if let claimed = registry.startedAtDate {
+    if let claimed {
       guard let actual = agentStart, abs(actual.timeIntervalSince(claimed)) < 5 else {
         return nil
       }
     }
 
-    let chain = ProcessAncestry.ancestors(of: registry.pid)
+    let chain = ProcessAncestry.ancestors(of: pid)
     var container: pid_t?
     for ancestor in chain {
       // `NSRunningApplication(processIdentifier:)` returns something for far more

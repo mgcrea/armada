@@ -394,7 +394,7 @@ final class VoiceController {
   /// them right now. Read on the main actor with no I/O, as the MCP bridge reads it.
   private func recognitionHints() -> [String] {
     let snapshot = FleetBridge.build(now: Date())
-    var hints = ["Armada", "Claude", "Codex", "Grok"]
+    var hints = ["Armada", "Claude", "Codex", "Grok", "Antigravity"]
     for account in snapshot.claude {
       hints.append(account.name)
       for session in account.sessions {
@@ -408,6 +408,12 @@ final class VoiceController {
       }
     }
     for account in snapshot.grok {
+      hints.append(account.name)
+      for session in account.sessions {
+        hints += [session.project, session.name, session.title ?? ""]
+      }
+    }
+    for account in snapshot.antigravity {
       hints.append(account.name)
       for session in account.sessions {
         hints += [session.project, session.name, session.title ?? ""]

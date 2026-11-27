@@ -62,16 +62,18 @@ public struct FleetSnapshot: Sendable {
   public let claude: [ClaudeAccount]
   public let codex: [CodexAccount]
   public let grok: [GrokAccount]
+  public let antigravity: [AntigravityAccount]
 
   public init(
     takenAt: Date, isEntitled: Bool, claude: [ClaudeAccount], codex: [CodexAccount],
-    grok: [GrokAccount] = []
+    grok: [GrokAccount] = [], antigravity: [AntigravityAccount] = []
   ) {
     self.takenAt = takenAt
     self.isEntitled = isEntitled
     self.claude = claude
     self.codex = codex
     self.grok = grok
+    self.antigravity = antigravity
   }
 
   /// One Claude config folder: an organization with its own sessions and plan limits.
@@ -287,6 +289,63 @@ public struct FleetSnapshot: Sendable {
     }
   }
 
+  /// The Antigravity CLI home. No plan and no usage: `agy` writes neither to disk.
+  public struct AntigravityAccount: Sendable {
+    public let id: String
+    public let name: String
+    public let sessions: [AntigravitySession]
+
+    public init(id: String, name: String, sessions: [AntigravitySession]) {
+      self.id = id
+      self.name = name
+      self.sessions = sessions
+    }
+  }
+
+  public struct AntigravitySession: Sendable {
+    /// `conversation_id`, a lowercase UUID.
+    public let id: String
+    /// The `agy` process holding the conversation's presence lock. Nil once none does.
+    public let pid: Int32?
+    public let name: String
+    public let title: String?
+    public let project: String
+    public let cwd: String
+    /// `AntigravitySessionState.rawValue`: `working`, `awaitingInput` or `ended`.
+    public let state: String
+    public let stateLabel: String
+    public let isLive: Bool
+    /// When the `agy` holding it started. Nil once ended: the conversation records no start.
+    public let startedAt: Date?
+    public let lastActivity: Date?
+    public let model: String?
+    /// Input, output and cache reads summed over every model step of `transcript.jsonl`.
+    public let totalTokens: Int?
+    /// Nil for a conversation never prompted, which has no transcript yet.
+    public let transcriptPath: String?
+
+    public init(
+      id: String, pid: Int32?, name: String, title: String?, project: String, cwd: String,
+      state: String, stateLabel: String, isLive: Bool, startedAt: Date?, lastActivity: Date?,
+      model: String?, totalTokens: Int?, transcriptPath: String?
+    ) {
+      self.id = id
+      self.pid = pid
+      self.name = name
+      self.title = title
+      self.project = project
+      self.cwd = cwd
+      self.state = state
+      self.stateLabel = stateLabel
+      self.isLive = isLive
+      self.startedAt = startedAt
+      self.lastActivity = lastActivity
+      self.model = model
+      self.totalTokens = totalTokens
+      self.transcriptPath = transcriptPath
+    }
+  }
+
   /// How full a session's context window is.
   public struct Context: Sendable {
     public let total: Int
@@ -414,6 +473,17 @@ extension FleetSnapshot.ClaudeSession {
 }
 
 extension FleetSnapshot.GrokSession {
+  /// Codex's placement, for Codex's reason: `awaitingInput` is open and not busy, not a request.
+  var rank: Int {
+    switch state {
+    case "working": 1
+    case "awaitingInput": 4
+    default: 5
+    }
+  }
+}
+
+extension FleetSnapshot.AntigravitySession {
   /// Codex's placement, for Codex's reason: `awaitingInput` is open and not busy, not a request.
   var rank: Int {
     switch state {

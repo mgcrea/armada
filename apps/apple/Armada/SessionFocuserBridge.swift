@@ -75,6 +75,7 @@ nonisolated struct SessionFocuserBridge: SessionFocuser {
     guard EntitlementMonitor.shared.current.isEntitled else {
       return .refused("Armada has no licence and no trial running, so it brings nothing forward.")
     }
+    if request.vendor == "antigravity" { return prepareAntigravity(request, now: now) }
     guard let session = session(request.sessionID) else {
       return .refused("That session has already ended, or Armada no longer sees it.")
     }
@@ -94,6 +95,46 @@ nonisolated struct SessionFocuserBridge: SessionFocuser {
         sessionID: session.id, host: host, cwd: session.registry.cwd,
         labels: ExtensionTab(session, host: host)?.labels, name: name,
         project: session.registry.projectName))
+  }
+
+  /// The application the `agy` holding the conversation runs in, found from its pid as a Claude
+  /// Code session's is from the registry's. No tab: `ExtensionTab` knows only Claude Code's.
+  @MainActor
+  static func prepareAntigravity(_ request: FocusSessionRequest, now: Date) -> Preparation {
+    guard
+      let session = AntigravityAccounts.shared.all.lazy.compactMap({ account in
+        account.sessions.sessions.first { $0.id == request.sessionID }
+      }).first
+    else {
+      return .refused("That session has already ended, or Armada no longer sees it.")
+    }
+    let name = session.displayName
+    guard let holder = session.holder, session.state.isLive else {
+      return .refused("\(name) has ended: no Antigravity process holds it, so it has no window.")
+    }
+    // Review Focus 5: a reused pid would raise a stranger's application.
+    guard
+      AntigravityPresence.startMatches(
+        claimed: holder.startedAt, actual: ProcessAncestry.startTime(of: holder.pid))
+    else {
+      return .refused(
+        "Armada cannot confirm that process \(holder.pid) is still \(name), so it brings "
+          + "nothing forward.")
+    }
+    guard let host = SessionHostLookup.host(pid: holder.pid, startedAt: holder.startedAt) else {
+      return .refused(
+        "\(name) has no app window to bring forward: it runs inside tmux, over ssh or headless.")
+    }
+
+    if let last = lastFocusAt, now.timeIntervalSince(last) < throttle {
+      return .refused("A session was brought forward a moment ago. Wait a moment and ask again.")
+    }
+    lastFocusAt = now
+
+    return .ready(
+      Target(
+        sessionID: session.id, host: host, cwd: session.cwd, labels: nil, name: name,
+        project: session.projectName))
   }
 
   @MainActor

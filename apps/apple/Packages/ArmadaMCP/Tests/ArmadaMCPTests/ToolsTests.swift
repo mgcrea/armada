@@ -159,11 +159,11 @@ struct ToolsTests {
     #expect(try #require(codexOnly.structuredContent?["accounts"]?.arrayValue).count == 1)
   }
 
-  @Test("A vendor that is not one of the three is refused, not read as an empty fleet")
+  @Test("A vendor that is not one of the four is refused, not read as an empty fleet")
   func fleetUnknownVendor() async {
     let result = await call("armada_get_fleet", ["vendor": "Claude"])
     #expect(result.isError)
-    #expect(result.text.contains("claude, codex or grok"))
+    #expect(result.text.contains("claude, codex, grok or antigravity"))
   }
 
   @Test("The lede counts what the person will care about")
