@@ -212,7 +212,31 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_16_0, v1_15_0, v1_14_0, v1_13_0, v1_12_1]
+  static let releases: [Release] = [v1_17_0, v1_16_0, v1_15_0, v1_14_0, v1_13_0]
+
+  // swift-format-ignore
+  private static let v1_17_0: Release = Release(
+    version: "1.17.0",
+    date: "2026-11-27",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Antigravity CLI plan limits.",
+            body: [
+              "Armada now asks your own `agy` for live 5-hour and weekly quotas across Gemini and Partner models, along with your plan tier, using a session-only `statusLine` probe in an isolated temporary folder without touching your settings or credentials. The limits show in Usage, in the sidebar, above Antigravity sessions, in the menu bar when starred, and over MCP.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "One-click MCP setup for Antigravity CLI.",
+            body: [
+              "Settings ▸ Supervisor and the MCP toolbar popover now list Antigravity CLI alongside Claude Code, ChatGPT & Codex, Cursor and VS Code. Configure writes Armada into `~/.gemini/config/mcp_config.json` with a backup beside it, updates it when the port or token changes, and removes only Armada's entry.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_16_0: Release = Release(
@@ -340,24 +364,6 @@ nonisolated enum Changelog {
             headline: "Codex from ChatGPT 26.1103.",
             body: [
               "ChatGPT moved the Codex CLI it bundles inside its app, so on a Mac with no other copy, Armada could not start a Codex session or add a Codex account. It finds the new location, and still the old one.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_12_1: Release = Release(
-    version: "1.12.1",
-    date: "2026-11-09",
-    sections: [
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Less CPU with a window open.",
-            body: [
-              "The week's usage chart, in an account's overview and in the Usage pane, was redrawn every second from all of the week's readings, about 5,000 per account, and harder still while sessions were busy. It now draws one reading per quarter hour and redraws once a minute, or as soon as a new reading arrives. With an account window open, Armada went from around 10% CPU to under 5%.",
             ]),
         ]),
     ])

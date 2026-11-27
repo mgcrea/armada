@@ -5,8 +5,30 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.16.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.17.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
+
+## [1.17.0] - 2026-11-27
+
+**Antigravity quotas and one-click MCP setup.** Armada now reads your Antigravity CLI plan limits
+and wires Armada's MCP server into agy with one click.
+
+### Added
+
+- **Antigravity CLI plan limits.** Armada now asks your own `agy` for live 5-hour and weekly
+  quotas across Gemini and Partner models, along with your plan tier, using a session-only
+  `statusLine` probe in an isolated temporary folder without touching your settings or credentials.
+  The limits show in Usage, in the sidebar, above Antigravity sessions, in the menu bar when
+  starred, and over MCP.
+- **One-click MCP setup for Antigravity CLI.** Settings ▸ Supervisor and the MCP toolbar popover
+  now list Antigravity CLI alongside Claude Code, ChatGPT & Codex, Cursor and VS Code. Configure
+  writes Armada into `~/.gemini/config/mcp_config.json` with a backup beside it, updates it when
+  the port or token changes, and removes only Armada's entry.
+
+### Internal
+
+- CI now builds and notarizes the release in parallel with the verification gates, and runs the
+  Swift unit and package suites beside the app build.
 
 ## [1.16.0] - 2026-11-27
 
