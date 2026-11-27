@@ -28,25 +28,13 @@ struct UsagePaneView: View {
 
   var body: some View {
     Group {
-      if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty {
-        // Antigravity has no card: `agy` writes no limits to disk. A Mac with only its
-        // home still has an agent, so it is told why the pane is empty, not that it has none.
-        if antigravity.isEmpty {
-          ContentUnavailableView {
-            Label("No agents found", systemImage: "folder.badge.questionmark")
-          } description: {
-            Text(
-              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, for ~/.grok, and for ~/.gemini/antigravity-cli."
-            )
-          }
-        } else {
-          ContentUnavailableView {
-            Label("No limits to show", systemImage: "gauge.with.dots.needle.0percent")
-          } description: {
-            Text(
-              "Armada reads no limits for the Antigravity CLI yet: the CLI keeps none on this Mac. Its sessions are in the sidebar."
-            )
-          }
+      if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty && antigravity.isEmpty {
+        ContentUnavailableView {
+          Label("No agents found", systemImage: "folder.badge.questionmark")
+        } description: {
+          Text(
+            "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, for ~/.grok, and for ~/.gemini/antigravity-cli."
+          )
         }
       } else {
         ScrollView {
@@ -63,6 +51,9 @@ struct UsagePaneView: View {
             }
             ForEach(grok.all) { account in
               GrokUsageCard(account: account, profile: profile, now: now)
+            }
+            ForEach(antigravity.all) { account in
+              AntigravityUsageCard(account: account, profile: profile, now: now)
             }
             PaceFooter(profile: profile)
           }
@@ -87,8 +78,8 @@ struct UsagePaneView: View {
     let claude = accounts.all.count
     let codexCount = codex.all.count
     let grokCount = grok.all.count
-    if codexCount == 0 && grokCount == 0 {
-      // No cards at all, Antigravity's home included: "0 accounts" over an empty pane.
+    let antigravityCount = antigravity.all.count
+    if codexCount == 0 && grokCount == 0 && antigravityCount == 0 {
       if claude == 0 { return "" }
       return claude == 1 ? "1 account" : "\(claude) accounts"
     }
@@ -96,6 +87,9 @@ struct UsagePaneView: View {
       claude == 0 ? nil : claude == 1 ? "1 Claude account" : "\(claude) Claude accounts",
       codexCount == 0 ? nil : codexCount == 1 ? "1 Codex home" : "\(codexCount) Codex homes",
       grokCount == 0 ? nil : grokCount == 1 ? "1 Grok Build home" : "\(grokCount) Grok Build homes",
+      antigravityCount == 0
+        ? nil
+        : antigravityCount == 1 ? "1 Antigravity home" : "\(antigravityCount) Antigravity homes",
     ].compactMap { $0 }.joined(separator: " · ")
   }
 }
@@ -232,6 +226,50 @@ struct GrokUsageCard: View {
   }
 }
 
+/// One Antigravity CLI home's model-group quotas, and its week so far.
+struct AntigravityUsageCard: View {
+  let account: AntigravityAccount
+  let profile: PaceProfile
+  let now: Date
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 8) {
+        AntigravityIconView(size: 16)
+        Text(account.displayName).font(.headline)
+        if let plan = account.planLabel {
+          Text(plan).font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 12)
+        StalenessBadge(fetchedAt: account.usage?.observedAt, now: now, source: .antigravity)
+      }
+
+      if let usage = account.usage, !usage.isEmpty {
+        let rows = account.windowRows(for: usage)
+        if !rows.isEmpty {
+          ForEach(rows) { row in
+            WindowRow(row: row, profile: profile, fetchedAt: usage.observedAt, now: now)
+          }
+          WeeklyChart(
+            accountID: account.id, window: usage.primaryWindow(.sevenDay), profile: profile,
+            fetchedAt: usage.observedAt, now: now)
+        } else {
+          ForEach(usage.buckets) { bucket in
+            Text("\(bucket.title): \(bucket.utilization)% used")
+              .font(.callout)
+          }
+        }
+      } else {
+        Text("Reading usage…")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(16)
+    .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
+  }
+}
+
 struct WindowRowModel: Identifiable {
   let id: String
   let title: String
@@ -316,6 +354,19 @@ extension GrokAccount {
       id: "grok-seven-day", title: "Weekly", subtitle: "7 days", window: window,
       length: .sevenDay, isBinding: false,
       menuBarLimit: MenuBarLimit(accountID: id, length: .sevenDay))
+  }
+}
+
+extension AntigravityAccount {
+  /// One row per paced quota bucket (`gemini-5h`, `gemini-weekly`, `3p-5h`, `3p-weekly`).
+  func windowRows(for usage: AntigravityFiles.Limits) -> [WindowRowModel] {
+    usage.buckets.compactMap { bucket in
+      guard let length = bucket.length else { return nil }
+      return WindowRowModel(
+        id: "antigravity-\(bucket.id)", title: bucket.title, subtitle: bucket.subtitle,
+        window: bucket.window, length: length, isBinding: false,
+        menuBarLimit: MenuBarLimit(accountID: id, length: length, model: bucket.groupName))
+    }
   }
 }
 

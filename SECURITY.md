@@ -66,11 +66,12 @@ Three properties, each of which is checkable rather than asserted:
   one hook in each Claude Code account's `settings.json` while Deliver messages to sessions is on,
   removed when you turn it off (see Messaging); a copied transcript when you continue a Claude
   Code session on another account, which refuses rather than overwrite a different conversation;
-  and Armada's own MCP entry in a Claude Code account's `.claude.json` or Codex's `config.toml`
-  when you press Configure in Settings ▸ Supervisor, with the previous file kept beside it as a
-  backup and someone else's `armada` entry never replaced without asking; and a Codex
-  automation's `automation.toml` when an agent saves or deletes a schedule over MCP while Allow
-  writes is on (see In scope). Grok Build's and the Antigravity CLI's folders are
+  and Armada's own MCP entry in a Claude Code account's `.claude.json`, Codex's `config.toml`,
+  Antigravity CLI's `~/.gemini/config/mcp_config.json`, Cursor's `~/.cursor/mcp.json`, or VS
+  Code's `mcp.json` when you press Configure in Settings ▸ Supervisor, with the previous file kept
+  beside it as a backup and someone else's `armada` entry never replaced without asking; and a
+  Codex automation's `automation.toml` when an agent saves or deletes a schedule over MCP while
+  Allow writes is on (see In scope). Grok Build's folders and `~/.gemini/antigravity-cli` are
   only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
   and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
   Support; and a session startup script in its own temporary directory — beside which a
@@ -107,7 +108,8 @@ to "`~/.claude*` and `~/.codex`":
   readable transcripts under `brain` and `cache/last_conversations.json`. Which conversation is
   open comes from the process table: the files each `agy` process holds open in `presence`,
   whose locks Armada never takes. Its encrypted `*.pb` files and per-conversation databases
-  are never opened, and the rest of `~/.gemini` is not read. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
+  are never opened, and the rest of `~/.gemini` is not read except `~/.gemini/config/mcp_config.json`
+  when the supervisor's MCP server is on. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
   transcript and session log is read, Codex's `archived_sessions` included, for the tokens each
   project spent; what is kept of those is counts per day, folder, account and model, never text.
   Claude Code transcripts are also read for the skills and custom commands used in them, and
@@ -187,9 +189,12 @@ attacker-influenced text meets something that acts on it:
   tool, lets another user hold, plant or rewrite the locks, makes a build fail where the real
   tool alone would have succeeded, or gets the installer to overwrite or remove a file it did not
   write, is in scope.
-- **The spawned `claude`.** `ClaudeControl` runs the user's own `claude` headless to ask one
-  control request. Anything that changes _which_ binary is run, or that gets an argument or
-  an environment variable in from data rather than from configuration, is in scope.
+- **The spawned `claude` and `agy`.** `ClaudeControl` runs the user's own `claude` headless to
+  ask one control request, and `AntigravityControl` runs the user's own `agy` in an empty `0700`
+  temporary directory with a session-only `--settings` `statusLine` hook (never saved) to read
+  live quotas and plan tier before stopping it. Anything that changes _which_ binary is run, or
+  that gets an argument or an environment variable in from data rather than from configuration, is
+  in scope.
 - **The voice `claude`.** `SupervisorProcess` runs the user's own `claude` headless for as long
   as a voice conversation is active, and closes it after five idle minutes. It is started with
   no built-in tools (`--tools ""`), with Armada's MCP server and no other

@@ -283,8 +283,9 @@ nonisolated struct FleetBridge: FleetSource {
 
   private static func source(_ source: UsageSnapshot.Source) -> String {
     switch source {
-    // Grok Build's figure is asked for directly too, and `live` is the documented value.
-    case .live, .grok: "live"
+    // Grok Build's and Antigravity CLI's figures are asked for directly too, and `live` is the
+    // documented value.
+    case .live, .grok, .antigravity: "live"
     case .cache: "cache"
     case .sessionLog: "sessionLog"
     }

@@ -141,6 +141,11 @@ nonisolated struct UsageSnapshot: Sendable, Hashable {
     /// Asked directly like `.live` and aged like it, but its own case so what Armada says
     /// about where a figure came from names the right tool.
     case grok
+    /// The `statusLine` state JSON, answered by the person's own `agy`. See `AntigravityControl`.
+    ///
+    /// Asked directly like `.live` and `.grok`, with its own case so tooltips name the
+    /// Antigravity CLI rather than Claude Code or Grok Build.
+    case antigravity
   }
 
   var isEmpty: Bool { fiveHour == nil && sevenDay == nil }

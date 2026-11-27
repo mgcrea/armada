@@ -1840,6 +1840,54 @@ struct UnitCheck {
       ["/work/a": "7bde737a-d7cc-400a-b7e0-3e628f0611d5"])
     expectEqual(
       "and anything else maps nothing", AntigravityFiles.lastConversations(Data("[]".utf8)), [:])
+
+    // Measured `statusLine` payload from `agy` 1.5.18 (2026-11-27).
+    let statusPayload = Data(
+      #"""
+      {
+        "plan_tier": "Google AI Pro",
+        "email": "dev@example.com",
+        "quota": {
+          "3p-5h": {"remaining_fraction": 1, "reset_time": "1970-01-01T00:00:00Z", "reset_in_seconds": 0},
+          "3p-weekly": {"remaining_fraction": 0.42, "reset_time": "2026-12-03T09:00:00Z", "reset_in_seconds": 500000},
+          "gemini-5h": {"remaining_fraction": 0.8578933, "reset_time": "2026-11-27T15:28:20Z", "reset_in_seconds": 16781},
+          "gemini-weekly": {"remaining_fraction": 0.9644733, "reset_time": "2026-12-04T10:28:20Z", "reset_in_seconds": 603581},
+          "disabled-5h": {"remaining_fraction": 0, "reset_time": "2026-11-27T15:28:20Z", "reset_in_seconds": 100, "disabled": true}
+        }
+      }
+      """#.utf8)
+    let agyLimits = AntigravityFiles.limits(statusPayload, observedAt: now)
+    expectEqual(
+      "quota buckets are ordered Gemini first, then Partner models, skipping disabled ones",
+      agyLimits?.buckets.map(\.id), ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"])
+    check(
+      "remaining_fraction converts to spent %, and plan_tier is kept",
+      agyLimits?.tier == "Google AI Pro"
+        && agyLimits?.buckets[0].utilization == 14
+        && agyLimits?.buckets[0].resetsAt == UsageSnapshot.parseTimestamp("2026-11-27T15:28:20Z")
+        && agyLimits?.buckets[1].utilization == 4
+        && agyLimits?.buckets[2].utilization == 0
+        && agyLimits?.buckets[3].utilization == 58)
+    check(
+      "an untouched bucket at epoch 0 has no reset time, so it is not voided as rolled",
+      agyLimits?.buckets[2].resetsAt == nil
+        && agyLimits?.buckets[2].window.hasRolled(asOf: now) == false)
+    check(
+      "peakWindow picks the highest utilization per length, while primaryWindow stays on Gemini",
+      agyLimits?.peakWindow(.fiveHour)?.utilization == 14
+        && agyLimits?.peakWindow(.sevenDay)?.utilization == 58
+        && agyLimits?.primaryWindow(.sevenDay)?.utilization == 4
+        && agyLimits?.asSnapshot.sevenDay?.utilization == 4
+        && agyLimits?.asSnapshot.source == .antigravity)
+    check(
+      "window(length:model:) resolves each model group for MenuBarLimit",
+      agyLimits?.window(length: .fiveHour, model: "Gemini")?.utilization == 14
+        && agyLimits?.window(length: .sevenDay, model: "Partner models")?.utilization == 58
+        && agyLimits?.window(length: .fiveHour, model: "Partner models")?.utilization == 0)
+    check(
+      "a payload with no quota is no reading",
+      AntigravityFiles.limits(Data(#"{"agent_state":"authenticating"}"#.utf8), observedAt: now)
+        == nil)
   }
 
   static func codexRollout() {

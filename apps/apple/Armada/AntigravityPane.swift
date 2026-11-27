@@ -4,9 +4,8 @@ import SwiftUI
 /// The Antigravity CLI home: what its conversations have been doing.
 ///
 /// `GrokPaneView`'s layout without what `agy` does not have or Armada does not do for it yet:
-/// no allowance (it writes no plan limits to disk), no fork and no headless runs. An ended
-/// conversation resumes in place (`agy --conversation=<id>`): no process holds it, so there is
-/// no second writer to fear.
+/// no fork and no headless runs. An ended conversation resumes in place (`agy --conversation=<id>`):
+/// no process holds it, so there is no second writer to fear.
 struct AntigravityPaneView: View {
   let account: AntigravityAccount
 
@@ -105,7 +104,7 @@ struct AntigravityPaneView: View {
     if let selected = account.sessions.sessions.first(where: { $0.id == selection }) {
       AntigravitySessionDetail(session: selected, now: now)
     } else {
-      AntigravityOverview(account: account)
+      AntigravityOverview(account: account, now: now)
     }
   }
 
@@ -113,18 +112,19 @@ struct AntigravityPaneView: View {
     let live = account.sessions.liveSessions.count
     let total = account.sessions.sessions.count
     let recent = total == 1 ? "1 recent session" : "\(total) recent sessions"
-    return live == 0 ? recent : "\(live) live · \(recent)"
+    let head = account.planLabel.map { "\($0) · " } ?? ""
+    return live == 0 ? "\(head)\(recent)" : "\(head)\(live) live · \(recent)"
   }
 }
 
-/// The Antigravity CLI home's block in the menu bar popover: its live sessions.
-///
-/// `GrokSummary`'s shape without the allowance line. A row opens Armada's pane; focusing the
-/// terminal `agy` runs in is not wired up.
+/// The Antigravity CLI home's block in the menu bar popover: live sessions and peak quotas.
 struct AntigravitySummary: View {
   let account: AntigravityAccount
   let showsName: Bool
   let now: Date
+
+  @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
+  @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
 
   private static let visibleSessions = 3
 
@@ -145,6 +145,11 @@ struct AntigravitySummary: View {
               .foregroundStyle(.secondary)
               .lineLimit(1)
             Spacer(minLength: 4)
+            if let plan = account.planLabel {
+              Text(plan)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
           }
         } else {
           Text(summary)
@@ -172,10 +177,43 @@ struct AntigravitySummary: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+
+      if let usage = account.usage, !usage.isEmpty {
+        let five = usage.peakWindow(.fiveHour)
+        let seven = usage.peakWindow(.sevenDay)
+        let fiveHour = forecast(five, .fiveHour, usage.observedAt)
+        let sevenDay = forecast(seven, .sevenDay, usage.observedAt)
+        if five != nil || seven != nil {
+          VStack(alignment: .leading, spacing: 3) {
+            if let five {
+              CompactUsage(label: "5h", window: five, forecast: fiveHour, now: now)
+            }
+            if let seven {
+              CompactUsage(label: "7d", window: seven, forecast: sevenDay, now: now)
+            }
+          }
+          .padding(.top, 2)
+          StalenessBadge(
+            fetchedAt: usage.observedAt, now: now, source: .antigravity, style: .compact)
+          if let sevenDay, sevenDay.isNoteworthy {
+            UsageVerdictLine(forecast: sevenDay)
+          }
+        }
+      }
     }
   }
 
   private var live: [AntigravitySession] { account.sessions.liveSessions }
+
+  private func forecast(
+    _ window: UsageWindow?, _ length: UsageWindowLength, _ observedAt: Date
+  ) -> UsageForecast? {
+    guard let window else { return nil }
+    return UsageForecast(
+      window: window, length: length,
+      profile: PaceProfile(storedDays: storedWeights, storedHours: storedHours),
+      asOf: observedAt, now: now)
+  }
 
   private var summary: String {
     let recent = account.sessions.sessions.count
@@ -272,13 +310,32 @@ struct AntigravitySessionDetail: View {
 /// The home itself, with nothing selected.
 struct AntigravityOverview: View {
   let account: AntigravityAccount
+  let now: Date
 
   var body: some View {
     Form {
+      let rows = account.usage.map { account.windowRows(for: $0) } ?? []
+      OverviewUsageSection(
+        accountID: account.id,
+        rows: rows,
+        week: account.usage?.primaryWindow(.sevenDay),
+        fetchedAt: account.usage?.observedAt, now: now,
+        empty: "Reading usage…"
+      ) {
+        if let usage = account.usage {
+          StalenessBadge(
+            fetchedAt: usage.observedAt, now: now, source: .antigravity, style: .inline)
+        }
+      }
       Section {
         LabeledContent("Folder", value: account.displayPath)
         LabeledContent("Live sessions", value: String(account.sessions.liveSessions.count))
         LabeledContent("Working", value: String(account.sessions.workingCount))
+      }
+      if let plan = account.planLabel {
+        Section {
+          LabeledContent("Plan", value: plan)
+        }
       }
     }
     .formStyle(.grouped)
@@ -299,14 +356,14 @@ struct AntigravityStateDot: View {
 }
 
 /// The Antigravity CLI home in the sidebar. The count counts live sessions, as `GrokSidebarRow`'s
-/// does; no usage lines, since `agy` writes no limits.
+/// does.
 struct AntigravitySidebarRow: View {
   let account: AntigravityAccount
 
   var body: some View {
     let live = account.sessions.liveSessions.count
     SidebarAccountRow(
-      accountID: account.id, name: account.displayName, plan: nil,
+      accountID: account.id, name: account.displayName, plan: account.planLabel,
       path: account.displayPath, count: live,
       countHelp: live == 1 ? "1 live session" : "\(live) live sessions",
       working: account.sessions.workingCount, workingTint: AntigravitySessionState.working.tint,

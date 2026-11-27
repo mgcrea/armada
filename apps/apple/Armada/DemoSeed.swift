@@ -500,9 +500,20 @@ import SwiftUI
           tier: "X Premium", observedAt: ago(minutes: 3)))
       GrokAccounts.shared.demoInstall([grok])
 
-      // No limits: `agy` writes none to disk, so the Usage pane has no card for it.
       let antigravity = AntigravityAccount(home: Fixture.antigravityHome)
       antigravity.sessions.demoInstall(antigravitySessions)
+      antigravity.demoInstall(
+        AntigravityFiles.Limits(
+          buckets: [
+            AntigravityFiles.Bucket(
+              id: "gemini-5h", utilization: 14, resetsAt: ahead(minutes: 3 * 60 + 40)),
+            AntigravityFiles.Bucket(
+              id: "gemini-weekly", utilization: 22,
+              resetsAt: ahead(minutes: (5 * 24 + 2) * 60 + 19)),
+            AntigravityFiles.Bucket(id: "3p-5h", utilization: 0, resetsAt: nil),
+            AntigravityFiles.Bucket(id: "3p-weekly", utilization: 0, resetsAt: nil),
+          ],
+          tier: "Google AI Pro", observedAt: ago(minutes: 2)))
       AntigravityAccounts.shared.demoInstall([antigravity])
 
       ProjectStore.shared.demoInstall(Fixture.projects)

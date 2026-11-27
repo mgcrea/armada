@@ -2,8 +2,9 @@ import Foundation
 
 /// The Antigravity CLI home, and everything Armada knows about it.
 ///
-/// No usage and no probe: `agy` writes no plan limits to disk, and its identity sits in the
-/// files Armada does not open, so the row is labelled by its folder.
+/// Its quotas come from `AntigravityControl`, which asks the person's own `agy` via `--settings`
+/// and its `statusLine` payload, since `agy` writes no plan limits to disk. Its encrypted files
+/// and credentials are never opened.
 @MainActor
 @Observable
 final class AntigravityAccount: Identifiable {
@@ -15,6 +16,29 @@ final class AntigravityAccount: Identifiable {
   init(home: AntigravityHome) {
     self.home = home
     sessions = AntigravityWatcher(home: home)
+  }
+
+  func start() { sessions.start() }
+
+  /// Nil until the first probe answers, and kept when a later one fails.
+  private(set) var usage: AntigravityFiles.Limits?
+
+  /// `"Google AI Pro"`, `"Google AI Ultra"`: the tier `agy`'s `statusLine` payload names.
+  var planLabel: String? { usage?.tier }
+
+  /// Off the main actor, cancellable before the process starts. See `GrokAccount.probeUsage`.
+  func probeUsage() async {
+    // Spawns `agy`, which talks to the network as whoever is signed in. The menu bar
+    // panel asks for a probe on every appearance, so a capture would otherwise run it.
+    guard !ScreenshotMode.isEnabled else { return }
+    guard let limits = await Self.probe(), !Task.isCancelled else { return }
+    usage = limits
+    UsageHistory.shared.record(limits.asSnapshot, for: home.id)
+  }
+
+  @concurrent
+  private nonisolated static func probe() async -> AntigravityFiles.Limits? {
+    await AntigravityControl.limits()
   }
 
   var displayName: String { home.displayName }
@@ -40,11 +64,20 @@ final class AntigravityAccounts {
 
   private var isStarted = false
 
+  /// Matches `Accounts.probeInterval` and `GrokAccounts.probeInterval`.
+  static let probeInterval: TimeInterval = 3 * 60
+  static let probeThrottle: TimeInterval = 20
+
+  private var probeTimer: DispatchSourceTimer?
+  private var lastProbe: [String: Date] = [:]
+  private var probes: [String: Task<Void, Never>] = [:]
+
   func start() {
     guard !isStarted else { return }
     isStarted = true
     all = AntigravityHome.discover().map { [AntigravityAccount(home: $0)] } ?? []
-    for account in all { account.sessions.start() }
+    for account in all { account.start() }
+    startProbing()
   }
 
   /// Pick up the home once `agy` has written its first conversation, which may be after
@@ -53,14 +86,41 @@ final class AntigravityAccounts {
   func rediscover() {
     guard isStarted, all.isEmpty, let home = AntigravityHome.discover() else { return }
     let account = AntigravityAccount(home: home)
-    account.sessions.start()
+    account.start()
     all = [account]
+    probeAll()
+    startProbing()
+  }
+
+  private func startProbing() {
+    guard !all.isEmpty, probeTimer == nil else { return }
+    probeAll()
+    let probe = DispatchSource.makeTimerSource(queue: .main)
+    probe.schedule(deadline: .now() + Self.probeInterval, repeating: Self.probeInterval)
+    probe.setEventHandler { MainActor.assumeIsolated { self.probeAll() } }
+    probe.resume()
+    probeTimer = probe
   }
 
   func stop() {
+    probeTimer?.cancel()
+    probeTimer = nil
+    for task in probes.values { task.cancel() }
+    probes = [:]
+    lastProbe = [:]
     for account in all { account.sessions.stop() }
     all = []
     isStarted = false
+  }
+
+  /// Ask the Antigravity home for its quotas, throttled per home.
+  func probeAll() {
+    let now = Date()
+    for account in all
+    where now.timeIntervalSince(lastProbe[account.id] ?? .distantPast) >= Self.probeThrottle {
+      lastProbe[account.id] = now
+      probes[account.id] = Task { await account.probeUsage() }
+    }
   }
 
   var workingCount: Int { all.reduce(0) { $0 + $1.sessions.workingCount } }
@@ -69,8 +129,14 @@ final class AntigravityAccounts {
 }
 
 #if DEBUG
+  extension AntigravityAccount {
+    /// A capture's quotas, never probed. See `DemoSeed`.
+    func demoInstall(_ usage: AntigravityFiles.Limits) { self.usage = usage }
+  }
+
   extension AntigravityAccounts {
-    /// A capture's Antigravity home. `start()` is never called. See `DemoSeed`.
+    /// A capture's Antigravity home. `start()` is never called, so no probe timer exists.
+    /// See `DemoSeed`.
     func demoInstall(_ accounts: [AntigravityAccount]) { all = accounts }
   }
 #endif

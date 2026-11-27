@@ -17,7 +17,7 @@ the gaps are listed at the end.
 | Where are titles? | The same row's `title`, written for TUI sessions; `preview` is the first prompt |
 | Where are tokens? | Per model step in the transcript (`input_tokens`, `cache_read_tokens`, `output_tokens`) |
 | Does Armada's Claude Code hook run inside `agy`? | **No.** It reads its own `hooks.json` files only |
-| Where are the plan limits? | Nowhere on disk. The TUI has `/quota`; not reachable by Armada yet |
+| Where are the plan limits? | Nowhere on disk. Emitted in `statusLine` JSON (`quota`, `plan_tier`); probed via `agy --settings` in a PTY |
 
 ## The binary
 
@@ -147,18 +147,40 @@ The environment carries `ANTIGRAVITY_CONVERSATION_ID`. A `PreToolUse` hook that 
 (or `ask`) to let it through. Armada's delivery hook never runs here, and would exit at once if
 it did, since the input carries `hookEventName`.
 
+## MCP configuration
+
+`agy mcp add` writes `~/.gemini/config/mcp_config.json` under `mcpServers` using Windsurf's
+`serverUrl` + `headers` shape, but `agy 1.5.18` also reads `type`/`url`/`headers` and sends
+`Authorization: Bearer …` on `initialize` and `tools/list` (measured against a loopback probe in
+Bastion). Settings ▸ Supervisor wires Armada there directly through `MCPKitWiring`, keeping a
+`.armada-backup` copy beside the file and writing it `0600`. `agy mcp disable` adds
+`disabled: true` beside Armada's keys, which `WiringMerge` leaves intact on later rewires. Note
+that any `agy mcp add`, `enable` or `disable` rewrites `mcp_config.json` with mode `0644` until
+Armada next writes it.
+
 ## Limits
 
 Nothing on disk holds the allowance. The binary has a `/quota` slash command and
-`RetrieveUserQuotaSummary` / `FetchQuotaStatus` calls with `quota_remaining` and
-`quota_reset_time` per model, served by the per-process language server. `agy acp`'s
-`initialize` advertises `_meta.antigravity.tier` and no quota method. Not reached yet.
+`RetrieveUserQuotaSummary` / `FetchQuotaStatus` calls served by the per-process language server,
+and `agy acp`'s `initialize` advertises `_meta.antigravity.tier` with no quota method.
+
+**Settled 2026-11-27: ask the user's own `agy` via `--settings` and its documented `statusLine`
+payload.** Running `agy --settings '{"statusLine":{"type":"command","command":"..."}}'` inside a
+PTY in a fresh, empty untrusted directory (`0700` temp dir) holds the TUI at its workspace trust
+prompt (`agent_state: "initializing"`), where `agy` still authenticates and pipes live `quota`
+buckets (`gemini-5h`, `gemini-weekly`, `3p-5h`, `3p-weekly`) plus `plan_tier` (`"Google AI Pro"`)
+within ~1.2–2.0s, while starting zero MCP servers or hooks, creating no `conversation_summaries.db`
+row, holding no `presence/*.lock`, and leaving `~/.gemini/antigravity-cli/settings.json` untouched.
+
+Each bucket reports `remaining_fraction` (`0…1`), `reset_time` (ISO 8601 UTC), and
+`reset_in_seconds`. Untouched pools (such as `3p-5h` / `3p-weekly` before any partner-model turn)
+report `remaining_fraction: 1`, `reset_time: "1970-01-01T00:00:00Z"`, and `reset_in_seconds: 0`,
+which Armada treats as `resetsAt = nil` so they render as `0%` rather than rolled-over.
 
 ## Open questions
 
 - What a pending permission prompt writes (only reachable outside `auto` mode), and whether
   `status` then reads `_BUSY` or something else.
-- Where the plan limits can be read from without being `agy`.
 - Whether a `kill -9` leaves `status` at `RUNNING` (the lock goes with the process; the row
   may not).
 - Subagent and swarm conversations: `parent_conversation_id` and `nesting_depth` exist, not

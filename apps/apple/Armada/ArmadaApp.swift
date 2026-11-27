@@ -372,6 +372,7 @@ struct StatusMenu: View {
       accounts.probeAll()
       codex.refreshAll()
       GrokAccounts.shared.probeAll()
+      AntigravityAccounts.shared.probeAll()
     }
   }
 

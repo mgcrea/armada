@@ -74,7 +74,11 @@ nonisolated struct MenuBarLimit: Sendable, Hashable {
       return usage.window(length, correctedBy: account.quotaHit, now: now) ?? entry?.window
     }
     if let account = codex.account(id: accountID) { return account.usage?.window(length) }
-    return GrokAccounts.shared.account(id: accountID)?.usage?.window(length)
+    if let account = GrokAccounts.shared.account(id: accountID) {
+      return account.usage?.window(length)
+    }
+    return AntigravityAccounts.shared.account(id: accountID)?.usage?
+      .window(length: length, model: model)
   }
 
   /// The figure as the menu bar draws it: the percentage, or the em dash

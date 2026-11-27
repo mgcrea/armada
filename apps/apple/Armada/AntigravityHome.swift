@@ -8,7 +8,7 @@ import Foundation
 /// | run state | inferred from `updates.jsonl` | `status` in `conversation_summaries.db` |
 /// | transcripts | `sessions/<enc-cwd>/<id>/updates.jsonl` | `brain/<id>/.system_generated/logs/transcript.jsonl` |
 /// | titles | `generated_title` in `summary.json` | `title` in `conversation_summaries.db`, TUI sessions only |
-/// | plan limits | `grok agent stdio` | none on disk |
+/// | plan limits | `grok agent stdio` | `agy --settings` `statusLine` probe |
 ///
 /// One home only: `agy` has no home variable, and `~/.gemini` is shared with Gemini CLI, so
 /// the folder counts only once `conversation_summaries.db` is in it. Nothing here writes, and
