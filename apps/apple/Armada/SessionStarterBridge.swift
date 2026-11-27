@@ -216,8 +216,9 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     let id = id.lowercased()
     guard let account = AntigravityAccounts.shared.all.first else { return false }
     if account.sessions.sessions.contains(where: { $0.id == id }) { return true }
-    return AntigravityFiles.summaries(databaseAt: account.home.summariesDB, since: .distantPast)
-      .contains { $0.id == id }
+    // An index that cannot be read now may still know it: `resumeAntigravity` says which.
+    return AntigravityFiles.summaries(databaseAt: account.home.summariesDB, since: .distantPast)?
+      .contains { $0.id == id } ?? true
   }
 
   /// Continue an Antigravity CLI conversation in a terminal, in the folder it ran in, under
@@ -247,10 +248,16 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       return .refused(
         "Session \(id) is still open in an agy process. Close it first, or start a fresh session.")
     }
-    let summary =
-      watched?.summary
-      ?? AntigravityFiles.summaries(databaseAt: home.summariesDB, since: .distantPast)
-      .first { $0.id == id }
+    var summary = watched?.summary
+    if summary == nil {
+      let rows = AntigravityFiles.summaries(databaseAt: home.summariesDB, since: .distantPast)
+      guard rows != nil || watched != nil else {
+        return .refused(
+          "Armada could not read the Antigravity CLI's conversation index just now. Try again "
+            + "in a moment.")
+      }
+      summary = rows?.first { $0.id == id }
+    }
     guard summary != nil || watched != nil else {
       return .refused("The Antigravity CLI home on this Mac has no conversation \(id).")
     }
@@ -262,7 +269,15 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         "Session \(id) wrote to its transcript \(max(0, Int(now.timeIntervalSince(modified)))) "
           + "seconds ago, so something may still have it open. Try again in a minute.")
     }
-    let cwd = watched?.cwd ?? summary?.cwd ?? ""
+    // The watcher's folder has the most behind it (the row, the process while it ran, the
+    // folder index); past its 12 hours, the row and then the folder index.
+    let lastFolders =
+      (try? Data(contentsOf: home.lastConversations)).map {
+        AntigravityFiles.folders(lastConversations: AntigravityFiles.lastConversations($0))
+      } ?? [:]
+    let cwd =
+      [watched?.cwd, summary?.cwd, lastFolders[id]].lazy.compactMap { $0 }
+      .first { !$0.isEmpty } ?? ""
     guard !cwd.isEmpty else {
       return .refused("Session \(id) records no folder to resume it in.")
     }

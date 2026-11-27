@@ -32,6 +32,10 @@ nonisolated struct AntigravityScanEntry: Sendable {
 nonisolated struct AntigravityKnownSession: Sendable {
   let transcriptOffset: Int
   let transcriptSize: Int
+  /// The last scan's row, kept when the database cannot be read this time.
+  let summary: AntigravityFiles.Summary?
+  /// The folder found so far, kept once the process it was read from has exited.
+  let cwd: String
 }
 
 /// Every recent Antigravity CLI conversation, kept current from the file system.
@@ -126,7 +130,8 @@ final class AntigravityWatcher {
     let home = self.home
     let known = byId.mapValues {
       AntigravityKnownSession(
-        transcriptOffset: $0.transcriptOffset, transcriptSize: $0.transcriptSize)
+        transcriptOffset: $0.transcriptOffset, transcriptSize: $0.transcriptSize,
+        summary: $0.summary, cwd: $0.cwd)
     }
     let generation = self.generation
     Task.detached(priority: .utility) {
@@ -142,14 +147,19 @@ final class AntigravityWatcher {
   ) -> [AntigravityScanEntry] {
     let now = Date.now
     // Every row: a held conversation is listed however long ago its row was written, and
-    // `merge` drops the stale unheld ones.
-    let summaries = AntigravityFiles.summaries(databaseAt: home.summariesDB, since: .distantPast)
+    // `merge` drops the stale unheld ones. A database that could not be read this time gives
+    // the last scan's rows, so a working session does not flip to waiting, nor its title to
+    // its folder's name, for one failed read.
+    let summaries =
+      AntigravityFiles.summaries(databaseAt: home.summariesDB, since: .distantPast)
+      ?? known.values.compactMap(\.summary)
     let holders = AntigravityPresence.holders(presenceDir: home.presenceDir)
     let lastConversations =
       (try? Data(contentsOf: home.lastConversations)).map(AntigravityFiles.lastConversations)
       ?? [:]
     let listed = AntigravityFiles.merge(
-      summaries: summaries, holders: holders, lastConversations: lastConversations, now: now)
+      summaries: summaries, holders: holders, lastConversations: lastConversations,
+      remembered: known.compactMapValues { $0.cwd.isEmpty ? nil : $0.cwd }, now: now)
 
     let fileManager = FileManager.default
     var entries: [AntigravityScanEntry] = []
@@ -225,10 +235,12 @@ final class AntigravityWatcher {
     }
 
     byId = next
-    sessions = next.values.sorted {
-      ($0.lastEventAt ?? $0.summary?.lastModified ?? .distantPast, $0.id)
-        > ($1.lastEventAt ?? $1.summary?.lastModified ?? .distantPast, $1.id)
+    // A conversation just opened in a TUI has no step and no row yet: its process's start.
+    func recency(_ session: AntigravitySession) -> Date {
+      session.lastEventAt ?? session.summary?.lastModified ?? session.holder?.startedAt
+        ?? .distantPast
     }
+    sessions = next.values.sorted { (recency($0), $0.id) > (recency($1), $1.id) }
     didScan = true
     scanFinished()
   }

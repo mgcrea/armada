@@ -63,7 +63,9 @@ conversation_summaries(conversation_id, title, preview, step_count, last_modifie
   nesting_depth, not_fully_idle, killed, last_user_input_time, app_data_dir, raw_summary, …)
 ```
 
-- `workspace_uris` is a JSON array of `file://` URLs, the session's folder first.
+- `workspace_uris` is a JSON array of `file://` URLs, the session's folder first, for both
+  headless runs. For the TUI conversation (`7bde737a-…`) it was the empty string, not even `[]`:
+  the row names no folder. See "A conversation's folder" below.
 - `status` is `CASCADE_RUN_STATUS_RUNNING` during a turn and `CASCADE_RUN_STATUS_IDLE` after it.
   The binary also knows `_BUSY`, `_CANCELING` and `_UNSPECIFIED`, not seen yet.
 - `not_fully_idle` was 1 while running, 0 after.
@@ -73,7 +75,29 @@ conversation_summaries(conversation_id, title, preview, step_count, last_modifie
 - `source` was empty for both kinds; headless and TUI rows look alike.
 
 The database is in WAL mode and written by every `agy` process; Armada opens it read-only, the
-way `CodexQueue` opens Codex's.
+way `CodexQueue` opens Codex's. Once the last `agy` has closed it, its `-wal` and `-shm` are gone,
+and then a read-only open with Apple's SQLite succeeds but the first `prepare` fails with
+`SQLITE_CANTOPEN` (14): a WAL read needs the shared-memory file, and a read-only connection may
+not create it. With no `-wal` beside it Armada therefore opens `file:<path>?immutable=1`, which
+read every row of a copy of the real file and created no file next to it; with a `-wal` there,
+some `agy` may be writing, and the ordinary read-only open sees its writes. A read that fails
+anyway (busy, or the file changing under an immutable read) keeps the previous scan's rows
+rather than emptying the list.
+
+### A conversation's folder
+
+`agy` has no `--cwd`: a conversation's folder is the working directory of the process that ran
+it. Armada takes the first of these that names one:
+
+1. the row's `workspace_uris` (set for headless runs);
+2. while a process holds the conversation, that process's working directory, read with
+   `proc_pidinfo(pid, PROC_PIDVNODEPATHINFO)` (`pvi_cdir`), resolved by the kernel
+   (`/private/tmp`, not `/tmp`). Checked 2026-11-27 on a headless `agy -p` started in a scratch
+   folder: the holder's directory was that folder;
+3. `cache/last_conversations.json`, which names only each folder's **newest** conversation, so
+   an earlier TUI conversation in the same folder is not in it;
+4. the folder an earlier scan found, so one read off a live process outlives it (in memory:
+   an Armada started after the TUI exited has only 1 and 3).
 
 ### `transcript.jsonl`
 

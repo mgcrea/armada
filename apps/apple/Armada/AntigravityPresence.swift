@@ -15,6 +15,15 @@ nonisolated enum AntigravityPresence {
   struct Holder: Sendable, Hashable {
     let pid: Int32
     let startedAt: Date
+    /// The process's working directory, which is the conversation's folder: `agy` has no
+    /// `--cwd`. Nil when the kernel would not say.
+    let cwd: String?
+
+    init(pid: Int32, startedAt: Date, cwd: String? = nil) {
+      self.pid = pid
+      self.startedAt = startedAt
+      self.cwd = cwd
+    }
   }
 
   /// `SessionCloserBridge.startTolerance`'s value, repeated because this file is checked by
@@ -53,10 +62,22 @@ nonisolated enum AntigravityPresence {
       for path in openVnodePaths(of: pid) {
         guard let id = conversationId(lockPath: path, presenceDir: resolved) else { continue }
         if let current = found[id], current.startedAt <= startedAt { continue }
-        found[id] = Holder(pid: pid, startedAt: startedAt)
+        found[id] = Holder(pid: pid, startedAt: startedAt, cwd: workingDirectory(of: pid))
       }
     }
     return found
+  }
+
+  /// A process's current directory, as the kernel resolves it (`/private/tmp`, not `/tmp`), or
+  /// nil for another user's process or one that just exited.
+  static func workingDirectory(of pid: pid_t) -> String? {
+    var info = proc_vnodepathinfo()
+    let size = Int32(MemoryLayout<proc_vnodepathinfo>.stride)
+    guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+    let path = withUnsafeBytes(of: info.pvi_cdir.vip_path) { bytes in
+      String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
+    }
+    return path.isEmpty ? nil : path
   }
 
   /// `agy` by its executable's name. `proc_pidpath` already gives the resolved path, so a

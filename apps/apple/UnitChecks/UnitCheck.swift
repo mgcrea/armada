@@ -1588,25 +1588,36 @@ struct UnitCheck {
     expectEqual("no workspace is no folder", AntigravityFiles.cwd(workspaceURIs: "[]"), "")
 
     let directory = FileManager.default.temporaryDirectory.appending(
-      path: "armada-unit-agy-\(ProcessInfo.processInfo.processIdentifier)",
+      // A space, `%`, `#` and `?`: the immutable open passes the path as a URI.
+      path: "armada-unit-agy %#? \(ProcessInfo.processInfo.processIdentifier)",
       directoryHint: .isDirectory)
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let database = directory.appending(path: "conversation_summaries.db")
     var db: OpaquePointer?
     sqlite3_open(database.path(percentEncoded: false), &db)
-    // The real schema, and the three measured rows with the second caught mid-turn.
+    // The real schema, and the three measured rows with the second caught mid-turn. In WAL
+    // mode, as `agy` keeps it: closing the last connection checkpoints and removes the `-wal`
+    // and `-shm`, which is how the file sits once no `agy` has it open.
     sqlite3_exec(
       db,
       #"""
+      PRAGMA journal_mode=WAL;
       CREATE TABLE `conversation_summaries` (`conversation_id` text,`title` text NOT NULL DEFAULT "",`preview` text NOT NULL DEFAULT "",`step_count` integer NOT NULL DEFAULT 0,`last_modified_time` datetime NOT NULL,`workspace_uris` text NOT NULL,`status` text NOT NULL DEFAULT "",`source` text NOT NULL DEFAULT "",`project_id` text NOT NULL DEFAULT "",`agent_name` text NOT NULL DEFAULT "",`parent_conversation_id` text NOT NULL DEFAULT "",`nesting_depth` integer NOT NULL DEFAULT 0,`battle_id` text NOT NULL DEFAULT "",`winning_conversation_id` text NOT NULL DEFAULT "",`not_fully_idle` numeric NOT NULL DEFAULT false,`killed` numeric NOT NULL DEFAULT false,`last_user_input_time` datetime NOT NULL,`last_user_input_step_index` integer NOT NULL DEFAULT -1,`app_data_dir` text NOT NULL DEFAULT "",`raw_summary` blob,`group_id` text NOT NULL DEFAULT "",PRIMARY KEY (`conversation_id`));
       INSERT INTO conversation_summaries (conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, last_user_input_time) VALUES
       ('657374e8-d811-4cd7-bbf5-b41c297de8f4', '', 'Read README.md and tell me its content in one line.', 4, '2026-11-27 07:56:39.575551+00:00', '["file:///private/tmp/agyprobe/ws"]', 'CASCADE_RUN_STATUS_IDLE', '2026-11-27 07:56:32.799469+00:00'),
       ('33a760cd-88ed-464b-8f42-2051d73812ab', '', 'Say hi in one word.', 2, '2026-11-27 07:57:16.601741+00:00', '["file:///private/tmp/agyprobe/ws"]', 'CASCADE_RUN_STATUS_RUNNING', '2026-11-27 07:57:09.810133+00:00'),
       ('7bde737a-d7cc-400a-b7e0-3e628f0611d5', 'Run Command Probe Ok', 'Run Command Probe Ok', 4, '2026-11-27 07:57:49.028972+00:00', '', 'CASCADE_RUN_STATUS_IDLE', '2026-11-27 07:57:45.838986+00:00');
       """#, nil, nil, nil)
+    // Apple's SQLite keeps the `-wal` after the last close unless told not to; `agy`'s does not.
+    var persistWAL: Int32 = 0
+    sqlite3_file_control(db, "main", SQLITE_FCNTL_PERSIST_WAL, &persistWAL)
     sqlite3_close(db)
-    let all = AntigravityFiles.summaries(databaseAt: database, since: .distantPast)
+    let all = AntigravityFiles.summaries(databaseAt: database, since: .distantPast) ?? []
+    expectEqual(
+      "reading the database leaves no -wal or -shm beside it",
+      (try? FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false)))?
+        .sorted(), ["conversation_summaries.db"])
     let byId = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     expectEqual("every row is read", all.count, 3)
     let headless = byId["657374e8-d811-4cd7-bbf5-b41c297de8f4"]
@@ -1630,13 +1641,19 @@ struct UnitCheck {
       Set(
         AntigravityFiles.summaries(
           databaseAt: database, since: AntigravityFiles.date("2026-11-27 07:57:00+00:00")!
-        ).map(\.id)),
+        )?.map(\.id) ?? []),
       ["33a760cd-88ed-464b-8f42-2051d73812ab", "7bde737a-d7cc-400a-b7e0-3e628f0611d5"])
     check(
       "a missing database is no rows",
       AntigravityFiles.summaries(
         databaseAt: directory.appending(path: "missing.db"), since: .distantPast
-      ).isEmpty)
+      )?.isEmpty == true)
+    let garbage = directory.appending(path: "garbage.db")
+    try? Data("not a database".utf8).write(to: garbage)
+    check(
+      "one that cannot be read is no answer, not no rows",
+      AntigravityFiles.summaries(databaseAt: garbage, since: .distantPast) == nil)
+    try? FileManager.default.removeItem(at: garbage)
 
     let transcript = [
       #"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-27T07:56:32Z","content":"<USER_REQUEST>\nRead README.md and tell me its content in one line.\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-11-27T08:56:32+01:00.\n</ADDITIONAL_METADATA>\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 4 Hydrogen (High).\n</USER_SETTINGS_CHANGE>"}"#,
@@ -1763,6 +1780,58 @@ struct UnitCheck {
     expectEqual(
       "a row with no workspace takes its folder from last_conversations.json",
       listed["7bde737a-d7cc-400a-b7e0-3e628f0611d5"]?.cwd, "/private/tmp/agyprobe/ws")
+
+    // Finding 2 of the final review: the TUI conversation 7bde737a's row has no workspace, and
+    // last_conversations.json names only each folder's newest conversation.
+    let tui = "7bde737a-d7cc-400a-b7e0-3e628f0611d5"
+    let tuiHolder = AntigravityPresence.Holder(
+      pid: 27001, startedAt: .distantPast, cwd: "/private/tmp/agyprobe/tui")
+    func folder(
+      holder: AntigravityPresence.Holder?, last: [String: String], remembered: [String: String]
+    ) -> String? {
+      AntigravityFiles.merge(
+        summaries: all, holders: holder.map { [tui: $0] } ?? [:], lastConversations: last,
+        remembered: remembered, now: now
+      ).first { $0.id == tui }?.cwd
+    }
+    let newer = ["/private/tmp/agyprobe/ws": "657374e8-d811-4cd7-bbf5-b41c297de8f4"]
+    expectEqual(
+      "the holder's working directory names a TUI conversation's folder",
+      folder(holder: tuiHolder, last: newer, remembered: [:]), "/private/tmp/agyprobe/tui")
+    expectEqual(
+      "and comes before last_conversations.json and what an earlier scan found",
+      folder(
+        holder: tuiHolder, last: ["/work/last": tui], remembered: [tui: "/work/remembered"]),
+      "/private/tmp/agyprobe/tui")
+    expectEqual(
+      "a row's own workspace comes before the holder's",
+      AntigravityFiles.merge(
+        summaries: all, holders: ["657374e8-d811-4cd7-bbf5-b41c297de8f4": tuiHolder],
+        lastConversations: [:], now: now
+      ).first { $0.id == "657374e8-d811-4cd7-bbf5-b41c297de8f4" }?.cwd,
+      "/private/tmp/agyprobe/ws")
+    expectEqual(
+      "last_conversations.json comes before what an earlier scan found",
+      folder(holder: nil, last: ["/work/last": tui], remembered: [tui: "/work/remembered"]),
+      "/work/last")
+    expectEqual(
+      "once the TUI has exited and a newer conversation took its folder, the remembered one",
+      folder(holder: nil, last: newer, remembered: [tui: "/private/tmp/agyprobe/tui"]),
+      "/private/tmp/agyprobe/tui")
+    expectEqual(
+      "with none of them, no folder", folder(holder: nil, last: newer, remembered: [:]), "")
+    check(
+      "a holder whose directory the kernel withheld falls through to the rest",
+      folder(
+        holder: AntigravityPresence.Holder(pid: 27001, startedAt: .distantPast), last: [:],
+        remembered: [tui: "/work/remembered"]) == "/work/remembered")
+    expectEqual(
+      "a process's working directory is read from the kernel",
+      AntigravityPresence.workingDirectory(of: getpid()),
+      realpath(FileManager.default.currentDirectoryPath, nil).map {
+        defer { free($0) }
+        return String(cString: $0)
+      })
 
     expectEqual(
       "last_conversations.json maps folders to conversations, lowercased",

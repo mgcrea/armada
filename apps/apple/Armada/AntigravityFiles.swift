@@ -20,7 +20,8 @@ nonisolated enum AntigravityFiles {
     let title: String?
     /// The first prompt's text.
     let preview: String?
-    /// The first of `workspace_uris`, the folder `agy` ran in. Empty when it listed none.
+    /// The first of `workspace_uris`, the folder `agy` ran in. Empty when it listed none, as the
+    /// one measured TUI conversation's row did: `merge` then looks elsewhere.
     let cwd: String
     /// `CASCADE_RUN_STATUS_*`.
     let status: String
@@ -38,19 +39,29 @@ nonisolated enum AntigravityFiles {
     }
   }
 
-  /// The rows last modified at or after `since`, newest first, or none when the database
-  /// cannot be read. Opened read-only, as `CodexQueue` opens Codex's: every `agy` process
-  /// writes it. The times are compared once parsed, since their text is not ISO 8601.
-  static func summaries(databaseAt url: URL, since: Date) -> [Summary] {
+  /// The rows last modified at or after `since`, newest first; none when there is no database,
+  /// and nil when it is there but could not be read, so a caller can keep what it read last.
+  /// Opened read-only, as `CodexQueue` opens Codex's: every `agy` process writes it. The times
+  /// are compared once parsed, since their text is not ISO 8601.
+  ///
+  /// **A WAL database with no `-wal` beside it is opened immutable.** Once the last `agy` has
+  /// closed it, its `-wal` and `-shm` are gone, and a read-only connection then cannot set up
+  /// the shared memory a WAL read needs: Apple's SQLite opens it and fails the first `prepare`
+  /// with `SQLITE_CANTOPEN`. `immutable=1` reads the file as it stands and creates nothing. With
+  /// a `-wal` present some `agy` may be writing, so the ordinary read-only open sees its writes.
+  static func summaries(databaseAt url: URL, since: Date) -> [Summary]? {
+    let path = url.path(percentEncoded: false)
+    let fileManager = FileManager.default
+    guard fileManager.fileExists(atPath: path) else { return [] }
     var db: OpaquePointer?
-    guard
-      sqlite3_open_v2(
-        url.path(percentEncoded: false), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
-        == SQLITE_OK,
-      let db
-    else {
+    let opened =
+      fileManager.fileExists(atPath: path + "-wal")
+      ? sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+      : sqlite3_open_v2(
+        immutableURI(path), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_URI, nil)
+    guard opened == SQLITE_OK, let db else {
       sqlite3_close(db)
-      return []
+      return nil
     }
     defer { sqlite3_close(db) }
     sqlite3_busy_timeout(db, 500)
@@ -64,7 +75,7 @@ nonisolated enum AntigravityFiles {
         FROM conversation_summaries
         """, -1, &statement, nil) == SQLITE_OK,
       let statement
-    else { return [] }
+    else { return nil }
     defer { sqlite3_finalize(statement) }
     func text(_ column: Int32) -> String {
       sqlite3_column_text(statement, column).map { String(cString: $0) } ?? ""
@@ -74,7 +85,9 @@ nonisolated enum AntigravityFiles {
       return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
     }
     var rows: [Summary] = []
-    while sqlite3_step(statement) == SQLITE_ROW {
+    var step = sqlite3_step(statement)
+    while step == SQLITE_ROW {
+      defer { step = sqlite3_step(statement) }
       let id = text(0).lowercased()
       guard !id.isEmpty, let modified = date(text(4)), modified >= since else { continue }
       rows.append(
@@ -84,9 +97,20 @@ nonisolated enum AntigravityFiles {
           lastModified: modified, lastUserInput: date(text(8)),
           parentId: nonEmpty(7)?.lowercased()))
     }
+    // A read cut short (busy past the timeout, or the file changing under an immutable read)
+    // is no answer, rather than the rows before the failure.
+    guard step == SQLITE_DONE else { return nil }
     return rows.sorted {
       ($0.lastModified ?? .distantPast, $0.id) > ($1.lastModified ?? .distantPast, $1.id)
     }
+  }
+
+  /// `file:<path>?immutable=1`, the path percent-encoded so a `?`, `#` or `%` in it stays path.
+  static func immutableURI(_ path: String) -> String {
+    var allowed = CharacterSet.urlPathAllowed
+    allowed.remove(charactersIn: "?#%")
+    return "file:" + (path.addingPercentEncoding(withAllowedCharacters: allowed) ?? path)
+      + "?immutable=1"
   }
 
   /// `2026-11-27 07:56:39.575551+00:00`, with or without the fraction.
@@ -120,18 +144,33 @@ nonisolated enum AntigravityFiles {
     return object.compactMapValues { ($0 as? String)?.lowercased() }
   }
 
-  /// What a scan lists: every held conversation, with or without a row, and every row written
-  /// within `recentWindow`. A held conversation with no row was opened in a TUI and not
-  /// prompted yet; its folder, like that of a row naming none, comes from
-  /// `last_conversations.json` when that names it. Newest row first, then the rowless by id.
-  static func merge(
-    summaries: [Summary], holders: [String: AntigravityPresence.Holder],
-    lastConversations: [String: String], now: Date
-  ) -> [(id: String, summary: Summary?, holder: AntigravityPresence.Holder?, cwd: String)] {
-    // Sorted, so two folders naming one conversation always give the same answer.
+  /// `lastConversations` turned around: each conversation's folder. Sorted, so two folders
+  /// naming one conversation always give the same answer.
+  static func folders(lastConversations: [String: String]) -> [String: String] {
     var folders: [String: String] = [:]
     for (cwd, id) in lastConversations.sorted(by: { $0.key < $1.key }) where folders[id] == nil {
       folders[id] = cwd
+    }
+    return folders
+  }
+
+  /// What a scan lists: every held conversation, with or without a row, and every row written
+  /// within `recentWindow`. A held conversation with no row was opened in a TUI and not
+  /// prompted yet. Newest row first, then the rowless by id.
+  ///
+  /// A conversation's folder is the first of these that names one: the row's `workspace_uris`;
+  /// the holding process's working directory (`Holder.cwd`), since a TUI conversation's row was
+  /// measured with no workspace at all; `last_conversations.json`, which names only each
+  /// folder's newest conversation; and `remembered`, what an earlier scan found, so a folder
+  /// read off a live process is kept once that process has exited.
+  static func merge(
+    summaries: [Summary], holders: [String: AntigravityPresence.Holder],
+    lastConversations: [String: String], remembered: [String: String] = [:], now: Date
+  ) -> [(id: String, summary: Summary?, holder: AntigravityPresence.Holder?, cwd: String)] {
+    let named = folders(lastConversations: lastConversations)
+    func folder(_ id: String, row: Summary?, holder: AntigravityPresence.Holder?) -> String {
+      [row?.cwd, holder?.cwd, named[id], remembered[id]]
+        .lazy.compactMap { $0 }.first { !$0.isEmpty } ?? ""
     }
     let cutoff = now.addingTimeInterval(-recentWindow)
     var seen: Set<String> = []
@@ -140,10 +179,10 @@ nonisolated enum AntigravityFiles {
     for row in summaries where seen.insert(row.id).inserted {
       let holder = holders[row.id]
       guard holder != nil || (row.lastModified ?? .distantPast) >= cutoff else { continue }
-      listed.append((row.id, row, holder, row.cwd.isEmpty ? folders[row.id] ?? "" : row.cwd))
+      listed.append((row.id, row, holder, folder(row.id, row: row, holder: holder)))
     }
     for (id, holder) in holders.sorted(by: { $0.key < $1.key }) where !seen.contains(id) {
-      listed.append((id, nil, holder, folders[id] ?? ""))
+      listed.append((id, nil, holder, folder(id, row: nil, holder: holder)))
     }
     return listed
   }
