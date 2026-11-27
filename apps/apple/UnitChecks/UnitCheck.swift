@@ -1828,9 +1828,9 @@ struct UnitCheck {
     expectEqual(
       "a process's working directory is read from the kernel",
       AntigravityPresence.workingDirectory(of: getpid()),
-      realpath(FileManager.default.currentDirectoryPath, nil).map {
-        defer { free($0) }
-        return String(cString: $0)
+      realpath(FileManager.default.currentDirectoryPath, nil).map { resolved in
+        defer { free(resolved) }
+        return String(cString: resolved)
       })
 
     expectEqual(

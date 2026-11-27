@@ -157,8 +157,8 @@ import Testing
     ) { line in String(decoding: line, as: UTF8.self) == "ready" ? true : nil }
     #expect(reply == true)
     #expect(seconds(since: start) < 4)
-    let pid = try #require(pid(in: file))
-    #expect(!alive(pid))
+    let stubborn = try #require(pid(in: file))
+    #expect(!alive(stubborn))
   }
 
   @Test func askIsNilWhenTheChildExitsWithoutAnswering() async {
