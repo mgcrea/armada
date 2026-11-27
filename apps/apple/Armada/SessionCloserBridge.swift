@@ -31,7 +31,8 @@ nonisolated struct SessionCloserBridge: SessionCloser {
   /// How long a killed process has to be reaped before the answer says it has not exited.
   static let reapGrace: TimeInterval = 2
   /// The registry's `startedAt` and the kernel's agree to the second (see `ProcessAncestry`).
-  static let startTolerance: TimeInterval = 5
+  /// One value for every pid-reuse check, kept where `make unit` reaches it.
+  static let startTolerance = AntigravityPresence.startTolerance
 
   @MainActor private static var lastCloseAt: Date?
 

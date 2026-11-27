@@ -26,8 +26,10 @@ nonisolated enum AntigravityPresence {
     }
   }
 
-  /// `SessionCloserBridge.startTolerance`'s value, repeated because this file is checked by
-  /// `make unit` without the bridge: how far a scan's start time may sit from the kernel's.
+  /// How far a scan's start time may sit from the kernel's and still be the same process. The
+  /// registry's `startedAt` and the kernel's agree to the second (see `ProcessAncestry`).
+  /// `SessionCloserBridge` and `SessionHostLookup` use it too; it lives here because this file is
+  /// checked by `make unit` and theirs are not.
   static let startTolerance: TimeInterval = 5
 
   /// The `agy` a close or focus is about to reach is the one a scan saw: its pid has not been

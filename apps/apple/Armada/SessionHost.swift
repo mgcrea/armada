@@ -109,7 +109,9 @@ enum SessionHostLookup {
     // session can name a pid that now belongs to a stranger, and Focus would raise
     // an application that has nothing to do with Claude Code.
     if let claimed {
-      guard let actual = agentStart, abs(actual.timeIntervalSince(claimed)) < 5 else {
+      guard let actual = agentStart,
+        abs(actual.timeIntervalSince(claimed)) < SessionCloserBridge.startTolerance
+      else {
         return nil
       }
     }
