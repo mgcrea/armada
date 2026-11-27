@@ -30,10 +30,15 @@ let package = Package(
       dependencies: [
         .product(name: "MCPKit", package: "swift-mcp-kit"),
         .product(name: "MCPKitLoopback", package: "swift-mcp-kit"),
-        // Not used by this package's own code: it is here so the app target, which links
-        // only `ArmadaMCP`, can import it. See `MCPClientWiring`.
+        // Used by `AntigravityWiring` and re-exported into the app target, which links only
+        // `ArmadaMCP`, for `MCPClientWiring`.
         .product(name: "MCPKitWiring", package: "swift-mcp-kit"),
       ]),
-    .testTarget(name: "ArmadaMCPTests", dependencies: ["ArmadaMCP"]),
+    .testTarget(
+      name: "ArmadaMCPTests",
+      dependencies: [
+        "ArmadaMCP",
+        .product(name: "MCPKitWiring", package: "swift-mcp-kit"),
+      ]),
   ]
 )

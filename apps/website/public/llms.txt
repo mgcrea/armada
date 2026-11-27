@@ -56,7 +56,7 @@ later, and macOS only. Not affiliated with Anthropic, OpenAI or xAI.
 - One button opens a Claude Code session with that endpoint attached, its read tools pre-allowed
   and a brief written, so you can ask one session which of the others need you, what any of them
   last said, and how much plan is left. Configure adds Armada to Claude Code, ChatGPT & Codex,
-  Cursor or VS Code, keeping a backup of the file it changes.
+  Cursor, VS Code or Antigravity CLI, keeping a backup of the file it changes.
 - Eleven tools. Seven are read-only: what needs me, fleet overview, one session, what a session
   said, plan limits, projects, and wait for a change.
 - Four more exist only while Allow writes is on, which it is not by default, and none is
@@ -88,8 +88,8 @@ later, and macOS only. Not affiliated with Anthropic, OpenAI or xAI.
   you did: the "trust this folder" flag in `.claude.json` when you start a session in a saved
   project, one hook in each Claude Code account's `settings.json` while message delivery is on
   (removed when you turn it off), a copied transcript when you continue a session on another
-  account, and Armada's own MCP entry in a Claude Code or Codex config when you press Configure,
-  with the previous file kept as a backup. Grok Build's folders are only read.
+  account, and Armada's own MCP entry in a Claude Code, Codex or Antigravity CLI config when you
+  press Configure, with the previous file kept as a backup. Grok Build's folders are only read.
 - What else it writes: its preferences, usage history and saved projects in
   `~/Library/Application Support/io.mgcrea.armada` (usage history kept 30 days, deletable from
   Settings), and a startup script in its own temporary folder when you start a session.

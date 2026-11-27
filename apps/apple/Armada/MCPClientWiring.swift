@@ -1,4 +1,5 @@
 import AppKit
+import ArmadaMCP
 import MCPKitWiring
 import Observation
 import os
@@ -51,6 +52,7 @@ final class MCPClientWiring {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let others: [WiringClient] = [
       .codex(home: home), .cursor(home: home), .visualStudioCode(home: home),
+      AntigravityWiring.client(home: home),
     ]
     return claude + others.filter(\.isInstalled)
   }
