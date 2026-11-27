@@ -45,7 +45,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
       }
       return resume(
         id, prompt: request.prompt, model: request.model, now: now,
-        fallBackToGrok: request.vendor == nil)
+        fallBackToOthers: request.vendor == nil)
     }
 
     let store = ProjectStore.shared
@@ -124,7 +124,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
   /// message.
   @MainActor
   private static func resume(
-    _ id: String, prompt: String?, model: String?, now: Date, fallBackToGrok: Bool
+    _ id: String, prompt: String?, model: String?, now: Date, fallBackToOthers: Bool
   ) -> StartSessionOutcome {
     let account: Account
     let cwd: String
@@ -137,12 +137,18 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         "\(live.displayName) is still open in \(live.registry.projectName). Close it with "
           + "armada_close_session first, or start a fresh session.")
     case .refused(.noTranscript):
-      // An id with no vendor named is looked for in Grok Build too: both mint UUIDs, and an
-      // agent resuming a session it read from the fleet should not have to know which kind.
-      if fallBackToGrok,
-        GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil })
-      {
-        return resumeGrok(id, prompt: prompt, model: model, now: now)
+      // An id with no vendor named is looked for in Grok Build and Antigravity too: all three
+      // mint UUIDs, and an agent resuming a session it read from the fleet should not have to
+      // know which kind.
+      if fallBackToOthers {
+        if GrokAccounts.shared.all.contains(where: { $0.home.sessionDirectory(id: id) != nil }) {
+          return resumeGrok(id, prompt: prompt, model: model, now: now)
+        }
+        if antigravityHas(id) {
+          return resumeAntigravity(id, prompt: prompt, model: model, now: now)
+        }
+        return .refused(
+          "No Claude Code, Grok Build or Antigravity CLI home on this Mac has session \(id).")
       }
       return .refused("No Claude Code account on this Mac has a transcript for session \(id).")
     case .refused(.recentWrite(let seconds)):
@@ -201,6 +207,17 @@ nonisolated struct SessionStarterBridge: SessionStarter {
         accountID: target.account.id, account: target.account.displayName,
         terminal: launcher.terminal.name, withPrompt: prompt != nil, sessionID: id,
         resumed: true, model: model))
+  }
+
+  /// The Antigravity home knows conversation `id`: the watcher lists it, or its summaries
+  /// database has a row for it, which is where `resumeAntigravity` looks too.
+  @MainActor
+  private static func antigravityHas(_ id: String) -> Bool {
+    let id = id.lowercased()
+    guard let account = AntigravityAccounts.shared.all.first else { return false }
+    if account.sessions.sessions.contains(where: { $0.id == id }) { return true }
+    return AntigravityFiles.summaries(databaseAt: account.home.summariesDB, since: .distantPast)
+      .contains { $0.id == id }
   }
 
   /// Continue an Antigravity CLI conversation in a terminal, in the folder it ran in, under
