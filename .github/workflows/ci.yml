@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     # A release is a signed `app-v<version>` tag. Nothing else ships. The glob
-    # also matches a pre-release such as app-v1.3.0-beta.1, which release-app
+    # also matches a pre-release such as app-v1.3.0-beta.1, which release-build
     # refuses in "Resolve version from tag".
     tags: ["app-v*.*.*"]
   pull_request:
@@ -15,7 +15,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Read-only unless a job asks for more, and only release-app does, beside its own
+# Read-only unless a job asks for more, and only release-publish does, beside its own
 # `permissions:`. Without this every job's GITHUB_TOKEN gets the repository's
 # default, which can be write, including in the jobs that run a pull request's code.
 permissions:
@@ -131,7 +131,7 @@ jobs:
   # runs without it.
   #
   # The script skips itself, passing, when there is no token. On a release tag
-  # it fails instead, since release-app needs this job.
+  # it fails instead, since release-publish needs this job.
   revocations:
     name: Revocations
     runs-on: ubuntu-latest
@@ -227,25 +227,10 @@ jobs:
           make license-check
 
       # No signing here: there is no certificate on the runner for this job, and it
-      # answers "does it still compile", not "is it shippable". release-app below
+      # answers "does it still compile", not "is it shippable". release-build below
       # is the job that signs.
       - name: Build 🏗️
         run: make build XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
-
-      # The app's pure files, compiled beside a check driver with `swiftc` under the
-      # app target's own language settings: the transcript parsers, the forecasts, the
-      # sort order and the licence refusals, which nothing else exercises. No app, no
-      # network, and seconds rather than a build, but after it so a compile error in the
-      # app reads as the build failing rather than as a unit check.
-      - name: Unit checks (swift) 🧪
-        run: make -C apps/apple unit
-
-      # The MCP tool table's suite, against a fake fleet. After the build rather than
-      # among the fast gates, because it compiles the package and swift-mcp-kit.
-      # `-C apps/apple`, because the root's `make test` also runs the script and
-      # Worker suites, which the fast gates above have already run.
-      - name: Tests (swift) 🧪
-        run: make -C apps/apple test
 
       # The claim that nothing Armada reads leaves the Mac beyond the opt-in update
       # check, asserted against the bundle that was just built. It depends on
@@ -254,35 +239,63 @@ jobs:
       - name: Audit the network claim 🔍
         run: make audit XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
 
+  # The app's pure files, compiled beside a check driver with `swiftc` under the
+  # app target's own language settings: the transcript parsers, the forecasts, the
+  # sort order and the licence refusals, which nothing else exercises. No app and no
+  # network. A job of its own, beside `app` rather than after its build, because the
+  # three macOS jobs in a row took up to ten minutes and side by side take the
+  # longest one's time; the repository is public, so the extra runners cost nothing.
+  # A compile error in a file both compile shows in both.
+  app-unit:
+    name: App unit checks
+    runs-on: macos-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Unit checks (swift) 🧪
+        run: make -C apps/apple unit
+
+  # The local packages' suites (the MCP tool table against a fake fleet, the
+  # supervisor, ArmadaProcess, BuildSlot), beside `app` for the same reason.
+  # `-C apps/apple`, because the root's `make test` also runs the script and Worker
+  # suites, which `node` already runs.
+  app-tests:
+    name: App tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Tests (swift) 🧪
+        run: make -C apps/apple test
+
   # The app ships as a Developer ID signed, notarized zip attached to a GitHub
   # release, with a Sparkle appcast beside it — never from the website, whose
   # /download, /checksum and /appcast.xml are 302s to
   # releases/latest/download/<asset>. Armada is not an App Store app.
   #
-  # Bastion's release-app job, step for step, with cupertino's form of the one
+  # Bastion's release-app job, step for step (split in two, below), with cupertino's form of the one
   # place bastion is weaker: the App Store Connect key reaches the script through
   # `env:`, never pasted into the `run:` text, where a secret becomes part of the
   # script GitHub writes to disk and echoes on a syntax error.
-  release-app:
-    name: Release Armada.app
+  #
+  # Two jobs, where bastion has one. release-build needs nothing, so the six minutes
+  # of building and notarizing run beside the gates instead of after them; it ends
+  # with the signed zip, its checksum, the signed appcast and the notes in a run
+  # artifact, and publishes nothing. release-publish is the only job that can write
+  # a release, and it waits for every gate. A tag whose tests fail still gets
+  # notarized, which reaches nobody: a notarized build nobody publishes is inert.
+  release-build:
+    name: Build Armada.app release
     runs-on: macos-latest
-    # `node` as well as `app`, as bastion's is `[manifest, app]`: the lint, script
-    # and licence Worker gates moved out of `app` and still gate a release. And
-    # `revocations`, so a stale list of refunded keys never ships.
-    needs: [node, app, revocations]
     if: startsWith(github.ref, 'refs/tags/app-v')
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     # The signing secrets (Developer ID, App Store Connect key, Sparkle key)
     # live in the `release` environment, whose deployment policy admits only
     # `app-v*` tags: a workflow edited on a branch or a pull request cannot
     # read them, whatever it asks for. AC_ISSUER_ID is a team identifier rather
     # than a credential and stays a repository secret.
     environment: release
-    permissions:
-      contents: write
-      # attest-build-provenance signs the artifact's provenance, so the zip a user
-      # downloads can be traced to the workflow run and commit that built it.
-      id-token: write
-      attestations: write
     steps:
       - name: Checkout 🛎️
         uses: actions/checkout@v5
@@ -400,8 +413,8 @@ jobs:
             XCARGS="MARKETING_VERSION=${{ steps.version.outputs.version }} CURRENT_PROJECT_VERSION=$build"
 
       # Signing and notarization are done. What follows downloads and runs
-      # Sparkle's tools (`make appcast`) and hands the tree to the attestation
-      # and release actions, and none of that should run while the Developer ID identity is
+      # Sparkle's tools (`make appcast`) and hands the tree to the artifact
+      # release-publish attests and publishes, and none of that should run while the Developer ID identity is
       # one `security` call away. Nothing after this needs the keychain: the
       # verification below reads the system's trust, not this keychain, and in
       # CI sign_update signs from SPARKLE_ED_PRIVATE_KEY through --ed-key-file.
@@ -441,36 +454,28 @@ jobs:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: make appcast
 
-      - name: Attest provenance 🔏
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
-        with:
-          # The feed too: it names the bytes Sparkle will install.
-          subject-path: |
-            apps/apple/.build/Armada.zip
-            apps/apple/.build/appcast.xml
-
       # The tag's own CHANGELOG section as markdown, from the parse the appcast
       # renders to HTML, so the two are one release described once and neither
       # shows `### Internal`. It exits non-zero on a missing or empty section. The
       # awk this replaced took whichever section came first, Internal and all.
+      # Beside the zip, so the artifact holds the whole release under one root.
       - name: Release notes 📝
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node scripts/changelog-notes.mjs --markdown "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+        run: node scripts/changelog-notes.mjs --markdown "$VERSION" CHANGELOG.md > apps/apple/.build/notes.md
 
-      # The asset names carry no version on purpose: that is what makes
-      # /releases/latest/download/<asset> a permanent URL, which the website's
-      # redirects point at. The version lives in the tag.
-      - name: Release 🚀
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      # The bytes release-publish attests and attaches, checksummed and signed above.
+      - name: Hand the release over 📤
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Armada ${{ steps.version.outputs.version }}
-          body_path: ${{ runner.temp }}/notes.md
-          make_latest: true
-          files: |
+          name: release
+          if-no-files-found: error
+          retention-days: 7
+          path: |
             apps/apple/.build/Armada.zip
             apps/apple/.build/Armada.zip.sha256
             apps/apple/.build/appcast.xml
+            apps/apple/.build/notes.md
 
       # A backstop. The keychain and ac.p8 are already gone by the steps that
       # drop them; this catches a run cancelled between them.
@@ -479,6 +484,53 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/ac.p8" "$RUNNER_TEMP/cert.p12"
+
+  # The gate. `node` as well as the app jobs, as bastion's is `[manifest, app]`: the
+  # lint, script and licence Worker gates moved out of `app` and still gate a
+  # release. And `revocations`, so a stale list of refunded keys never ships. No
+  # checkout and no secrets: it attests and attaches what release-build handed over,
+  # so it runs on ubuntu, in seconds. In the `release` environment all the same, so
+  # the right to write a release stays behind that environment's `app-v*` policy.
+  release-publish:
+    name: Release Armada.app
+    runs-on: ubuntu-latest
+    needs: [node, app, app-unit, app-tests, revocations, release-build]
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    environment: release
+    permissions:
+      contents: write
+      # attest-build-provenance signs the artifact's provenance, so the zip a user
+      # downloads can be traced to the workflow run and commit that built it.
+      id-token: write
+      attestations: write
+    steps:
+      - name: Take the release over 📥
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+
+      - name: Attest provenance 🔏
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          # The feed too: it names the bytes Sparkle will install.
+          subject-path: |
+            release/Armada.zip
+            release/appcast.xml
+
+      # The asset names carry no version on purpose: that is what makes
+      # /releases/latest/download/<asset> a permanent URL, which the website's
+      # redirects point at. The version lives in the tag.
+      - name: Release 🚀
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: Armada ${{ needs.release-build.outputs.version }}
+          body_path: release/notes.md
+          make_latest: true
+          files: |
+            release/Armada.zip
+            release/Armada.zip.sha256
+            release/appcast.xml
 
   # api.armada.mgcrea.io, on every push to main. `make api-deploy` rather than the
   # pnpm line it wraps, so this and a laptop deploy cannot drift: the recipe refuses

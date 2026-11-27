@@ -216,9 +216,9 @@ test: ## Run every test suite: scripts, the licence Worker, the app's unit check
 # apps/apple/.build — so apps/apple/Makefile only ever builds.
 #
 # There is no bump or release script, in this repo or either sibling. A release
-# is a commit, a signed `app-v<version>` tag, and the release-app job in
-# .github/workflows/ci.yml, which runs build-release, verifies the artifact, then
-# runs appcast. `make build-release` locally is a rehearsal, never how one ships.
+# is a commit, a signed `app-v<version>` tag, and the release-build and
+# release-publish jobs in .github/workflows/ci.yml: the first runs build-release,
+# verifies the artifact and runs appcast, the second publishes once every gate passes. `make build-release` locally is a rehearsal, never how one ships.
 
 TEAM_ID     := 75QE9PRT3V
 RELEASE_DIR := apps/apple/.build

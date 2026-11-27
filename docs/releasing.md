@@ -5,9 +5,10 @@ release with a Sparkle appcast beside it, and is sold with an offline licence ke
 App Store app and has no store listing.
 
 There is no bump or release script, in this repo or in either sibling. A release is **one
-commit, one signed `app-v<version>` tag, and the `release-app` job in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)**, which builds, signs, notarizes,
-verifies, writes the appcast and publishes. `make build-release` on a laptop is a rehearsal,
+commit, one signed `app-v<version>` tag, and two jobs in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)**: `release-build`, which builds,
+signs, notarizes, verifies and writes the appcast while the gates run, and `release-publish`,
+which attests and publishes once every gate is green. `make build-release` on a laptop is a rehearsal,
 never how a release ships.
 
 Several of the steps below are invisible to CI, so a release that skips them can still go out
@@ -17,7 +18,7 @@ green.
 
 ### The repository secrets
 
-`gh secret list -R mgcrea/armada` must show all seven that `release-app` reads:
+`gh secret list -R mgcrea/armada` must show all seven that `release-build` reads:
 
 | Secret                      | What it is                                                               |
 | --------------------------- | ------------------------------------------------------------------------ |
@@ -151,11 +152,21 @@ things Homebrew's make 4.x forgives.
 
 ### 4. Commit, tag, push: the tag first
 
+Before tagging, check that `main` is green on the commit the release commit sits on.
+The tag's run gates on the same jobs, so a red `main` fails the release after the tag is
+pushed, and this Mac's Swift can accept what CI's older Xcode refuses (1.16.0 was tagged
+over two such errors and had to be re-tagged):
+
+```bash
+gh run list -R mgcrea/armada --branch main --commit "$(git rev-parse HEAD~1)" \
+  --json conclusion -q '.[0].conclusion'   # success
+```
+
 ```bash
 git commit -m "chore(release): Armada X.Y.Z" -- <the files above>
 git tag -m "Armada X.Y.Z" app-vX.Y.Z      # annotated; tag.gpgSign is on, so a bare `git tag` fails
 git push origin app-vX.Y.Z
-# once release-app has published the release:
+# once release-publish has published the release:
 git push origin main
 ```
 
@@ -167,9 +178,11 @@ Nothing is lost while `main` waits: the tag's run builds the tagged commit on it
 
 ### 5. Watch the run
 
-`release-app` needs `app`, so a red `app` job shows `release-app` as **skipped**, not failed.
-Read which job failed rather than the run summary, and confirm the green run is for the commit
-you tagged.
+`release-build` starts at once, beside the gates. `release-publish` needs it and every gate
+(`node`, `app`, `app-unit`, `app-tests`, `revocations`), so a red gate shows **Release
+Armada.app** as **skipped**, not failed, even when the build notarized fine. Read which job
+failed rather than the run summary, and confirm the green run is for the commit you tagged.
+Nothing reaches users until `release-publish` runs. Where `release-build` stopped:
 
 | Failed step                | What it means                                                                                     |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |

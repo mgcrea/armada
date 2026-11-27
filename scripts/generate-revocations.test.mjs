@@ -35,7 +35,7 @@ describe("generate-revocations --check without a token", () => {
     }
   });
 
-  it("fails on a release tag, where release-app depends on it", () => {
+  it("fails on a release tag, where release-publish depends on it", () => {
     const run = tokenless("refs/tags/app-v1.2.3");
     assert.equal(run.status, 1);
     assert.match(run.stderr, /no CLOUDFLARE_API_TOKEN on a release tag/);
