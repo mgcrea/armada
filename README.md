@@ -8,8 +8,8 @@ agents already write to disk, plus one question asked of the user's own `claude`
 
 > **Released.** 1.8.0 is out, as a Developer ID signed and notarized download from
 > [armada.mgcrea.io](https://armada.mgcrea.io), which also sells the licence; the source is MIT and
-> builds with `make build`. It watches Claude Code, Codex and Grok Build. [Status](#status) lists
-> exactly what runs today, [CHANGELOG.md](CHANGELOG.md) what has changed, and
+> builds with `make build`. It watches Claude Code, Codex, Grok Build and the Antigravity CLI.
+> [Status](#status) lists exactly what runs today, [CHANGELOG.md](CHANGELOG.md) what has changed, and
 > [docs/implementation.md](docs/implementation.md) what it cost to get there.
 
 ## The problem

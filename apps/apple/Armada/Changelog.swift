@@ -379,6 +379,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Antigravity CLI sessions.",
+            body: [
+              "Conversations you run with Google's Antigravity CLI (`agy`) now show in the sidebar and the menu bar beside your Claude Code, Codex and Grok Build sessions, each one working, waiting for input or ended, with its folder, model and tokens. A project can start a new `agy` session or resume an earlier one from Projects, and agents see these sessions through the MCP tools: in the fleet, in their transcripts, and when one is started, resumed, focused or closed. Armada reads no Antigravity limits yet, so there is no usage card for it.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

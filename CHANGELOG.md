@@ -8,6 +8,17 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.15.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Added
+
+- **Antigravity CLI sessions.** Conversations you run with Google's Antigravity CLI (`agy`) now
+  show in the sidebar and the menu bar beside your Claude Code, Codex and Grok Build sessions,
+  each one working, waiting for input or ended, with its folder, model and tokens. A project can
+  start a new `agy` session or resume an earlier one from Projects, and agents see these sessions
+  through the MCP tools: in the fleet, in their transcripts, and when one is started, resumed,
+  focused or closed. Armada reads no Antigravity limits yet, so there is no usage card for it.
+
 ## [1.15.0] - 2026-11-25
 
 **Your builds, in the menu bar.** With Build Slots on, a dot beside Armada's icon stands

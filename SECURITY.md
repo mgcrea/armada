@@ -56,7 +56,8 @@ Three properties, each of which is checkable rather than asserted:
   and no other keystroke.
 
 - **It writes to a vendor's folders in five named places, each from something you did.**
-  `~/.claude*`, `~/.codex` and `~/.grok` are otherwise opened read-only. The five: the
+  `~/.claude*`, `~/.codex`, `~/.grok` and `~/.gemini/antigravity-cli` are otherwise opened
+  read-only. The five: the
   "trust this folder" flag in a Claude Code account's `.claude.json`, when you start a session in
   a saved project, written under Claude Code's own lock with the rest of the file left as it was;
   one hook in each Claude Code account's `settings.json` while Deliver messages to sessions is on,
@@ -66,7 +67,7 @@ Three properties, each of which is checkable rather than asserted:
   when you press Configure in Settings ▸ Supervisor, with the previous file kept beside it as a
   backup and someone else's `armada` entry never replaced without asking; and a Codex
   automation's `automation.toml` when an agent saves or deletes a schedule over MCP while Allow
-  writes is on (see In scope). Grok Build's folders are
+  writes is on (see In scope). Grok Build's and the Antigravity CLI's folders are
   only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
   and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
   Support; and a session startup script in its own temporary directory — beside which a
@@ -97,8 +98,13 @@ Read-only is not the same as narrow, so the whole read surface is listed here ra
 to "`~/.claude*` and `~/.codex`":
 
 - **Each account's own folders:** `~/.claude`, every `~/.claude-*` beside it, `CLAUDE_CONFIG_DIR`,
-  `~/.codex`, `CODEX_HOME`, `~/.grok`, `GROK_HOME` and any home added with Add Account, for
-  session registries, transcripts, session logs and cached usage. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
+  `~/.codex`, `CODEX_HOME`, `~/.grok`, `GROK_HOME`, `~/.gemini/antigravity-cli` and any home
+  added with Add Account, for session registries, transcripts, session logs and cached usage.
+  In `~/.gemini/antigravity-cli` that is `conversation_summaries.db`, opened read-only, the
+  readable transcripts under `brain` and `cache/last_conversations.json`. Which conversation is
+  open comes from the process table: the files each `agy` process holds open in `presence`,
+  whose locks Armada never takes. Its encrypted `*.pb` files and per-conversation databases
+  are never opened, and the rest of `~/.gemini` is not read. Finding the `~/.claude-*` folders means listing the top of your home folder. Every
   transcript and session log is read, Codex's `archived_sessions` included, for the tokens each
   project spent; what is kept of those is counts per day, folder, account and model, never text.
   Claude Code transcripts are also read for the skills and custom commands used in them, and
