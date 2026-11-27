@@ -47,6 +47,16 @@ final class AntigravityAccounts {
     for account in all { account.sessions.start() }
   }
 
+  /// Pick up the home once `agy` has written its first conversation, which may be after
+  /// `start()`. Additions only, for `Accounts.rediscover()`'s reasons; nothing while stopped.
+  /// Called from `Accounts`' tick, beside Grok's.
+  func rediscover() {
+    guard isStarted, all.isEmpty, let home = AntigravityHome.discover() else { return }
+    let account = AntigravityAccount(home: home)
+    account.sessions.start()
+    all = [account]
+  }
+
   func stop() {
     for account in all { account.sessions.stop() }
     all = []

@@ -121,10 +121,11 @@ final class Accounts {
     tick.setEventHandler {
       MainActor.assumeIsolated {
         self.rediscover()
-        // The other two have no clock of their own that could carry this, and a home added
+        // The others have no clock of their own that could carry this, and a home added
         // through Armada should turn up without a relaunch whichever agent it is for.
         CodexAccounts.shared.rediscover()
         GrokAccounts.shared.rediscover()
+        AntigravityAccounts.shared.rediscover()
         self.refreshAll()
       }
     }

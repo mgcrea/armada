@@ -179,7 +179,8 @@ final class AntigravityWatcher {
   nonisolated private static func read(_ url: URL, from offset: Int) -> Data? {
     guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
     defer { try? handle.close() }
-    try? handle.seek(toOffset: UInt64(offset))
+    // A failed seek would read from byte 0 and add what was already counted.
+    guard (try? handle.seek(toOffset: UInt64(offset))) != nil else { return nil }
     return try? handle.readToEnd() ?? Data()
   }
 
