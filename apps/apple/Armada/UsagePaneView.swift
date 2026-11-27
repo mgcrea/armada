@@ -44,7 +44,7 @@ struct UsagePaneView: View {
             Label("No limits to show", systemImage: "gauge.with.dots.needle.0percent")
           } description: {
             Text(
-              "Armada reads no limits for the Antigravity CLI yet: it keeps none on this Mac. Its sessions are in the sidebar."
+              "Armada reads no limits for the Antigravity CLI yet: the CLI keeps none on this Mac. Its sessions are in the sidebar."
             )
           }
         }
