@@ -155,6 +155,7 @@ struct GeneralPane: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @AppStorage(PanelVisibility.defaultsKey) private var storedHidden = ""
   @State private var monitor = EntitlementMonitor.shared
   @State private var addingAccount: NewAccount.Vendor?
@@ -174,11 +175,12 @@ struct GeneralPane: View {
   private var cacheAlertMinimum = PromptCacheAlertSize.fallback
   @State private var notifier = PromptCacheNotifier.shared
 
-  /// Every account on the panel, in the panel's order: Claude, Codex, Grok Build.
+  /// Every account on the panel, in the panel's order: Claude, Codex, Grok Build, Antigravity.
   private var panelAccounts: [(id: String, name: String, detail: String)] {
     accounts.all.map { ($0.id, $0.displayName, "Claude Code · \($0.displayPath)") }
       + codex.all.map { ($0.id, $0.displayName, "Codex · \($0.displayPath)") }
       + grok.all.map { ($0.id, $0.displayName, "Grok Build · \($0.displayPath)") }
+      + antigravity.all.map { ($0.id, $0.displayName, "Antigravity · \($0.displayPath)") }
   }
 
   private func shown(_ id: String) -> Binding<Bool> {

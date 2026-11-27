@@ -52,7 +52,7 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
     case .never: "Never"
     case .working: "While a session is working"
     case .blocked: "…or a session is waiting on me"
-    case .waiting: "…or a Codex or Grok session is sitting at a finished turn"
+    case .waiting: "…or a Codex, Grok or Antigravity session is sitting at a finished turn"
     }
   }
 
@@ -63,15 +63,17 @@ enum MenuBarHalo: String, CaseIterable, Sendable {
   /// about without a running app.
   func isLit(
     claudeWorking: Int, claudeBlocked: Int, codexWorking: Int, codexAwaitingInput: Int,
-    grokWorking: Int = 0, grokAwaitingInput: Int = 0
+    grokWorking: Int = 0, grokAwaitingInput: Int = 0, antigravityWorking: Int = 0,
+    antigravityAwaitingInput: Int = 0
   ) -> Bool {
-    let working = claudeWorking > 0 || codexWorking > 0 || grokWorking > 0
+    let working = claudeWorking > 0 || codexWorking > 0 || grokWorking > 0 || antigravityWorking > 0
     switch self {
     case .never: return false
     case .working: return working
     case .blocked: return working || claudeBlocked > 0
     case .waiting:
       return working || claudeBlocked > 0 || codexAwaitingInput > 0 || grokAwaitingInput > 0
+        || antigravityAwaitingInput > 0
     }
   }
 }

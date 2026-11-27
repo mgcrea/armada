@@ -42,6 +42,7 @@ final class KeepAwakeController {
       claudeToolCalls: sessions.filter { $0.state == .runningTool }.map(\.lastWrite),
       codexWorking: CodexAccounts.shared.workingCount,
       grokWorking: GrokAccounts.shared.workingCount,
+      antigravityWorking: AntigravityAccounts.shared.workingCount,
       now: Date())
     hold(working ? rung.options : nil)
   }

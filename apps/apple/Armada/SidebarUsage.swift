@@ -108,6 +108,11 @@ extension SidebarUsage {
       return [Line(id: label, window: usage.usage, length: usage.length)]
     }
   }
+
+  /// The Antigravity CLI home, which has no lines: `agy` writes no plan limits to disk.
+  init(account: AntigravityAccount) {
+    self.init(fetchedAt: nil, source: .sessionLog) { _ in [] }
+  }
 }
 
 /// The layout every account row in the sidebar shares: the icon with the session count under

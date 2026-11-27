@@ -16,6 +16,8 @@ enum SidebarItem: Hashable {
   case account(String)
   case codex(String)
   case grok(String)
+  /// The Antigravity CLI home. Its id is a path too, so it carries a prefix as Codex's does.
+  case antigravity(String)
   /// Every saved project, in one pane of its own. The project selected in it is that
   /// pane's to keep, as a session is an account pane's.
   case projects
@@ -40,6 +42,7 @@ enum SidebarItem: Hashable {
   private static let voiceToken = "voice"
   private static let codexPrefix = "codex:"
   private static let grokPrefix = "grok:"
+  private static let antigravityPrefix = "antigravity:"
 
   var stored: String {
     switch self {
@@ -47,6 +50,7 @@ enum SidebarItem: Hashable {
     case .account(let id): id
     case .codex(let id): Self.codexPrefix + id
     case .grok(let id): Self.grokPrefix + id
+    case .antigravity(let id): Self.antigravityPrefix + id
     case .projects: Self.projectsToken
     case .skills: Self.skillsToken
     case .schedules: Self.schedulesToken
@@ -69,6 +73,8 @@ enum SidebarItem: Hashable {
       self = .codex(String(stored.dropFirst(Self.codexPrefix.count)))
     } else if stored.hasPrefix(Self.grokPrefix) {
       self = .grok(String(stored.dropFirst(Self.grokPrefix.count)))
+    } else if stored.hasPrefix(Self.antigravityPrefix) {
+      self = .antigravity(String(stored.dropFirst(Self.antigravityPrefix.count)))
     } else if stored.hasPrefix("/") {
       self = .account(stored)
     } else {
@@ -81,6 +87,7 @@ struct MainWindowView: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @State private var projects = ProjectStore.shared
   @State private var index = UsageIndex.shared
   @State private var schedules = SchedulesModel.shared
@@ -195,6 +202,15 @@ struct MainWindowView: View {
             }
           }
         }
+        if !antigravity.isEmpty {
+          Section("Antigravity") {
+            ForEach(antigravity.all) { account in
+              AntigravitySidebarRow(account: account)
+                .tag(SidebarItem.antigravity(account.id))
+                .contextMenu { PanelVisibilityToggle(accountID: account.id) }
+            }
+          }
+        }
       }
       // 240 ideal for the usage lines under each account: every column of `CompactUsage` but
       // the bar is fixed, so the sidebar's width past about 150pt of content is the bar's
@@ -236,6 +252,11 @@ struct MainWindowView: View {
             GrokPaneView(account: account)
               .id(account.id)
           }
+        case .antigravity(let id):
+          if let account = antigravity.account(id: id) {
+            AntigravityPaneView(account: account)
+              .id(account.id)
+          }
         case .projects:
           ProjectsPaneView()
         case .skills:
@@ -249,7 +270,7 @@ struct MainWindowView: View {
             Label("No agents found", systemImage: "folder.badge.questionmark")
           } description: {
             Text(
-              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok. None of them has a sessions folder yet."
+              "Armada looks for ~/.claude and any ~/.claude-<name> beside it, for ~/.codex, and for ~/.grok. None of them has a sessions folder yet. Antigravity CLI sessions appear here once `agy` has run a conversation."
             )
           }
         }
@@ -312,6 +333,7 @@ struct MainWindowView: View {
     case .account(let id) where accounts.account(id: id) != nil: .account(id)
     case .codex(let id) where codex.account(id: id) != nil: .codex(id)
     case .grok(let id) where grok.account(id: id) != nil: .grok(id)
+    case .antigravity(let id) where antigravity.account(id: id) != nil: .antigravity(id)
     case .projects: .projects
     case .skills where hasSkills: .skills
     case .schedules where showsSchedules: .schedules
@@ -321,6 +343,7 @@ struct MainWindowView: View {
     default:
       accounts.all.first.map { .account($0.id) } ?? codex.all.first.map { .codex($0.id) }
         ?? grok.all.first.map { .grok($0.id) }
+        ?? antigravity.all.first.map { .antigravity($0.id) }
     }
   }
 

@@ -58,6 +58,7 @@ private struct MenuBarLabel: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @AppStorage(MenuBarHalo.defaultsKey) private var halo = MenuBarHalo.working
   @AppStorage(MenuBarLimit.defaultsKey) private var storedLimit = ""
   @AppStorage(MenuBarBuilds.defaultsKey) private var showsBuilds = MenuBarBuilds.shownByDefault
@@ -109,6 +110,7 @@ private struct MenuBarLabel: View {
   /// mine moving", which is neither a per-organization nor a per-vendor question.
   private var isWorking: Bool {
     accounts.workingSessionCount > 0 || codex.workingCount > 0 || grok.workingCount > 0
+      || antigravity.workingCount > 0
   }
 
   private var isHaloLit: Bool {
@@ -118,7 +120,9 @@ private struct MenuBarLabel: View {
       codexWorking: codex.workingCount,
       codexAwaitingInput: codex.awaitingInputCount,
       grokWorking: grok.workingCount,
-      grokAwaitingInput: grok.awaitingInputCount)
+      grokAwaitingInput: grok.awaitingInputCount,
+      antigravityWorking: antigravity.workingCount,
+      antigravityAwaitingInput: antigravity.awaitingInputCount)
   }
 
   /// The halo wins over the fill: a lit halo always draws the filled rig, whether
@@ -336,6 +340,7 @@ struct StatusMenu: View {
   @State private var accounts = Accounts.shared
   @State private var codex = CodexAccounts.shared
   @State private var grok = GrokAccounts.shared
+  @State private var antigravity = AntigravityAccounts.shared
   @AppStorage(PanelVisibility.defaultsKey) private var storedHidden = ""
   @State private var monitor = EntitlementMonitor.shared
 
@@ -421,9 +426,9 @@ struct StatusMenu: View {
       if !monitor.current.isEntitled {
         Divider()
         LockedCard(compact: true)
-      } else if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty {
+      } else if accounts.all.isEmpty && codex.isEmpty && grok.isEmpty && antigravity.isEmpty {
         Divider()
-        Text("No Claude Code, Codex or Grok Build folder found")
+        Text("No Claude Code, Codex, Grok Build or Antigravity folder found")
           .font(.callout)
           .foregroundStyle(.secondary)
       } else {
@@ -431,9 +436,11 @@ struct StatusMenu: View {
         let claudeShown = accounts.all.filter { !hidden.contains($0.id) }
         let codexShown = codex.all.filter { !hidden.contains($0.id) }
         let grokShown = grok.all.filter { !hidden.contains($0.id) }
+        let antigravityShown = antigravity.all.filter { !hidden.contains($0.id) }
         // Once there are two vendors on the panel every block needs its name, or
         // the second one reads as more rows of the first. Counted over what is shown.
-        let shownCount = claudeShown.count + codexShown.count + grokShown.count
+        let shownCount =
+          claudeShown.count + codexShown.count + grokShown.count + antigravityShown.count
         let showsNames = shownCount > 1
         if shownCount == 0 {
           Divider()
@@ -457,6 +464,10 @@ struct StatusMenu: View {
         ForEach(grokShown) { account in
           Divider()
           GrokSummary(account: account, showsName: showsNames, now: now)
+        }
+        ForEach(antigravityShown) { account in
+          Divider()
+          AntigravitySummary(account: account, showsName: showsNames, now: now)
         }
       }
 

@@ -1384,22 +1384,40 @@ struct UnitCheck {
           claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
           grokAwaitingInput: 1)
     )
+
+    section("MenuBarHalo with Antigravity")
+    check(
+      "a working Antigravity session lights the default halo",
+      MenuBarHalo.working.isLit(
+        claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+        antigravityWorking: 1))
+    check(
+      "an idle open Antigravity session lights only the widest rung, as Grok's does",
+      !MenuBarHalo.blocked.isLit(
+        claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+        antigravityAwaitingInput: 1)
+        && MenuBarHalo.waiting.isLit(
+          claudeWorking: 0, claudeBlocked: 0, codexWorking: 0, codexAwaitingInput: 0,
+          antigravityAwaitingInput: 1)
+    )
   }
 
   static func keepAwake() {
     section("KeepAwake")
     let now = Date(timeIntervalSince1970: 1_790_000_000)
     func working(
-      claude: Int = 0, toolCalls: [Date?] = [], codex: Int = 0, grok: Int = 0
+      claude: Int = 0, toolCalls: [Date?] = [], codex: Int = 0, grok: Int = 0,
+      antigravity: Int = 0
     ) -> Bool {
       KeepAwake.isWorking(
         claudeWriting: claude, claudeToolCalls: toolCalls, codexWorking: codex,
-        grokWorking: grok, now: now)
+        grokWorking: grok, antigravityWorking: antigravity, now: now)
     }
     check("nothing working holds nothing", !working())
     check("a writing Claude session holds", working(claude: 1))
     check("a working Codex session holds", working(codex: 1))
     check("a working Grok session holds", working(grok: 1))
+    check("a working Antigravity session holds", working(antigravity: 1))
     check("a tool call from five minutes ago holds", working(toolCalls: [now - 5 * 60]))
     check(
       "a tool call past the cap does not",

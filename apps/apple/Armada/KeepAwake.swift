@@ -60,14 +60,16 @@ enum KeepAwake: String, CaseIterable, Sendable {
   /// is a pure function the unit checks can reach. `claudeToolCalls` is each
   /// `.runningTool` session's last transcript write: the moment the `tool_use` landed.
   /// A session with no write to date it from does not count — it cannot be aged.
-  /// Codex and Grok Build write both edges of a turn, so their `working` is a fact and
+  /// Codex, Grok Build and Antigravity write both edges of a turn, so their `working` is a fact and
   /// needs no cap. `.waiting` and every vendor's open-but-idle state count for nothing:
   /// a session stopped on you is exactly the one that should not keep the Mac up.
   static func isWorking(
     claudeWriting: Int, claudeToolCalls: [Date?], codexWorking: Int, grokWorking: Int,
-    now: Date
+    antigravityWorking: Int = 0, now: Date
   ) -> Bool {
-    if claudeWriting > 0 || codexWorking > 0 || grokWorking > 0 { return true }
+    if claudeWriting > 0 || codexWorking > 0 || grokWorking > 0 || antigravityWorking > 0 {
+      return true
+    }
     return claudeToolCalls.contains { started in
       guard let started else { return false }
       return now.timeIntervalSince(started) < toolCallCap
