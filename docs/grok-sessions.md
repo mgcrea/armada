@@ -216,6 +216,25 @@ under `dontAsk` (that an edit or a write command is denied rather than prompted 
 to the group after five seconds if `grok` is still there. A command the turn put in a process
 group of its own would escape both; whether grok does that is not measured either.
 
+## MCP servers (grok 1.0.92, 2026-11-28)
+
+- **User scope is `~/.grok/config.toml`, `[mcp_servers.<name>]`**, the table Codex uses, with an
+  HTTP server as `url` plus a `headers` inline table and no `type`. Grok **ignores
+  `http_headers`**, Codex's key, reporting it as "an unrecognized field", so an entry written
+  Codex's way reaches the server with no token. swift-mcp-kit 1.10.0's `WiringClient.grok` writes
+  `headers`. Grok also takes `bearer_token_file` (a path read again on every request), which
+  Armada does not use.
+- **It also loads `mcpServers` from `~/.claude.json` and a project's `.mcp.json`**, which is how
+  Grok sessions reached Armada before Grok had a row of its own. When both name `armada`, the
+  `config.toml` entry wins and the other is not listed.
+- **`grok mcp list` shows `config.toml` only; `grok inspect --json` shows what a session will
+  load** (`mcpServers`, each with its `source`) and the problems with it (`mcpConfigProblems`).
+  To try a config without touching the real one, give it a scratch home:
+  `HOME=$(mktemp -d)` with a `.grok/config.toml` and `.claude.json` in it, then run
+  `grok inspect --json` from a folder inside it. `inspect` needs no sign-in.
+- The binary embeds its own config reference: `` strings ~/.grok/bin/grok | grep '^| `mcp_servers' ``
+  lists every key a server entry takes. `~/.grok/README.md` has the user guide.
+
 ## Open questions
 
 - The TUI: what a pending permission prompt writes to `updates.jsonl`, the `session_kind` value,
@@ -223,4 +242,6 @@ group of its own would escape both; whether grok does that is not measured eithe
 - Whether `active_sessions.json` drops an entry on `/exit` and on `kill -9`.
 - Whether leader mode can deliver a message to a TUI session Armada did not start.
 - Whether Grok accepts an MCP config, a tool allowlist and an appended system prompt from the
-  command line, which a supervisor session needs.
+  command line, which a supervisor session needs. Its config files take MCP servers (above), and
+  `grok -p` takes `--tools`, `--allow` and `--deny`; the per-launch MCP config and the system
+  prompt are unchecked.
