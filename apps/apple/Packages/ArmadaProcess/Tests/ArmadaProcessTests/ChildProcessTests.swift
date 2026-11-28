@@ -230,6 +230,59 @@ import Testing
     #expect(alive(grandchild))
   }
 
+  // MARK: - runInPTY
+
+  @Test func runInPTYAttachesARealTerminalAndStopsTheChild() async throws {
+    let file = scratch()
+    defer { try? FileManager.default.removeItem(at: file) }
+    let reply = await ChildProcess.runInPTY(
+      sh,
+      arguments: [
+        "-c", #"if [ -t 0 ] && [ -t 1 ]; then echo $$ > "$1"; fi; sleep 30"#, "sh", file.path,
+      ],
+      timeout: .seconds(5), stop: .terminate(grace: .milliseconds(500))
+    ) { _ -> ChildProcess.Poll<pid_t> in
+      guard let child = try? String(contentsOf: file, encoding: .utf8),
+        let pid = pid_t(child.trimmingCharacters(in: .whitespacesAndNewlines))
+      else { return .keepWaiting }
+      return .finish(pid)
+    }
+    let pid = try #require(reply)
+    try? await Task.sleep(for: .milliseconds(100))
+    #expect(!alive(pid))
+  }
+
+  @Test func runInPTYReturnsNilAtOnceWhenTheChildExitsWithoutAnswering() async {
+    let start = ContinuousClock.now
+    let reply = await ChildProcess.runInPTY(
+      sh, arguments: ["-c", "exit 0"], timeout: .seconds(10)
+    ) { _ -> ChildProcess.Poll<Bool> in .keepWaiting }
+    #expect(reply == nil)
+    #expect(seconds(since: start) < 4)
+  }
+
+  @Test func cancellingRunInPTYStopsTheChild() async throws {
+    let file = scratch()
+    defer { try? FileManager.default.removeItem(at: file) }
+    let sh = self.sh
+    let task = Task {
+      await ChildProcess.runInPTY(
+        sh, arguments: ["-c", "echo $$ > \"$1\"; sleep 30", "sh", file.path], timeout: .seconds(60)
+      ) { _ -> ChildProcess.Poll<Bool> in .keepWaiting }
+    }
+    var child: pid_t?
+    for _ in 0..<50 where child == nil {
+      try? await Task.sleep(for: .milliseconds(50))
+      child = pid(in: file)
+    }
+    let pid = try #require(child)
+    let start = ContinuousClock.now
+    task.cancel()
+    #expect(await task.value == nil)
+    #expect(seconds(since: start) < 4)
+    #expect(!alive(pid))
+  }
+
   // MARK: - LineBuffer
 
   @Test func linesSplitAcrossChunksAndSkipEmpties() {

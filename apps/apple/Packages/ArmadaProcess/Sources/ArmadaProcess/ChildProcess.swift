@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Subprocess
 import System
@@ -128,6 +129,106 @@ public enum ChildProcess {
         try? await writer.finish()
         await execution.teardown(using: answered)
         return found
+      }
+      return result.closureResult
+    }
+  }
+
+  /// Reads of the PTY master per `runInPTY` pass: 64 of 4 KiB, then the poll runs.
+  static let maxDrainReads = 64
+
+  /// What a `runInPTY` poll step decided.
+  public enum Poll<Answer: Sendable>: Sendable {
+    /// Keep draining the PTY and ask again after `pollInterval`.
+    case keepWaiting
+    /// Stop the child and return this answer (or nil).
+    case finish(Answer?)
+  }
+
+  /// Runs `executable` in its own session on a fresh PTY, drains the PTY master while polling
+  /// `poll` until it finishes, then stops the child's process group. Nil when the child cannot be
+  /// started, exits before `poll` finishes with a value, reaches `timeout`, or the task is
+  /// cancelled.
+  ///
+  /// Uses `PlatformOptions.createSession` (`POSIX_SPAWN_SETSID`, without `processGroupID` so
+  /// Darwin stays on the `posix_spawn` fast path with no `fork()`) and
+  /// `preSpawnProcessConfigurator` to open the PTY slave as stdin, stdout, stderr and controlling
+  /// terminal inside the child — so TUI `tcsetattr` calls succeed without `SIGTTOU`.
+  @concurrent
+  public static func runInPTY<Answer: Sendable>(
+    _ executable: URL, arguments: [String] = [], environment: [String: String]? = nil,
+    directory: URL? = nil, timeout: Duration,
+    pollInterval: Duration = .milliseconds(80),
+    stop: Stop = .terminate(grace: .seconds(2)),
+    poll: @escaping @Sendable (_ exited: Bool) -> Poll<Answer>
+  ) async -> Answer? {
+    guard !Task.isCancelled else { return nil }
+    let masterFD = posix_openpt(O_RDWR | O_NOCTTY)
+    guard masterFD >= 0 else { return nil }
+    defer { Darwin.close(masterFD) }
+
+    guard grantpt(masterFD) == 0, unlockpt(masterFD) == 0,
+      let slaveCPath = ptsname(masterFD)
+    else { return nil }
+    let slavePath = String(cString: slaveCPath)
+
+    let closeFlags = fcntl(masterFD, F_GETFD)
+    if closeFlags >= 0 { _ = fcntl(masterFD, F_SETFD, closeFlags | FD_CLOEXEC) }
+    let ioFlags = fcntl(masterFD, F_GETFL)
+    if ioFlags >= 0 { _ = fcntl(masterFD, F_SETFL, ioFlags | O_NONBLOCK) }
+
+    var options = PlatformOptions()
+    options.createSession = true
+    let groupTeardown = teardown(stop)
+    options.teardownSequence = groupTeardown
+    options.preSpawnProcessConfigurator = { _, actions in
+      guard posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, slavePath, O_RDWR, 0) == 0,
+        posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO) == 0,
+        posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO) == 0
+      else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+      }
+    }
+    let configuration = Configuration(
+      executable: .path(FilePath(executable.path(percentEncoded: false))),
+      arguments: Arguments(arguments),
+      environment: environment.map { values in
+        .custom(
+          Dictionary(
+            values.compactMap { key, value in Environment.Key(rawValue: key).map { ($0, value) } },
+            uniquingKeysWith: { _, last in last }))
+      } ?? .inherit,
+      workingDirectory: directory.map { FilePath($0.path(percentEncoded: false)) },
+      platformOptions: options)
+
+    return await bounded(timeout) {
+      let result = try await Subprocess.run(
+        configuration, input: .none, output: .discarded, error: .discarded
+      ) { execution -> Answer? in
+        var drainBuffer = [UInt8](repeating: 0, count: 4096)
+        var answer: Answer?
+        while !Task.isCancelled {
+          var eof = false
+          // Bounded, so a child that redraws without pause cannot keep this loop from the
+          // `poll` below, which is where the timeout and the answer are looked at.
+          for _ in 0..<maxDrainReads {
+            let count = Darwin.read(masterFD, &drainBuffer, drainBuffer.count)
+            if count > 0 { continue }
+            if count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR) { eof = true }
+            break
+          }
+          switch poll(eof) {
+          case .finish(let value):
+            answer = value
+          case .keepWaiting:
+            if eof { break }
+            try? await Task.sleep(for: pollInterval)
+            continue
+          }
+          break
+        }
+        await execution.teardown(using: groupTeardown)
+        return answer
       }
       return result.closureResult
     }
