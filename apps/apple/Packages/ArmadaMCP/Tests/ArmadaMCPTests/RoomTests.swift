@@ -406,6 +406,22 @@ struct RoomTests {
     #expect(!RoomMarker.contains("deadbeef", inFile: rollout, vendor: .codex))
   }
 
+  @Test("A file with no user message yet is read again once it grows")
+  func markerGrows() throws {
+    let path = try transcript([["type": "file-history-snapshot"]])
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    #expect(!RoomMarker.contains("cafebabe", inFile: path, vendor: .claude))
+    #expect(!RoomMarker.contains("cafebabe", inFile: path, vendor: .claude))
+    var data = try Data(contentsOf: URL(filePath: path))
+    data.append(
+      try JSONSerialization.data(withJSONObject: [
+        "type": "user", "message": ["role": "user", "content": brief("cafebabe")],
+      ]))
+    data.append(0x0A)
+    try data.write(to: URL(filePath: path))
+    #expect(RoomMarker.contains("cafebabe", inFile: path, vendor: .claude))
+  }
+
   @Test("An Antigravity seat matches inside its USER_REQUEST")
   func markerAntigravity() throws {
     let file = try transcript([

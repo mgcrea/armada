@@ -38,6 +38,16 @@ public struct Room: Sendable, Equatable, Codable {
       self.promptAwaitsSend = promptAwaitsSend
       self.headless = headless
     }
+
+    /// Every field that says where the seat runs, written together so none is left stale.
+    mutating func start(
+      projectPath: String?, sessionID: String?, promptAwaitsSend: Bool, headless: Bool
+    ) {
+      self.projectPath = projectPath
+      self.sessionID = sessionID
+      self.promptAwaitsSend = promptAwaitsSend
+      self.headless = headless
+    }
   }
 
   public struct Post: Sendable, Equatable, Codable {
@@ -125,10 +135,9 @@ public struct Room: Sendable, Equatable, Codable {
       return "Seat \(seat) is not in this room."
     }
     if seats[index].projectPath != nil { return "Seat \(seat) has already been started." }
-    seats[index].projectPath = projectPath
-    seats[index].sessionID = sessionID
-    seats[index].promptAwaitsSend = promptAwaitsSend
-    seats[index].headless = headless
+    seats[index].start(
+      projectPath: projectPath, sessionID: sessionID, promptAwaitsSend: promptAwaitsSend,
+      headless: headless)
     return nil
   }
 
@@ -141,20 +150,16 @@ public struct Room: Sendable, Equatable, Codable {
       return "Seat \(seat) is not in this room."
     }
     if seats[index].projectPath == nil { return "Seat \(seat) was not reserved." }
-    seats[index].projectPath = projectPath
-    seats[index].sessionID = sessionID
-    seats[index].promptAwaitsSend = promptAwaitsSend
-    seats[index].headless = headless
+    seats[index].start(
+      projectPath: projectPath, sessionID: sessionID, promptAwaitsSend: promptAwaitsSend,
+      headless: headless)
     return nil
   }
 
   /// Undo a reservation whose launch was refused, so the seat can be started again.
   public mutating func releaseSession(seat: String) {
     guard let index = seats.firstIndex(where: { $0.seat == seat }) else { return }
-    seats[index].projectPath = nil
-    seats[index].sessionID = nil
-    seats[index].promptAwaitsSend = false
-    seats[index].headless = false
+    seats[index].start(projectPath: nil, sessionID: nil, promptAwaitsSend: false, headless: false)
   }
 
   /// `.bound` stores the id when the seat has none. Anything else leaves the seat as it was.
@@ -449,6 +454,9 @@ public enum RoomMarker {
   static let maxCached = 4_096
   private static let chunk = 256 * 1024
   private static let cache = Mutex<[String: String]>([:])
+  /// Files scanned to their end or limit with no user message, by the size they had. A poll
+  /// skips such a file until it grows.
+  private static let empty = Mutex<[String: UInt64]>([:])
 
   /// False when the file cannot be read or has no user message yet.
   public static func contains(
@@ -459,7 +467,17 @@ public enum RoomMarker {
 
   public static func openingMessage(inFile path: String, vendor: TranscriptTail.Vendor) -> String? {
     if let cached = cache.withLock({ $0[path] }) { return cached }
-    guard let found = scan(path, vendor: vendor) else { return nil }
+    let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? UInt64) ?? nil
+    if let size, empty.withLock({ $0[path] }) == size { return nil }
+    guard let found = scan(path, vendor: vendor) else {
+      if let size {
+        empty.withLock { empty in
+          if empty.count >= maxCached { empty.removeAll(keepingCapacity: true) }
+          empty[path] = size
+        }
+      }
+      return nil
+    }
     cache.withLock { cache in
       if cache.count >= maxCached { cache.removeAll(keepingCapacity: true) }
       cache[path] = found
