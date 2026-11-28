@@ -179,8 +179,8 @@ struct AntigravitySummary: View {
       }
 
       if let usage = account.usage, !usage.isEmpty {
-        let five = usage.peakWindow(.fiveHour)
-        let seven = usage.peakWindow(.sevenDay)
+        let five = usage.peakWindow(.fiveHour, at: now)
+        let seven = usage.peakWindow(.sevenDay, at: now)
         let fiveHour = forecast(five, .fiveHour, usage.observedAt)
         let sevenDay = forecast(seven, .sevenDay, usage.observedAt)
         if five != nil || seven != nil {

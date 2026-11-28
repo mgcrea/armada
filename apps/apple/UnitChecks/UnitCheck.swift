@@ -1909,16 +1909,45 @@ struct UnitCheck {
         && agyLimits?.buckets[2].window.hasRolled(asOf: now) == false)
     check(
       "peakWindow picks the highest utilization per length, while primaryWindow stays on Gemini",
-      agyLimits?.peakWindow(.fiveHour)?.utilization == 14
-        && agyLimits?.peakWindow(.sevenDay)?.utilization == 58
+      agyLimits?.peakWindow(.fiveHour, at: now)?.utilization == 14
+        && agyLimits?.peakWindow(.sevenDay, at: now)?.utilization == 58
         && agyLimits?.primaryWindow(.sevenDay)?.utilization == 4
         && agyLimits?.asSnapshot.sevenDay?.utilization == 4
         && agyLimits?.asSnapshot.source == .antigravity)
+    let afterFiveHour = UsageSnapshot.parseTimestamp("2026-11-27T18:00:00Z")!
+    let rolledFiveHour = agyLimits?.peakWindow(.fiveHour, at: afterFiveHour)
+    check(
+      "a five-hour pool past its reset does not stay the peak over an untouched one",
+      rolledFiveHour?.utilization == 0 && rolledFiveHour?.resetsAt == nil
+        && agyLimits?.peakWindow(.sevenDay, at: afterFiveHour)?.utilization == 58)
+    let overshadowed = AntigravityFiles.limits(
+      Data(
+        #"""
+        {"quota":{
+          "gemini-5h":{"remaining_fraction":0.2,"reset_time":"2026-11-27T12:00:00Z","reset_in_seconds":1},
+          "3p-5h":{"remaining_fraction":0.6,"reset_time":"2026-11-27T20:00:00Z","reset_in_seconds":7200}}}
+        """#.utf8), observedAt: now)
+    let duringPartner = UsageSnapshot.parseTimestamp("2026-11-27T13:00:00Z")!
+    let open = overshadowed?.peakWindow(.fiveHour, at: duringPartner)
+    check(
+      "peak follows the pool whose window is still open",
+      open?.utilization == 40
+        && open?.resetsAt == UsageSnapshot.parseTimestamp("2026-11-27T20:00:00Z"))
+    let bare = AntigravityFiles.limits(
+      Data(
+        #"{"quota":{"gemini-5h":{"remaining_fraction":0.5,"reset_in_seconds":300}}}"#.utf8),
+      observedAt: now)
+    check(
+      "a later reading with no plan keeps the tier already known",
+      bare?.tier == nil && bare?.keepingTier(from: agyLimits).tier == "Google AI Pro"
+        && bare?.keepingTier(from: agyLimits).buckets.first?.utilization == 50)
     check(
       "window(length:model:) resolves each model group for MenuBarLimit",
-      agyLimits?.window(length: .fiveHour, model: "Gemini")?.utilization == 14
-        && agyLimits?.window(length: .sevenDay, model: "Partner models")?.utilization == 58
-        && agyLimits?.window(length: .fiveHour, model: "Partner models")?.utilization == 0)
+      agyLimits?.window(length: .fiveHour, model: "Gemini", now: now)?.utilization == 14
+        && agyLimits?.window(length: .sevenDay, model: "Partner models", now: now)?.utilization
+          == 58
+        && agyLimits?.window(length: .fiveHour, model: "Partner models", now: now)?.utilization
+          == 0)
     check(
       "a payload with no quota is no reading",
       AntigravityFiles.limits(Data(#"{"agent_state":"authenticating"}"#.utf8), observedAt: now)

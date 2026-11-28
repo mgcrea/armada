@@ -329,13 +329,27 @@ nonisolated enum AntigravityFiles {
     /// The highest-utilization bucket for a window length (Gemini first on ties), for compact
     /// glance surfaces (`SidebarUsage`, `AntigravitySummary`) where only two lines fit and
     /// whichever pool is closer to its cap is the one worth flagging.
-    func peakWindow(_ length: UsageWindowLength) -> UsageWindow? {
+    ///
+    /// **A pool past its reset counts as empty.** `agy` keeps reporting the old
+    /// `remaining_fraction` until the next turn, so a Gemini window that ended an hour ago
+    /// still reads higher than the partner pool that is open. Zeroing it first is what stops
+    /// the glance from flagging a window that no longer exists. Both pools rolled is 0% with
+    /// no reset time: the next probe is what fills the new window in.
+    func peakWindow(_ length: UsageWindowLength, at now: Date) -> UsageWindow? {
       let matching = buckets.filter { $0.length == length }
-      guard var best = matching.first else { return nil }
-      for candidate in matching.dropFirst() where candidate.utilization > best.utilization {
-        best = candidate
+      guard let first = matching.first else { return nil }
+      var best = standing(first, at: now)
+      for candidate in matching.dropFirst() {
+        let window = standing(candidate, at: now)
+        if window.utilization > best.utilization { best = window }
       }
-      return best.window
+      return best
+    }
+
+    /// This bucket as it stands at `now`. A reset in the past has emptied it.
+    private func standing(_ bucket: Bucket, at now: Date) -> UsageWindow {
+      guard let resetsAt = bucket.resetsAt, resetsAt <= now else { return bucket.window }
+      return UsageWindow(utilization: 0, resetsAt: nil)
     }
 
     /// The primary bucket for a window length — Gemini's when present, else the first bucket of
@@ -350,12 +364,22 @@ nonisolated enum AntigravityFiles {
     }
 
     /// The bucket matching a `MenuBarLimit` entry (by window length and group name, or the
-    /// primary bucket when `model` is nil).
-    func window(length: UsageWindowLength, model: String?) -> UsageWindow? {
+    /// peak across pools when `model` is nil). A named pool is returned as read: its own row
+    /// says when that window has rolled. The unnamed peak applies `now`, so an expired pool
+    /// does not stay starred over one that is still open.
+    func window(length: UsageWindowLength, model: String?, now: Date) -> UsageWindow? {
       if let model {
         return buckets.first { $0.length == length && $0.groupName == model }?.window
       }
-      return peakWindow(length)
+      return peakWindow(length, at: now)
+    }
+
+    /// This reading, keeping `previous`'s plan tier when `agy` omitted `plan_tier` this time.
+    /// The tier arrives a moment after the quotas, and a probe that stops on the first of
+    /// those must not wipe the label the last one already showed.
+    func keepingTier(from previous: Limits?) -> Limits {
+      guard tier == nil, let tier = previous?.tier else { return self }
+      return Limits(buckets: buckets, tier: tier, observedAt: observedAt)
     }
 
     var asSnapshot: UsageSnapshot {

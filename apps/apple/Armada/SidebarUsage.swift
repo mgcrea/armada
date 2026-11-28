@@ -112,11 +112,11 @@ extension SidebarUsage {
   /// The Antigravity CLI home's 5-hour and 7-day peak windows across its model pools.
   init(account: AntigravityAccount) {
     let usage = account.usage.flatMap { $0.isEmpty ? nil : $0 }
-    self.init(fetchedAt: usage?.observedAt, source: .antigravity) { _ in
+    self.init(fetchedAt: usage?.observedAt, source: .antigravity) { now in
       guard let usage else { return [] }
       return [
-        usage.peakWindow(.fiveHour).map { Line(id: "5h", window: $0, length: .fiveHour) },
-        usage.peakWindow(.sevenDay).map { Line(id: "7d", window: $0, length: .sevenDay) },
+        usage.peakWindow(.fiveHour, at: now).map { Line(id: "5h", window: $0, length: .fiveHour) },
+        usage.peakWindow(.sevenDay, at: now).map { Line(id: "7d", window: $0, length: .sevenDay) },
       ].compactMap { $0 }
     }
   }

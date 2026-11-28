@@ -32,8 +32,9 @@ final class AntigravityAccount: Identifiable {
     // panel asks for a probe on every appearance, so a capture would otherwise run it.
     guard !ScreenshotMode.isEnabled else { return }
     guard let limits = await Self.probe(), !Task.isCancelled else { return }
-    usage = limits
-    UsageHistory.shared.record(limits.asSnapshot, for: home.id)
+    let merged = limits.keepingTier(from: usage)
+    usage = merged
+    UsageHistory.shared.record(merged.asSnapshot, for: home.id)
   }
 
   @concurrent

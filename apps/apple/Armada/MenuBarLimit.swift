@@ -78,7 +78,7 @@ nonisolated struct MenuBarLimit: Sendable, Hashable {
       return account.usage?.window(length)
     }
     return AntigravityAccounts.shared.account(id: accountID)?.usage?
-      .window(length: length, model: model)
+      .window(length: length, model: model, now: now)
   }
 
   /// The figure as the menu bar draws it: the percentage, or the em dash

@@ -202,8 +202,13 @@ final class AntigravityWatcher {
     if entries.contains(where: { ($0.delta?.steps ?? 0) > 0 }) {
       UsageIndex.shared.noteActivity()
     }
+    // A turn just finished. The quotas live only in a probe, so without this they sit
+    // until the three-minute tick. The first read of a transcript is history, not a turn
+    // that ended while we were looking. `probeAll` throttles itself.
+    var turnEnded = false
 
     for entry in entries {
+      let wasWorking = byId[entry.id]?.state == .working
       let session =
         byId[entry.id]
         ?? AntigravitySession(
@@ -213,6 +218,10 @@ final class AntigravityWatcher {
       session.cwd = entry.cwd
       session.holder = entry.holder
       session.state = AntigravitySessionState.of(holder: entry.holder, summary: entry.summary)
+      let grew = (entry.delta?.steps ?? 0) > 0 && entry.readFrom != 0
+      if (wasWorking || grew) && session.state != .working {
+        turnEnded = true
+      }
       if let delta = entry.delta {
         if entry.readFrom == 0 {
           session.inputTokens = 0
@@ -235,6 +244,7 @@ final class AntigravityWatcher {
     }
 
     byId = next
+    if turnEnded { AntigravityAccounts.shared.probeAll() }
     // A conversation just opened in a TUI has no step and no row yet: its process's start.
     func recency(_ session: AntigravitySession) -> Date {
       session.lastEventAt ?? session.summary?.lastModified ?? session.holder?.startedAt
