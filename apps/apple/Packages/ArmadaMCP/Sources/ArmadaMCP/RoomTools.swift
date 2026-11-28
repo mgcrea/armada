@@ -123,7 +123,7 @@ extension Tools {
           ],
           "seats": [
             "type": "array", "maxItems": .int(RoomRules.maxSeats),
-            "description": "One seat per provider, at most 8.",
+            "description": .string("One seat per provider, at most \(RoomRules.maxSeats)."),
             "items": [
               "type": "object",
               "properties": [
@@ -277,12 +277,6 @@ extension Tools {
         }
       }
 
-      switch await rooms.room(name) {
-      case .refused(let message):
-        return .failure(message)
-      case .ok(let value):
-        if value.room.closedAt != nil { return .failure("Room \(name) is closed.") }
-      }
       let begun: Room
       switch await rooms.beginRound(name, now: Date()) {
       case .refused(let message):
@@ -294,6 +288,7 @@ extension Tools {
       let text = RoomNudge.text(name: bound.room.name, round: bound.room.round)
       var nudged = 0
       var skipped = 0
+      var refused = 0
       var rows: [JSONValue] = []
       for seat in bound.room.seats {
         let plan = RoomNudgePlan.decide(
@@ -314,11 +309,13 @@ extension Tools {
             nudged += 1
             rows.append(roundRow(seat.seat, action: "queued", detail: reason))
           case .refused(let message):
+            refused += 1
             rows.append(roundRow(seat.seat, action: "refused", detail: message))
           }
         }
       }
-      let lede = "Round \(bound.room.round). \(nudged) seats nudged, \(skipped) skipped."
+      var lede = "Round \(bound.room.round). \(nudged) nudged, \(skipped) skipped"
+      lede += refused > 0 ? ", \(refused) refused: Armada could not message them." : "."
       return envelope(
         object([
           "room": .string(name), "round": .int(bound.room.round), "closed": .bool(false),
@@ -428,33 +425,41 @@ extension Tools {
     return (room, ambiguous)
   }
 
+  /// Only the sessions a seat could be: same vendor, not a subagent, working inside the seat's
+  /// project. Their files are read after that filter, never before, since `armada_room_read`
+  /// repeats this every second while it waits.
   static func candidates(for seat: Room.Seat, in snapshot: FleetSnapshot) -> [RoomCandidate] {
+    guard let project = seat.projectPath else { return [] }
+    func candidate(
+      id: String, cwd: String, path: String?, subagent: Bool, vendor: TranscriptTail.Vendor
+    ) -> RoomCandidate? {
+      guard let path, !subagent, RoomPaths.contains(project, cwd) else { return nil }
+      return RoomCandidate(
+        id: id, vendor: seat.vendor, cwd: cwd,
+        containsMarker: RoomMarker.contains(seat.marker, inFile: path, vendor: vendor),
+        isSubagent: false)
+    }
     switch seat.vendor {
     case "claude":
       return snapshot.claude.flatMap { account in
-        account.sessions.compactMap { session in
-          guard let path = session.transcriptPath else { return nil }
-          return RoomCandidate(
-            id: session.id, vendor: "claude", cwd: session.cwd,
-            containsMarker: RoomMarker.contains(seat.marker, inFile: path), isSubagent: false)
+        account.sessions.compactMap {
+          candidate(
+            id: $0.id, cwd: $0.cwd, path: $0.transcriptPath, subagent: false, vendor: .claude)
         }
       }
     case "codex":
       return snapshot.codex.flatMap { account in
-        account.sessions.map { session in
-          RoomCandidate(
-            id: session.id, vendor: "codex", cwd: session.cwd,
-            containsMarker: RoomMarker.contains(seat.marker, inFile: session.rolloutPath),
-            isSubagent: session.isSubagent)
+        account.sessions.compactMap {
+          candidate(
+            id: $0.id, cwd: $0.cwd, path: $0.rolloutPath, subagent: $0.isSubagent, vendor: .codex)
         }
       }
     case "antigravity":
       return snapshot.antigravity.flatMap { account in
-        account.sessions.compactMap { session in
-          guard let path = session.transcriptPath else { return nil }
-          return RoomCandidate(
-            id: session.id, vendor: "antigravity", cwd: session.cwd,
-            containsMarker: RoomMarker.contains(seat.marker, inFile: path), isSubagent: false)
+        account.sessions.compactMap {
+          candidate(
+            id: $0.id, cwd: $0.cwd, path: $0.transcriptPath, subagent: false,
+            vendor: .antigravity)
         }
       }
     default:
@@ -462,34 +467,23 @@ extension Tools {
     }
   }
 
-  static func live(for seat: Room.Seat, in snapshot: FleetSnapshot) -> RoomLive? {
+  /// Whether the seat's session is live, or nil when the fleet does not list it. A Claude Code
+  /// session is listed only while it runs.
+  static func live(for seat: Room.Seat, in snapshot: FleetSnapshot) -> Bool? {
     guard let id = seat.sessionID else { return nil }
     switch seat.vendor {
     case "claude":
-      for account in snapshot.claude where account.sessions.contains(where: { $0.id == id }) {
-        return RoomLive(vendor: "claude", isLive: true, isHeadless: false)
-      }
+      let listed = snapshot.claude.contains { $0.sessions.contains { $0.id == id } }
+      return listed ? true : nil
     case "codex":
-      for account in snapshot.codex {
-        if let session = account.sessions.first(where: { $0.id == id }) {
-          return RoomLive(vendor: "codex", isLive: session.isLive, isHeadless: false)
-        }
-      }
+      return snapshot.codex.lazy.compactMap { $0.sessions.first { $0.id == id }?.isLive }.first
     case "grok":
-      for account in snapshot.grok {
-        if let session = account.sessions.first(where: { $0.id == id }) {
-          return RoomLive(vendor: "grok", isLive: session.isLive, isHeadless: session.isHeadless)
-        }
-      }
+      return snapshot.grok.lazy.compactMap { $0.sessions.first { $0.id == id }?.isLive }.first
     case "antigravity":
-      for account in snapshot.antigravity {
-        if let session = account.sessions.first(where: { $0.id == id }) {
-          return RoomLive(vendor: "antigravity", isLive: session.isLive, isHeadless: false)
-        }
-      }
+      return snapshot.antigravity.lazy.compactMap { $0.sessions.first { $0.id == id }?.isLive }
+        .first
     default:
-      break
+      return nil
     }
-    return nil
   }
 }

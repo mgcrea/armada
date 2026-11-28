@@ -135,4 +135,27 @@ struct RoomStartTests {
     #expect(stored.seats[0].promptAwaitsSend)
     #expect(stored.seats[0].sessionID == nil)
   }
+
+  @Test("A refused launch releases the seat, so it can be started again")
+  func refusedLaunch() async throws {
+    let directory = root()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = RoomDirectory(root: directory)
+    _ = await open(store)
+    let starter = FakeSessionStarter()
+    starter.outcome = .refused("No terminal.")
+    let first = await call(
+      ["project": "armada site", "room": "login", "seat": "seat"], store: store, starter: starter)
+    #expect(first.text == "No terminal.")
+    #expect(try await stored(store).seats[0].projectPath == nil)
+    starter.outcome = .started(
+      StartedSession(
+        project: "Armada site", path: "/Users/me/armada/web", vendor: "codex",
+        accountID: "/Users/me/.codex", account: "Codex", terminal: "Terminal", withPrompt: true,
+        sessionID: "codex-seat"))
+    let second = await call(
+      ["project": "armada site", "room": "login", "seat": "seat"], store: store, starter: starter)
+    #expect(!second.isError)
+    #expect(try await stored(store).seats[0].sessionID == "codex-seat")
+  }
 }

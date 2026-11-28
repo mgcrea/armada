@@ -74,7 +74,7 @@ struct RoomRoundTests {
     let round = await call(
       "armada_room_round", ["room": "login"], store: store, source: source, sender: sender)
     #expect(!round.isError)
-    #expect(round.text == "Round 1. 2 seats nudged, 0 skipped.")
+    #expect(round.text == "Round 1. 2 nudged, 0 skipped.")
     let nudge = RoomNudge.text(name: "login", round: 1)
     #expect(sender.requests.map(\.text) == [nudge, nudge])
     #expect(sender.requests.map(\.vendor) == [.claude, .codex])
@@ -125,7 +125,7 @@ struct RoomRoundTests {
     let sender = FakeMessageSender()
     let round = await call(
       "armada_room_round", ["room": "login"], store: store, source: source, sender: sender)
-    #expect(round.text == "Round 1. 1 seats nudged, 1 skipped.")
+    #expect(round.text == "Round 1. 1 nudged, 1 skipped.")
     #expect(sender.requests.map(\.sessionID) == ["done-turn"])
     let rows = try #require(round.structuredContent?["seats"]?.arrayValue)
     #expect(
@@ -150,9 +150,15 @@ struct RoomRoundTests {
     let one = directory.appending(path: "one.jsonl")
     let twoA = directory.appending(path: "two-a.jsonl")
     let twoB = directory.appending(path: "two-b.jsonl")
-    try Data(room.seats[0].marker.utf8).write(to: one)
-    try Data(room.seats[1].marker.utf8).write(to: twoA)
-    try Data(room.seats[1].marker.utf8).write(to: twoB)
+    let opener = directory.appending(path: "opener.jsonl")
+    try rollout(prompt: room.brief(for: room.seats[0])).write(to: one)
+    try rollout(prompt: room.brief(for: room.seats[1])).write(to: twoA)
+    try rollout(prompt: room.brief(for: room.seats[1])).write(to: twoB)
+    // The session that opened the room holds both briefs, in a tool result only.
+    try rollout(
+      prompt: "Open a room.",
+      output: room.seats.map { room.brief(for: $0) }.joined(separator: "\n")
+    ).write(to: opener)
     let source = FakeFleetSource(
       FleetSnapshot(
         takenAt: FakeFleetSource.now, isEntitled: true, claude: [],
@@ -169,6 +175,9 @@ struct RoomRoundTests {
               FakeFleetSource.codexSession(
                 "b", name: "B", state: "awaitingInput", ago: 1,
                 rolloutPath: twoB.path(percentEncoded: false)),
+              FakeFleetSource.codexSession(
+                "opener", name: "Opener", state: "awaitingInput", ago: 1,
+                rolloutPath: opener.path(percentEncoded: false)),
             ])
         ]))
     let read = await call(
@@ -213,5 +222,28 @@ struct RoomRoundTests {
     #expect(Date().timeIntervalSince(began) < 2)
     #expect(woke.structuredContent?["closed"] == .bool(true))
     #expect(woke.structuredContent?["timedOut"] == nil)
+  }
+
+  private func rollout(prompt: String, output: String? = nil) throws -> Data {
+    var lines: [[String: Any]] = [
+      [
+        "type": "response_item",
+        "payload": [
+          "type": "message", "role": "user", "content": [["type": "input_text", "text": prompt]],
+        ],
+      ]
+    ]
+    if let output {
+      lines.append([
+        "type": "response_item",
+        "payload": ["type": "function_call_output", "call_id": "c1", "output": output],
+      ])
+    }
+    var data = Data()
+    for line in lines {
+      data.append(try JSONSerialization.data(withJSONObject: line))
+      data.append(0x0A)
+    }
+    return data
   }
 }

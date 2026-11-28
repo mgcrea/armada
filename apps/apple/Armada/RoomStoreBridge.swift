@@ -39,6 +39,14 @@ nonisolated struct RoomStoreBridge: RoomStore {
     await directory.attach(request)
   }
 
+  func confirm(_ request: RoomAttachment) async -> RoomOutcome {
+    await directory.confirm(request)
+  }
+
+  func release(_ name: String, seat: String) async -> RoomOutcome {
+    await directory.release(name, seat: seat)
+  }
+
   func room(_ name: String) async -> RoomOutcome {
     await directory.room(name)
   }

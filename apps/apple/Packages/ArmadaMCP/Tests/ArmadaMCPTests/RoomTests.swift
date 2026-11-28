@@ -325,19 +325,122 @@ struct RoomTests {
         candidates: [candidate("s2", cwd: sibling.path(percentEncoded: false))]) == .unchanged)
   }
 
-  @Test("The marker is read from the first 64 KiB only")
-  func markerWindow() throws {
+  private func transcript(_ lines: [[String: Any]]) throws -> String {
     let url = FileManager.default.temporaryDirectory.appending(
-      path: "armada-marker-\(UUID().uuidString)")
-    defer { try? FileManager.default.removeItem(at: url) }
-    var data = Data(repeating: 0x61, count: RoomMarker.limit - 8)
-    data.append(Data("cafebabe".utf8))
-    data.append(Data("deadbeef".utf8))
+      path: "armada-marker-\(UUID().uuidString).jsonl")
+    var data = Data()
+    for line in lines {
+      data.append(try JSONSerialization.data(withJSONObject: line))
+      data.append(0x0A)
+    }
     try data.write(to: url)
-    let path = url.path(percentEncoded: false)
-    #expect(RoomMarker.contains("cafebabe", inFile: path))
-    #expect(!RoomMarker.contains("deadbeef", inFile: path))
-    #expect(!RoomMarker.contains("cafebabe", inFile: "/no/such/armada-marker"))
+    return url.path(percentEncoded: false)
+  }
+
+  private func brief(_ marker: String) -> String {
+    RoomBrief.text(name: "login", seat: "claude", marker: marker, question: "Why?")
+  }
+
+  @Test("A Claude seat matches on its opening message, the session that opened the room does not")
+  func markerClaude() throws {
+    let seat = try transcript([
+      ["type": "file-history-snapshot"],
+      ["type": "user", "isMeta": true, "message": ["role": "user", "content": "cafebabe"]],
+      ["type": "user", "message": ["role": "user", "content": brief("cafebabe")]],
+      [
+        "type": "user",
+        "message": ["role": "user", "content": [["type": "text", "text": "and deadbeef"]]],
+      ],
+    ])
+    defer { try? FileManager.default.removeItem(atPath: seat) }
+    #expect(RoomMarker.contains("cafebabe", inFile: seat, vendor: .claude))
+    #expect(!RoomMarker.contains("deadbeef", inFile: seat, vendor: .claude))
+
+    // The opener holds every brief, but in a tool result after a prompt of the person's own.
+    let opener = try transcript([
+      ["type": "user", "message": ["role": "user", "content": "Open a room on the login bug."]],
+      [
+        "type": "user",
+        "message": [
+          "role": "user",
+          "content": [["type": "tool_result", "content": brief("cafebabe")]],
+        ],
+      ],
+    ])
+    defer { try? FileManager.default.removeItem(atPath: opener) }
+    #expect(!RoomMarker.contains("cafebabe", inFile: opener, vendor: .claude))
+    #expect(!RoomMarker.contains("cafebabe", inFile: "/no/such/armada-marker", vendor: .claude))
+  }
+
+  @Test("A Codex seat matches past 200 KB of setup and the injected environment message")
+  func markerCodex() throws {
+    let setup = String(repeating: "x", count: 100_000)
+    let rollout = try transcript([
+      ["type": "session_meta", "payload": ["instructions": setup]],
+      [
+        "type": "response_item",
+        "payload": [
+          "type": "message", "role": "developer",
+          "content": [["type": "input_text", "text": setup]],
+        ],
+      ],
+      [
+        "type": "response_item",
+        "payload": [
+          "type": "message", "role": "user",
+          "content": [
+            ["type": "input_text", "text": "<environment_context>deadbeef</environment_context>"]
+          ],
+        ],
+      ],
+      [
+        "type": "response_item",
+        "payload": [
+          "type": "message", "role": "user",
+          "content": [["type": "input_text", "text": brief("cafebabe")]],
+        ],
+      ],
+    ])
+    defer { try? FileManager.default.removeItem(atPath: rollout) }
+    #expect(RoomMarker.contains("cafebabe", inFile: rollout, vendor: .codex))
+    #expect(!RoomMarker.contains("deadbeef", inFile: rollout, vendor: .codex))
+  }
+
+  @Test("An Antigravity seat matches inside its USER_REQUEST")
+  func markerAntigravity() throws {
+    let file = try transcript([
+      [
+        "type": "USER_INPUT",
+        "content": "<USER_REQUEST>\(brief("cafebabe"))</USER_REQUEST><ADDITIONAL_METADATA/>",
+      ]
+    ])
+    defer { try? FileManager.default.removeItem(atPath: file) }
+    #expect(RoomMarker.contains("cafebabe", inFile: file, vendor: .antigravity))
+  }
+
+  @Test("A launch refused after the reservation leaves the seat free again")
+  func reservation() throws {
+    var room = try room()
+    #expect(
+      room.confirmSession(
+        seat: "claude", projectPath: "/work/armada", sessionID: "s", promptAwaitsSend: false,
+        headless: false) == "Seat claude was not reserved.")
+    #expect(
+      room.noteSession(
+        seat: "claude", projectPath: "/work/armada", sessionID: nil, promptAwaitsSend: false,
+        headless: false) == nil)
+    room.releaseSession(seat: "claude")
+    #expect(room.seats[0].projectPath == nil)
+    #expect(
+      room.noteSession(
+        seat: "claude", projectPath: "/work/armada", sessionID: nil, promptAwaitsSend: false,
+        headless: false) == nil)
+    #expect(
+      room.confirmSession(
+        seat: "claude", projectPath: "/work/armada/web", sessionID: "s", promptAwaitsSend: false,
+        headless: false) == nil)
+    #expect(room.seats[0].projectPath == "/work/armada/web")
+    #expect(room.seats[0].sessionID == "s")
   }
 }
 
@@ -350,10 +453,6 @@ struct RoomNudgePlanTests {
     Room.Seat(
       seat: "seat", vendor: vendor, marker: "abcd1234", projectPath: project, sessionID: session,
       promptAwaitsSend: awaits, headless: headless)
-  }
-
-  private func live(_ vendor: String, live: Bool, headless: Bool = false) -> RoomLive {
-    RoomLive(vendor: vendor, isLive: live, isHeadless: headless)
   }
 
   @Test("A finished seat and a seat that was never started are skipped")
@@ -388,15 +487,15 @@ struct RoomNudgePlanTests {
   func unreachable() {
     #expect(
       RoomNudgePlan.decide(
-        seat: seat(vendor: "antigravity"), done: false, live: live("antigravity", live: true))
+        seat: seat(vendor: "antigravity"), done: false, live: true)
         == .skip("Armada cannot message an Antigravity session."))
     #expect(
-      RoomNudgePlan.decide(seat: seat(vendor: "grok"), done: false, live: live("grok", live: true))
+      RoomNudgePlan.decide(seat: seat(vendor: "grok"), done: false, live: true)
         == .skip("A Grok Build session in a terminal cannot be reached."))
     #expect(
       RoomNudgePlan.decide(
         seat: seat(vendor: "grok", headless: true), done: false,
-        live: live("grok", live: true, headless: true)) == .skip("This seat is still in its turn."))
+        live: true) == .skip("This seat is still in its turn."))
     #expect(
       RoomNudgePlan.decide(seat: seat(vendor: "grok", headless: true), done: false, live: nil)
         == .skip("Armada no longer sees that Grok Build session."))
@@ -405,8 +504,15 @@ struct RoomNudgePlanTests {
         == .skip("That Codex thread is not open."))
     #expect(
       RoomNudgePlan.decide(
-        seat: seat(vendor: "codex"), done: false, live: live("codex", live: false))
+        seat: seat(vendor: "codex"), done: false, live: false)
         == .skip("That Codex thread is not open."))
+  }
+
+  @Test("A vendor this build does not know is named, not taken for Antigravity")
+  func unknownVendor() {
+    #expect(
+      RoomNudgePlan.decide(seat: seat(vendor: "gemini"), done: false, live: true)
+        == .skip("Armada cannot message a gemini session."))
   }
 
   @Test("Claude is nudged even when the fleet has lost it, and a finished headless turn is nudged")
@@ -415,16 +521,16 @@ struct RoomNudgePlanTests {
       RoomNudgePlan.decide(seat: seat(), done: false, live: nil)
         == .send(sessionID: "s1", vendor: .claude))
     #expect(
-      RoomNudgePlan.decide(seat: seat(), done: false, live: live("claude", live: true))
+      RoomNudgePlan.decide(seat: seat(), done: false, live: true)
         == .send(sessionID: "s1", vendor: .claude))
     #expect(
       RoomNudgePlan.decide(
-        seat: seat(vendor: "codex"), done: false, live: live("codex", live: true))
+        seat: seat(vendor: "codex"), done: false, live: true)
         == .send(sessionID: "s1", vendor: .codex))
     #expect(
       RoomNudgePlan.decide(
         seat: seat(vendor: "grok", headless: true), done: false,
-        live: live("grok", live: false, headless: true))
+        live: false)
         == .send(sessionID: "s1", vendor: .grok))
   }
 }

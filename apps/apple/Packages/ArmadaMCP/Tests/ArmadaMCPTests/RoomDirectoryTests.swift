@@ -122,6 +122,23 @@ struct RoomDirectoryTests {
     #expect(try Data(contentsOf: backupURL) == Data("{".utf8))
   }
 
+  @Test("A room a newer build wrote is refused and left where it is")
+  func newerVersion() async throws {
+    let directory = root()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let file = directory.appending(path: "login.json")
+    let newer = Data(#"{"version": 2, "name": "login", "shape": "unknown"}"#.utf8)
+    try newer.write(to: file)
+    let store = RoomDirectory(root: directory)
+    #expect(await store.room("login") == .refused(RoomRules.newer("login")))
+    #expect(await open("login", at: store) == .refused(RoomRules.newer("login")))
+    #expect(try Data(contentsOf: file) == newer)
+    let names = try FileManager.default.contentsOfDirectory(
+      atPath: directory.path(percentEncoded: false))
+    #expect(names == ["login.json"])
+  }
+
   @Test("A room closed more than 7 days ago is deleted on the next open, and a newer one stays")
   func prune() async throws {
     let directory = root()

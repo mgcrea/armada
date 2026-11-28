@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 
 /// One investigation shared by a seat per provider.
 ///
@@ -114,7 +115,9 @@ public struct Room: Sendable, Equatable, Codable {
     return nil
   }
 
-  /// Record where a seat was started. Refuses a seat that already has a project.
+  /// Reserve a seat before its session is launched, so a second start of the same seat, or a
+  /// room closed in between, is refused before anything opens. Refuses a seat that already
+  /// has a project.
   public mutating func noteSession(
     seat: String, projectPath: String, sessionID: String?, promptAwaitsSend: Bool, headless: Bool
   ) -> String? {
@@ -127,6 +130,31 @@ public struct Room: Sendable, Equatable, Codable {
     seats[index].promptAwaitsSend = promptAwaitsSend
     seats[index].headless = headless
     return nil
+  }
+
+  /// What the launch reported, written over the reservation `noteSession` made. Refuses a seat
+  /// that was never reserved.
+  public mutating func confirmSession(
+    seat: String, projectPath: String, sessionID: String?, promptAwaitsSend: Bool, headless: Bool
+  ) -> String? {
+    guard let index = seats.firstIndex(where: { $0.seat == seat }) else {
+      return "Seat \(seat) is not in this room."
+    }
+    if seats[index].projectPath == nil { return "Seat \(seat) was not reserved." }
+    seats[index].projectPath = projectPath
+    seats[index].sessionID = sessionID
+    seats[index].promptAwaitsSend = promptAwaitsSend
+    seats[index].headless = headless
+    return nil
+  }
+
+  /// Undo a reservation whose launch was refused, so the seat can be started again.
+  public mutating func releaseSession(seat: String) {
+    guard let index = seats.firstIndex(where: { $0.seat == seat }) else { return }
+    seats[index].projectPath = nil
+    seats[index].sessionID = nil
+    seats[index].promptAwaitsSend = false
+    seats[index].headless = false
   }
 
   /// `.bound` stores the id when the seat has none. Anything else leaves the seat as it was.
@@ -158,7 +186,7 @@ public struct Room: Sendable, Equatable, Codable {
     if let refusal = RoomRules.questionRefusal(question) { return .failure(RoomRefusal(refusal)) }
     if requested.isEmpty { return .failure(RoomRefusal("Name at least one seat.")) }
     if requested.count > RoomRules.maxSeats {
-      return .failure(RoomRefusal("A room has at most 8 seats."))
+      return .failure(RoomRefusal("A room has at most \(RoomRules.maxSeats) seats."))
     }
 
     var seen: Set<String> = []
@@ -232,12 +260,20 @@ public enum RoomRules {
   public static let maxQuestionCharacters = 2_000
 
   public static let tooManyOpen =
-    "20 rooms are already open. Close one with armada_room_round and close: true."
+    "\(maxOpenRooms) rooms are already open. Close one with armada_room_round and close: true."
 
   public static func unknown(_ name: String) -> String { "Room \(name) is not open." }
 
   public static func unreadable(_ name: String) -> String {
     "Armada could not read rooms/\(name).json or move it aside, so it will not write over it."
+  }
+
+  public static func unreadableNow(_ name: String) -> String {
+    "Armada could not read rooms/\(name).json just now. Try again."
+  }
+
+  public static func newer(_ name: String) -> String {
+    "rooms/\(name).json was written by a newer Armada. Update Armada to use this room."
   }
 
   public static func alreadyOpen(_ name: String) -> String { "Room \(name) is already open." }
@@ -342,7 +378,9 @@ extension Room {
   }
 
   /// One match stores that id. Two or more store nothing. A seat that already has a session,
-  /// or that has not been started, is left alone.
+  /// or that has not been started, is left alone. `containsMarker` means the session's opening
+  /// message holds the marker: the session that opened the room holds every marker too, but
+  /// only in a tool result, so it never matches.
   ///
   /// Paths match on whole components, the way a project contains a working directory. When both
   /// paths exist they are compared with `realpath`; otherwise the strings, without a trailing
@@ -394,33 +432,68 @@ enum RoomPaths {
   }
 }
 
-/// Whether a transcript or rollout holds the seat's marker in its first 64 KiB.
-public enum RoomMarker {
-  public static let limit = 64 * 1024
-
-  /// False when the file cannot be read. The marker is matched as bytes, so a read that ends
-  /// mid-character does not split it.
-  public static func contains(_ marker: String, inFile path: String) -> Bool {
-    guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-    defer { try? handle.close() }
-    guard let data = try? handle.read(upToCount: limit), let needle = marker.data(using: .ascii)
-    else { return false }
-    return data.range(of: needle) != nil
-  }
-}
-
-/// The fleet session a bound seat maps to, when Armada can see it.
+/// Whether a session's opening message holds a seat's marker.
 ///
-/// `live` nil on `decide` means the session is not in the fleet. There is no second flag.
-public struct RoomLive: Sendable, Equatable {
-  public var vendor: String
-  public var isLive: Bool
-  public var isHeadless: Bool
+/// **The opening message, not the file.** The session that called `armada_room_open` has every
+/// brief in a tool result, and a seat's own transcript can quote other markers later on; only
+/// the first message a person (or Armada) sent counts. It sits after the harness's setup, which
+/// in a Codex rollout is about 200 KB of instructions, tools and skills, so the read goes up to
+/// `limit` and stops at the first user message.
+///
+/// **Cached once found.** An opening message never changes, so each file is parsed once and a
+/// poll loop costs a dictionary lookup per session after that.
+public enum RoomMarker {
+  public static let limit = 4 * 1024 * 1024
+  /// The marker is on the brief's second line; the rest of a long first message is not kept.
+  static let keptCharacters = 1_024
+  static let maxCached = 4_096
+  private static let chunk = 256 * 1024
+  private static let cache = Mutex<[String: String]>([:])
 
-  public init(vendor: String, isLive: Bool, isHeadless: Bool) {
-    self.vendor = vendor
-    self.isLive = isLive
-    self.isHeadless = isHeadless
+  /// False when the file cannot be read or has no user message yet.
+  public static func contains(
+    _ marker: String, inFile path: String, vendor: TranscriptTail.Vendor
+  ) -> Bool {
+    openingMessage(inFile: path, vendor: vendor)?.contains(marker) ?? false
+  }
+
+  public static func openingMessage(inFile path: String, vendor: TranscriptTail.Vendor) -> String? {
+    if let cached = cache.withLock({ $0[path] }) { return cached }
+    guard let found = scan(path, vendor: vendor) else { return nil }
+    cache.withLock { cache in
+      if cache.count >= maxCached { cache.removeAll(keepingCapacity: true) }
+      cache[path] = found
+    }
+    return found
+  }
+
+  /// The first user entry `TranscriptTail` reads in the first `limit` bytes. A last line with no
+  /// newline is tried too: it fails to decode while it is being written, and is read again on
+  /// the next pass.
+  static func scan(_ path: String, vendor: TranscriptTail.Vendor) -> String? {
+    guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+    defer { try? handle.close() }
+    var buffer = Data()
+    var consumed = 0
+    while consumed < limit {
+      guard let data = try? handle.read(upToCount: min(chunk, limit - consumed)), !data.isEmpty
+      else { break }
+      consumed += data.count
+      buffer.append(data)
+      while let newline = buffer.firstIndex(of: 0x0A) {
+        let line = buffer[buffer.startIndex..<newline]
+        buffer.removeSubrange(buffer.startIndex...newline)
+        if let text = userText(line, vendor: vendor) { return text }
+      }
+    }
+    return buffer.isEmpty ? nil : userText(buffer, vendor: vendor)
+  }
+
+  private static func userText(_ line: Data, vendor: TranscriptTail.Vendor) -> String? {
+    let entries = TranscriptTail.condense(
+      TranscriptTail.Read(chunk: Data(line), droppingFirstLine: false), vendor: vendor,
+      maxChars: keptCharacters)
+    return entries.first { $0.kind == .user }?.text
   }
 }
 
@@ -428,11 +501,12 @@ public enum RoomNudgePlan: Sendable, Equatable {
   case send(sessionID: String, vendor: SendMessageRequest.Vendor)
   case skip(String)
 
-  /// `done` is `room.done(seat)`: it is derived from posts, not stored on the seat.
+  /// `done` is `room.done(seat)`: it is derived from posts, not stored on the seat. `live` is
+  /// whether the seat's session is live in the fleet, nil when Armada does not see it at all.
   /// Ambiguous seats are skipped before `promptAwaitsSend`, so two matches are reported
   /// even when the opening message is still waiting.
   public static func decide(
-    seat: Room.Seat, done: Bool, live: RoomLive?, ambiguousProject: String? = nil
+    seat: Room.Seat, done: Bool, live: Bool?, ambiguousProject: String? = nil
   ) -> RoomNudgePlan {
     if done { return .skip("This seat has posted done.") }
     if seat.projectPath == nil { return .skip("This seat has not been started.") }
@@ -451,15 +525,15 @@ public enum RoomNudgePlan: Sendable, Equatable {
         return .skip("A Grok Build session in a terminal cannot be reached.")
       }
       guard let live else { return .skip("Armada no longer sees that Grok Build session.") }
-      if live.isLive { return .skip("This seat is still in its turn.") }
+      if live { return .skip("This seat is still in its turn.") }
       return .send(sessionID: sessionID, vendor: .grok)
     case "codex":
-      guard live?.isLive == true else { return .skip("That Codex thread is not open.") }
+      guard live == true else { return .skip("That Codex thread is not open.") }
       return .send(sessionID: sessionID, vendor: .codex)
     case "claude":
       return .send(sessionID: sessionID, vendor: .claude)
     default:
-      return .skip("Armada cannot message an Antigravity session.")
+      return .skip("Armada cannot message a \(seat.vendor) session.")
     }
   }
 }

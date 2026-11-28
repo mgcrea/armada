@@ -1092,6 +1092,7 @@ public enum Tools {
       }
 
       var projectID: String?
+      var projectPath: String?
       let resume = arguments["resume"]?.stringValue?.trimmingCharacters(in: .whitespaces)
       if let resume {
         guard !given(arguments["project"]), !given(arguments["account"]) else {
@@ -1114,8 +1115,20 @@ public enum Tools {
           arguments["project"], in: snapshot.projects, isEntitled: snapshot.isEntitled)
         {
         case .refused(let refusal): return refusal
-        case .found(let found): projectID = found.id
+        case .found(let found):
+          projectID = found.id
+          projectPath = found.path
         }
+      }
+
+      // Reserve the seat before anything opens, so a second start of it, or a room closed in
+      // the meantime, is refused here rather than after a session holding the brief is running.
+      if let roomName, let roomSeat {
+        let reserved = await rooms.attach(
+          RoomAttachment(
+            room: roomName, seat: roomSeat, projectPath: projectPath ?? "", sessionID: nil,
+            promptAwaitsSend: false, headless: headless))
+        if case .refused(let message) = reserved { return .failure(message) }
       }
 
       let outcome = await starter.startSession(
@@ -1126,6 +1139,7 @@ public enum Tools {
 
       switch outcome {
       case .refused(let message):
+        if let roomName, let roomSeat { _ = await rooms.release(roomName, seat: roomSeat) }
         return .failure(message)
       case .started(let started):
         let vendorName =
@@ -1145,7 +1159,7 @@ public enum Tools {
           : "It appears in armada_get_fleet within a few seconds."
         let action = started.resumed ? "resume a" : "start a"
         let on = started.model.map { " on \($0)" } ?? ""
-        let lede =
+        var lede =
           started.headless
           ? "Running a headless \(vendorName) turn in \(started.project) on \(started.account)"
             + "\(on). It appears in armada_get_fleet within a few seconds and ends with its turn."
@@ -1164,12 +1178,18 @@ public enum Tools {
             : "\(started.terminal) was asked to open. Armada does not own the session and has no "
               + "id for it; look for a new session in this project in armada_get_fleet."
         if let roomName, let roomSeat {
-          let attached = await rooms.attach(
+          let confirmed = await rooms.confirm(
             RoomAttachment(
               room: roomName, seat: roomSeat, projectPath: started.path,
               sessionID: started.sessionID, promptAwaitsSend: started.promptAwaitsSend,
               headless: started.headless))
-          if case .refused(let message) = attached { note += " " + message }
+          if case .refused(let message) = confirmed {
+            // The seat is reserved in this project, so it still binds by its marker. Do not
+            // start it again: a second session with the same brief makes it ambiguous.
+            lede +=
+              " The session started, but Armada could not record it on seat \(roomSeat): "
+              + "\(message) Do not start the seat again."
+          }
           if started.promptAwaitsSend {
             note += " The seat stays unbound until the person sends the opening message."
           }
