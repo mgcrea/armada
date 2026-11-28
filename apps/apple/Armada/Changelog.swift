@@ -212,7 +212,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_19_0, v1_18_0, v1_17_0, v1_16_0, v1_15_0]
+  static let releases: [Release] = [v1_20_0, v1_19_0, v1_18_0, v1_17_0, v1_16_0]
+
+  // swift-format-ignore
+  private static let v1_20_0: Release = Release(
+    version: "1.20.0",
+    date: "2026-11-28",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "An account that can't report plan limits now says why.",
+            body: [
+              "A Claude Code account signed in with a long-lived token (`claude setup-token`) gets no plan limits from Claude Code, and Armada used to show \"No usage data yet\" forever. The Usage pane now says the account is signed in with a token, billed by API usage, or signed out, with a Sign In… button that opens `claude auth login` in your terminal for that account. The sidebar and the menu bar show a short note where the meters would be, and an old cached reading is no longer shown for it. `armada_get_usage` reports the reason as `usageUnavailable`.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_19_0: Release = Release(
@@ -355,48 +373,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_15_0: Release = Release(
-    version: "1.15.0",
-    date: "2026-11-25",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Builds in the menu bar.",
-            body: [
-              "While Build Slots is on and anything is queued, the menu bar icon is followed by a filled dot for each build holding a slot and a ring for each one waiting, running builds first. Past five marks a `+` takes over, and the exact count is in the panel. With the queue empty the icon looks as it always did. VoiceOver reads the counts. Settings ▸ Build Slots ▸ Queue has a \"Show builds in the menu bar\" switch, on by default.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "An account that can't report plan limits now says why.",
-            body: [
-              "A Claude Code account signed in with a long-lived token (`claude setup-token`) gets no plan limits from Claude Code, and Armada used to show \"No usage data yet\" forever. The Usage pane now says the account is signed in with a token, billed by API usage, or signed out, with a Sign In… button that opens `claude auth login` in your terminal for that account. The sidebar and the menu bar show a short note where the meters would be, and an old cached reading is no longer shown for it. `armada_get_usage` reports the reason as `usageUnavailable`.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

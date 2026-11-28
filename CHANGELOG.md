@@ -5,10 +5,12 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.19.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.20.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.20.0] - 2026-11-28
+
+**Clearer Claude Code usage status.** Armada explains why a Claude Code account has no plan limits to show and offers a sign-in shortcut when signing in can restore them.
 
 ### Changed
 
