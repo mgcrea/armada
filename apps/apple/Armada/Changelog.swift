@@ -378,6 +378,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "An account that can't report plan limits now says why.",
+            body: [
+              "A Claude Code account signed in with a long-lived token (`claude setup-token`) gets no plan limits from Claude Code, and Armada used to show \"No usage data yet\" forever. The Usage pane now says the account is signed in with a token, billed by API usage, or signed out, with a Sign In… button that opens `claude auth login` in your terminal for that account. The sidebar and the menu bar show a short note where the meters would be, and an old cached reading is no longer shown for it. `armada_get_usage` reports the reason as `usageUnavailable`.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
