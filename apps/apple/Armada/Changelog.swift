@@ -367,6 +367,31 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Agents start sessions in your terminal.",
+            body: [
+              "A session an agent starts through `armada_start_session` opens in your terminal even when you start your own Claude Code sessions in VS Code. A VS Code launch from an agent never reached the project's window unless Armada was the app in front, and in the terminal the agent gets the session's id. The window opens behind the app you are in, so what you are typing cannot land in its command line and stop the session starting. The \"Send an agent's opening message\" setting is gone with it.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Agents can start a whole room at once.",
+            body: [
+              "Instead of one session every ten seconds, agents may start up to eight a minute, enough for every seat of a room.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
