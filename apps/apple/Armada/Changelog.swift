@@ -378,6 +378,31 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Configuring Codex or Grok Build no longer drops a setting you added to Armada's entry.",
+            body: [
+              "When Armada updated its block in `config.toml` (after a new token, or a new port) and the block held something it cannot write back as it was, such as a decimal timeout beside a readable setting under the same name, that value went without a word. The update is now refused by line instead.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A client config holding Armada's token is never readable by another user during a write.",
+            body: [
+              "The new file used to be staged at the default mode, and a swap hands the new file the old one's mode, so a 0644 config held the new token at 0644 until a chmod after the swap. It is now staged 0600, and an existing config is made 0600 before the swap.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

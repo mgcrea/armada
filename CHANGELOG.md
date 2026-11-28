@@ -8,6 +8,23 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.20.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Fixed
+
+- **Configuring Codex or Grok Build no longer drops a setting you added to Armada's entry.** When
+  Armada updated its block in `config.toml` (after a new token, or a new port) and the block held
+  something it cannot write back as it was, such as a decimal timeout beside a readable setting
+  under the same name, that value went without a word. The update is now refused by line instead.
+- **A client config holding Armada's token is never readable by another user during a write.**
+  The new file used to be staged at the default mode, and a swap hands the new file the old one's
+  mode, so a 0644 config held the new token at 0644 until a chmod after the swap. It is now staged
+  0600, and an existing config is made 0600 before the swap.
+
+### Internal
+
+- **swift-mcp-kit 1.11.0**, from 1.10.0, for both fixes above.
+
 ## [1.20.0] - 2026-11-28
 
 **Clearer Claude Code usage status.** Armada explains why a Claude Code account has no plan limits to show and offers a sign-in shortcut when signing in can restore them.
