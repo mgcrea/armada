@@ -64,10 +64,13 @@ the round and sends the fixed sentence to each seat that can be reached and has 
 
 `armada_start_session` gains optional `room` and `seat`, passed together. `prompt` and
 `resume` are refused when they are set. The opening message is the stored brief, not text
-the caller supplies. The starter is not called until the room and the seat have been checked.
+the caller supplies. The starter is not called until the room and the seat have been checked
+and the seat reserved in the project, so a second start of the same seat, or a room closed in
+between, is refused before anything opens. A refused launch releases the reservation; a
+successful one writes what the launch reported over it.
 
-Voice may call `armada_room_read`. Voice is denied the three write tools by name, the same
-way it is denied `armada_send_message`.
+Voice is denied all four room tools by name, the same way it is denied `armada_send_message`.
+`armada_room_read` is denied too: it can block for four minutes and stores seat bindings.
 
 ## The brief and the nudge
 
@@ -105,8 +108,11 @@ Binding exists so a round knows which session to nudge. A seat can post without 
 - Otherwise the seat remembers the project path, the vendor, and whether the opening message
   is waiting for the person to send it (`promptAwaitsSend`). On read and on round, Armada
   looks for one fleet session of that vendor whose directory is that project path or a
-  directory inside it, which is not a Codex subagent, and whose transcript or rollout
-  contains the marker in the first 64 KiB. One match stores the id. Two matches store
+  directory inside it, which is not a Codex subagent, and whose opening message (the first
+  user message, read from up to 4 MiB of the file, past the setup Codex writes first) contains
+  the marker. Only the opening message counts: the session that opened the room holds every
+  marker in a tool result, and must not claim a seat. Files are read only after the vendor
+  and project filter, and an opening message, once found, is cached. One match stores the id. Two matches store
   nothing and the seat is reported as ambiguous. Grok Build has no transcript path on the
   fleet snapshot, so a Grok seat binds only from the id start returned.
 
