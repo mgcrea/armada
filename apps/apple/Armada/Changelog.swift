@@ -373,17 +373,40 @@ nonisolated enum Changelog {
     date: "",
     sections: [
       Section(
-        name: "Changed",
+        name: "Added",
         lead: [],
         entries: [
           Entry(
             ordinal: 0,
+            headline: "One-click MCP setup for Grok Build.",
+            body: [
+              "Settings ▸ MCP Server and the MCP toolbar popover list Grok Build, and Configure adds Armada to `~/.grok/config.toml`. Grok Build could already reach Armada through Claude Code's `~/.claude.json`; its own entry takes precedence, so it keeps working whichever Claude account is configured.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Settings ▸ Supervisor is now Settings ▸ MCP Server.",
+            body: [
+              "Any agent on your Mac can reach the server, so the pane is named for it: Server, Access (Allow writes and message delivery), Clients, then Supervisor, which starts a Claude Code session attached to the server.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "New Session offers the supervisor only while the MCP server runs.",
+            body: [
+              "With the server off, Claude Code's New Session is a plain button, like Codex's and Grok Build's, instead of a menu holding a greyed-out item.",
+            ]),
+          Entry(
+            ordinal: 3,
             headline: "Agents start sessions in your terminal.",
             body: [
               "A session an agent starts through `armada_start_session` opens in your terminal even when you start your own Claude Code sessions in VS Code. A VS Code launch from an agent never reached the project's window unless Armada was the app in front, and in the terminal the agent gets the session's id. The window opens behind the app you are in, so what you are typing cannot land in its command line and stop the session starting. The \"Send an agent's opening message\" setting is gone with it.",
             ]),
           Entry(
-            ordinal: 1,
+            ordinal: 4,
             headline: "Agents can start a whole room at once.",
             body: [
               "Instead of one session every ten seconds, agents may start up to eight a minute, enough for every seat of a room.",

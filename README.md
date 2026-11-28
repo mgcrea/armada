@@ -123,8 +123,8 @@ records what was used, not what it cost.
 
 ## Supervise the fleet
 
-Settings ▸ Supervisor turns on an MCP server inside Armada and starts a Claude Code session with it
-attached. That session is the chat: ask it which sessions need you, what one of them is doing, what
+Settings ▸ MCP Server turns on an MCP server inside Armada, which any agent on this Mac can reach, and
+its Supervisor section starts a Claude Code session with it attached. That session is the chat: ask it which sessions need you, what one of them is doing, what
 it last said, or how much of each plan is left, and it answers from what Armada already holds.
 
 The server is off until you turn it on, listens on 127.0.0.1 only, and answers only a token kept in

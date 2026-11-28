@@ -10,7 +10,21 @@ rendered from this file, which is the curated summary. `### Internal` sections a
 
 ## [Unreleased]
 
+### Added
+
+- **One-click MCP setup for Grok Build.** Settings ▸ MCP Server and the MCP toolbar popover list
+  Grok Build, and Configure adds Armada to `~/.grok/config.toml`. Grok Build could already reach
+  Armada through Claude Code's `~/.claude.json`; its own entry takes precedence, so it keeps
+  working whichever Claude account is configured.
+
 ### Changed
+
+- **Settings ▸ Supervisor is now Settings ▸ MCP Server.** Any agent on your Mac can reach the
+  server, so the pane is named for it: Server, Access (Allow writes and message delivery),
+  Clients, then Supervisor, which starts a Claude Code session attached to the server.
+- **New Session offers the supervisor only while the MCP server runs.** With the server off,
+  Claude Code's New Session is a plain button, like Codex's and Grok Build's, instead of a menu
+  holding a greyed-out item.
 
 - **Agents start sessions in your terminal.** A session an agent starts through
   `armada_start_session` opens in your terminal even when you start your own Claude Code sessions
@@ -20,6 +34,11 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   starting. The "Send an agent's opening message" setting is gone with it.
 - **Agents can start a whole room at once.** Instead of one session every ten seconds, agents may
   start up to eight a minute, enough for every seat of a room.
+
+### Internal
+
+- swift-mcp-kit 1.10.0. The client rows and their wiring are now the kit's (`MCPKitUI`), and
+  Armada's own copies, `AntigravityWiring` included, are gone.
 
 ## [1.18.0] - 2026-11-28
 

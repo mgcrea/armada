@@ -34,7 +34,7 @@ here has been measured against the interactive TUI yet, and the gaps are listed 
 ## Armada's delivery hook inside Grok
 
 Grok reads hooks from `~/.claude/settings.json` by default (`[compat.claude] hooks`, or
-`GROK_CLAUDE_HOOKS_ENABLED`), so the `asyncRewake` Stop hook that Settings > Supervisor >
+`GROK_CLAUDE_HOOKS_ENABLED`), so the `asyncRewake` Stop hook that Settings > MCP Server >
 Deliver messages installs runs in every Grok session. Grok has no `asyncRewake`, so the hook
 runs as a blocking Stop gate. Grok's input also carries Claude's snake_case keys next to its own:
 

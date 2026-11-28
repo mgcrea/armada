@@ -13,7 +13,7 @@ import Observation
 /// and holds the text the card shows.
 ///
 /// **Voice reads the fleet the way the Terminal supervisor does**, through the MCP server in
-/// Settings ▸ Supervisor, so it needs that server running. It never starts it: turning on a
+/// Settings ▸ MCP Server, so it needs that server running. It never starts it: turning on a
 /// listening socket stays a switch the person flips.
 @MainActor @Observable
 final class VoiceController {
@@ -25,7 +25,7 @@ final class VoiceController {
 
     var errorDescription: String? {
       switch self {
-      case .serverOff: "Turn on the MCP server in Settings ▸ Supervisor first."
+      case .serverOff: "Turn on the MCP server in Settings ▸ MCP Server first."
       case .noToken(let reason):
         "Armada could not read the MCP server's token" + (reason.map { ": \($0)" } ?? ".")
       case .noAccount: "Armada found no Claude account to answer with."

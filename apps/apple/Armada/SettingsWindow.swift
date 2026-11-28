@@ -19,7 +19,7 @@ import SwiftUI
 /// `MouseBindingRow`'s Detect.
 ///
 /// Four sections, one more than Bastion and Cupertino have. The first is what
-/// Armada watches and does: General, Supervisor, Build Slots, Usage, Archive.
+/// Armada watches and does: General, MCP Server, Build Slots, Usage, Archive.
 ///
 /// Mouse and Voice are the second, and they are Armada's one extra split: both are
 /// ways of driving it from outside its windows, a button press or a shortcut and a
@@ -36,7 +36,7 @@ import SwiftUI
 /// receipt, never to tune something.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
-  case supervisor
+  case mcpServer
   case buildSlots
   case usage
   case archive
@@ -51,7 +51,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var title: LocalizedStringKey {
     switch self {
     case .general: "General"
-    case .supervisor: "Supervisor"
+    case .mcpServer: "MCP Server"
     case .buildSlots: "Build Slots"
     case .usage: "Usage"
     case .archive: "Archive"
@@ -68,7 +68,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   var systemImage: String {
     switch self {
     case .general: "gearshape"
-    case .supervisor: "binoculars"
+    case .mcpServer: "server.rack"
     case .buildSlots: "hammer"
     case .usage: "gauge.with.dots.needle.bottom.50percent"
     case .archive: "archivebox"
@@ -84,7 +84,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   var group: SettingsPaneGroup {
     switch self {
-    case .general, .supervisor, .buildSlots, .usage, .archive: .configuration
+    case .general, .mcpServer, .buildSlots, .usage, .archive: .configuration
     case .mouse, .voice: .input
     case .whatsNew, .updates, .about, .help: .information
     case .licence: .entitlement
@@ -123,7 +123,7 @@ struct SettingsWindowView: View {
     SettingsScaffold(selection: Support.settings) { pane in
       switch pane {
       case .general: GeneralPane()
-      case .supervisor: SupervisorPane()
+      case .mcpServer: MCPServerPane()
       case .buildSlots: BuildSlotsPane()
       case .usage: UsageSettingsPane()
       case .archive: ArchivePane()
@@ -232,7 +232,7 @@ struct GeneralPane: View {
         }
       } footer: {
         Text(
-          "Armada watches sessions whenever it is licensed or in a trial. It writes to your Claude configuration only to mark a saved project trusted when it starts a session there, and to add one hook per account if you turn on Deliver messages in Supervisor."
+          "Armada watches sessions whenever it is licensed or in a trial. It writes to your Claude configuration only to mark a saved project trusted when it starts a session there, and to add one hook per account if you turn on Deliver messages in MCP Server."
         )
       }
 

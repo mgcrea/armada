@@ -18,7 +18,7 @@
 #
 # The second allowance is the supervisor's MCP endpoint, and it is a listening
 # socket rather than a connection: swift-mcp-kit's loopback listener, never
-# constructed until Settings ▸ Supervisor switches it on, bound to 127.0.0.1 and
+# constructed until Settings ▸ MCP Server switches it on, bound to 127.0.0.1 and
 # nothing else. It uses the POSIX socket calls, which the symbol sweep cannot deny
 # because local IPC shares them, so its allowance is asserted where the socket is
 # made instead: see "Loopback" below.
@@ -406,10 +406,10 @@ if [ "$status" -eq 0 ]; then
   if [ "$saw_sparkle" -eq 1 ]; then
     echo "  Armada opens exactly one connection of its own: the update check, to"
     echo "  armada.mgcrea.io, and only once you turn it on. It listens on one socket: the"
-    echo "  MCP endpoint, on 127.0.0.1 only, and only while Settings ▸ Supervisor has it on."
+    echo "  MCP endpoint, on 127.0.0.1 only, and only while Settings ▸ MCP Server has it on."
   else
     echo "  Armada opens no connection of its own. It listens on one socket: the MCP"
-    echo "  endpoint, on 127.0.0.1 only, and only while Settings ▸ Supervisor has it on."
+    echo "  endpoint, on 127.0.0.1 only, and only while Settings ▸ MCP Server has it on."
   fi
   echo "  Nothing it reads leaves this Mac unless you point an agent at that endpoint."
   if [ "$saw_speech" -eq 1 ]; then

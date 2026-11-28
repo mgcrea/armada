@@ -79,9 +79,11 @@ struct VoicePane: View {
       }
       if enabled {
         if server.runningPort == nil {
-          Text("Turn on the MCP server in Supervisor first. Voice reads your sessions through it.")
-            .font(.caption)
-            .foregroundStyle(.orange)
+          Text(
+            "Turn on the MCP server in Settings ▸ MCP Server first. Voice reads your sessions through it."
+          )
+          .font(.caption)
+          .foregroundStyle(.orange)
         }
         if !monitor.current.isEntitled {
           Text("Armada has no licence and no trial running, so voice is off.")

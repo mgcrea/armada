@@ -2,6 +2,7 @@ import ArmadaMCP
 import Foundation
 import MCPKit
 import MCPKitLoopback
+import MCPKitUI
 import Observation
 import os
 
@@ -9,14 +10,14 @@ import os
 ///
 /// **One reconciler, `sync()`**, rather than start and stop calls scattered through views —
 /// Almanac's shape. Two things decide whether the socket should be bound: the switch in
-/// Settings ▸ Supervisor, and the entitlement. A second place that could bind the socket
+/// Settings ▸ MCP Server, and the entitlement. A second place that could bind the socket
 /// would be a second place that could leave it bound after the switch was turned off.
 ///
 /// **Off by default, and never constructed until switched on.** An Armada nobody has pointed
 /// at this has no listener object at all, the same property the updater has. The listener
 /// binds 127.0.0.1 and nothing else — the kit makes the interface unconfigurable. Eleven tools
 /// read. The nine that act (`Tools.writeTools`) sit behind the kit's write gate, and `allowWrites` is the
-/// Allow writes switch in Settings ▸ Supervisor, read from defaults on every request so the
+/// Allow writes switch in Settings ▸ MCP Server, read from defaults on every request so the
 /// switch needs no restart and cannot drift from the listener.
 ///
 /// **Threading.** The listener serves each request on a connection thread of its own. The

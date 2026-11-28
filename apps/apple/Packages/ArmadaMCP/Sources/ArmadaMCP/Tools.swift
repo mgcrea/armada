@@ -1717,7 +1717,7 @@ public enum Tools {
           "Put a message in front of a running Claude Code session or open Codex thread. An idle "
           + "one starts a turn on it within seconds; a busy one reads it when its turn ends. The "
           + "session sees it labelled as coming from a supervisor agent through Armada, not from "
-          + "the person. Needs Settings ▸ Supervisor to deliver messages. A headless Grok Build "
+          + "the person. Needs Settings ▸ MCP Server to deliver messages. A headless Grok Build "
           + "session whose turn has ended gets the message as its next headless turn. Grok Build "
           + "sessions in a terminal, Antigravity sessions, closed Codex threads and Codex "
           + "subagents cannot be reached.",

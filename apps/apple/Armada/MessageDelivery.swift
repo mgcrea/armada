@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import os
 
-/// Settings ▸ Supervisor ▸ Deliver messages: the switch that puts `MessageHook` into every Claude
+/// Settings ▸ MCP Server ▸ Deliver messages: the switch that puts `MessageHook` into every Claude
 /// Code account's `settings.json`, and takes it out again.
 ///
 /// **Off by default, and the second write Armada makes to a vendor's configuration.** On, each

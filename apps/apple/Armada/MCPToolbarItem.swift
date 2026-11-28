@@ -4,7 +4,7 @@ import MCPKitWiring
 import SwiftUI
 
 /// The supervisor's MCP server in the main window's toolbar: swift-mcp-kit's button, fed from
-/// Settings ▸ Supervisor's switch, the entitlement and the controller. The server is otherwise
+/// Settings ▸ MCP Server's switch, the entitlement and the controller. The server is otherwise
 /// a pane deep in Settings, where nobody who does not already know it is there looks.
 ///
 /// Its setup is Armada's own client rows rather than the kit's copy-and-paste: Armada is not
@@ -28,12 +28,12 @@ struct MCPToolbarItem: View {
           ? "Agents can read the fleet, and start, message and close sessions."
           : "Agents can read the fleet, and start nothing. Allow writes in Settings."),
       unavailableSettingsTitle: "Licence…",
-      openSettings: openSupervisor
+      openSettings: openMCPServer
     ) { _ in
       // Never in a capture: each row reads that client's real config on this Mac.
       if !ScreenshotMode.isEnabled {
         VStack(alignment: .leading, spacing: 8) {
-          ForEach(wiring.clients) { MCPClientRow(client: $0) }
+          ForEach(wiring.clients) { ArmadaClientRow(client: $0) }
         }
       }
     } unavailable: {
@@ -44,7 +44,7 @@ struct MCPToolbarItem: View {
   }
 
   /// The switch, which also brings the listener into line: the controller binds nothing until
-  /// `sync()` is called, as Settings ▸ Supervisor does when its own copy moves.
+  /// `sync()` is called, as Settings ▸ MCP Server does when its own copy moves.
   private var isEnabled: Binding<Bool> {
     Binding(
       get: { enabled },
@@ -54,7 +54,7 @@ struct MCPToolbarItem: View {
       })
   }
 
-  private func openSupervisor() {
-    AppDelegate.shared?.showSettings(monitor.current.isEntitled ? .supervisor : .licence)
+  private func openMCPServer() {
+    AppDelegate.shared?.showSettings(monitor.current.isEntitled ? .mcpServer : .licence)
   }
 }

@@ -140,7 +140,7 @@ final class NewSessionLauncher {
   }
 
   /// Start a Claude Code session with Armada's MCP server attached, which is all a
-  /// supervisor is. See `NewSession.Supervisor` and `SupervisorPane`.
+  /// supervisor is. See `NewSession.Supervisor` and `MCPServerPane`.
   ///
   /// Refuses rather than starting a plain session when the server is off: a supervisor with
   /// no server answers every question about the fleet with a connection error, which is a
@@ -149,7 +149,7 @@ final class NewSessionLauncher {
     let controller = MCPServerController.shared
     guard let port = controller.runningPort else {
       failure =
-        "Turn on the MCP server in Settings ▸ Supervisor first. The supervisor reads your sessions through it."
+        "Turn on the MCP server in Settings ▸ MCP Server first. The supervisor reads your sessions through it."
       return
     }
     let token = controller.token
@@ -209,7 +209,7 @@ final class NewSessionLauncher {
 
 extension View {
   /// The alert a failed launch shows, attached once per window: the main window, and
-  /// Settings ▸ Supervisor.
+  /// Settings ▸ MCP Server.
   func newSessionFailureAlert() -> some View {
     modifier(NewSessionFailureAlert())
   }

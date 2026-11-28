@@ -234,7 +234,7 @@ nonisolated struct MessageSenderBridge: MessageSender {
       return "Armada has no licence and no trial running, so it sends nothing."
     }
     guard MessageDelivery.isEnabled else {
-      return "Message delivery is off. The person turns it on in Armada's Settings ▸ Supervisor ▸ "
+      return "Message delivery is off. The person turns it on in Armada's Settings ▸ MCP Server ▸ "
         + "Deliver messages to sessions."
     }
     return Tools.messageRefusal(request.text)
@@ -253,7 +253,7 @@ nonisolated struct MessageSenderBridge: MessageSender {
       guard MessageDelivery.shared.isInstalled(accountID: account.id) else {
         return .refused(
           "The message hook is not installed in \(account.displayName)'s settings, so "
-            + "\(session.displayName) cannot receive messages. Settings ▸ Supervisor says why.")
+            + "\(session.displayName) cannot receive messages. Settings ▸ MCP Server says why.")
       }
       if let last = lastSent[session.id], now.timeIntervalSince(last) < throttle {
         return .refused("A message went to \(session.displayName) a moment ago. Wait a moment.")

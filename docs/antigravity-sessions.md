@@ -152,7 +152,7 @@ it did, since the input carries `hookEventName`.
 `agy mcp add` writes `~/.gemini/config/mcp_config.json` under `mcpServers` using Windsurf's
 `serverUrl` + `headers` shape, but `agy 1.5.18` also reads `type`/`url`/`headers` and sends
 `Authorization: Bearer …` on `initialize` and `tools/list` (measured against a loopback probe in
-Bastion). Settings ▸ Supervisor wires Armada there directly through `MCPKitWiring`, keeping a
+Bastion). Settings ▸ MCP Server wires Armada there directly through `MCPKitWiring`, keeping a
 `.armada-backup` copy beside the file and writing it `0600`. `agy mcp disable` adds
 `disabled: true` beside Armada's keys, which `WiringMerge` leaves intact on later rewires. Note
 that any `agy mcp add`, `enable` or `disable` rewrites `mcp_config.json` with mode `0644` until

@@ -48,7 +48,7 @@ nonisolated enum MessageHook {
   static let script = """
     #!/bin/zsh
     # Armada: delivers a message a supervisor agent sent to this Claude Code session.
-    # Installed as an asyncRewake Stop hook by Armada's Settings > Supervisor > Deliver messages,
+    # Installed as an asyncRewake Stop hook by Armada's Settings > MCP Server > Deliver messages,
     # and removed by turning that off. It reads only files Armada wrote for this session and
     # prints them; it runs nothing it reads.
     emulate -L zsh

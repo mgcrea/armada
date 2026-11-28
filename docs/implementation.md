@@ -36,7 +36,7 @@ suite; what CI gates on is listed in the [README](../README.md#working-on-it).
   (`ClaudeTrust`), so the session opens without the trust dialog; it is the one write to a
   vendor's folder. The pane also shows the tokens spent there, from a ledger the usage index
   builds in the background over every transcript and rollout (`usage-index.sqlite`).
-- **Supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ Supervisor) with eleven read
+- **MCP server and supervisor**, opt-in: an MCP server on `127.0.0.1` (Settings ▸ MCP Server) with eleven read
   tools (one, `armada_wait`, a long poll) and, behind its Allow writes switch, nine tools: `armada_start_session`, `armada_close_session`, `armada_send_message`, `armada_focus_session`, `armada_save_schedule`, `armada_delete_schedule`, `armada_room_open`, `armada_room_post` and `armada_room_round`; and
   a Start Supervisor Session button that opens an ordinary Claude Code session with that
   server attached, its read tools pre-allowed (never the start or close tool), and a brief. The session is the chat: ask it
@@ -128,7 +128,7 @@ transcripts, separate rate limits.
 | `SessionStarter` (package) / `SessionStarterBridge` | `armada_start_session`'s door: one main-actor hop that re-checks the project, resolves the account, throttles and launches; mints the `--session-id` for a terminal launch, and for `resume` refuses a live or recently written session and finds the account and folder from the transcript |
 | `MessageSender` (package) / `MessageSenderBridge` | `armada_send_message`'s door: checks the switch, the session and its account's hook on the main actor, writes the labelled message into the session's inbox, and watches it for three seconds to say delivered or why it is queued |
 | `MessageHook` | the Stop hook's script and command, and the byte-level edit that adds or removes it in a `settings.json`; `make unit` runs the real script |
-| `MessageDelivery` / `SessionInbox` | Settings ▸ Supervisor ▸ Deliver messages: writes the script, syncs every account's `settings.json` to the switch at launch and on change; the inbox a message is written to, and whether a hook is listening |
+| `MessageDelivery` / `SessionInbox` | Settings ▸ MCP Server ▸ Deliver messages: writes the script, syncs every account's `settings.json` to the switch at launch and on change; the inbox a message is written to, and whether a hook is listening |
 | `SessionCloser` (package) / `SessionCloserBridge` | `armada_close_session`'s door: one main-actor hop that re-checks the session's state and ties its pid to it by start time, then `SIGTERM`, a wait, and `SIGKILL` for one still there |
 | `RecentSessions` / `RecentSessionsSection` / `SessionResume` | a project's Recently ended: a filter over the ledger's `sessions` rows by the stats' own ownership rule (`make unit` checks it), titles read from each transcript's tail off the main actor, a click to read, a button to resume and a right-click to continue on another account through `TranscriptHandover`; `SessionResume.prepare` is the not-live, not-just-written, folder-in-a-saved-project check, shared with `armada_start_session`'s resume, with typed refusals each caller words |
 | `SessionHistory` / `SessionHistoryList` / `SessionHistoryDetail` | an account's History: the ledger's `sessions` rows with no process behind them (`make unit` checks the filter, the day cut, the search and the count), transcripts found by one listing of each account's `projects/` folders, titles read off the main actor in batches and cached by path and write date; the detail reads the last reply from a 512KB tail and reuses Recently ended's Resume and Continue on (`SessionResumer`, whose `continueElsewhereReporting` is the batch's) |
@@ -138,7 +138,7 @@ transcripts, separate rate limits.
 | `ArmadaMCP` (package) | the twenty tools, `FleetSource` and its snapshot types, `SessionStarter`, `SessionCloser`, `SessionFocuser`, `ScheduleStore`, `RoomStore`, the transcript condenser; `make -C apps/apple test` |
 | `FleetBridge` | the one main-actor door from a tool call to `Accounts` and `CodexAccounts` |
 | `MCPServerController` | the loopback listener, its Keychain token, and when it runs |
-| `SupervisorPane` | Settings ▸ Supervisor: the switch, the port, the supervisor launch, client snippets |
+| `MCPServerPane` | Settings ▸ MCP Server: the switch, the port, what an agent may do, the client rows, the supervisor launch |
 | `SupervisorMCPConfig` | the 0600 MCP configuration both supervisors are started with |
 | `ArmadaSupervisor` (package) | voice's decisions with no audio or UI: stream-json decoding, the voice `claude`'s arguments, sentence chunking and Kokoro's phoneme splitting, the stored voice choice, the silence rule, the shortcut reducer; `make -C apps/apple test` |
 | `VoiceController` | voice's coordinator: performs `VoiceTurn`'s effects, holds what the card shows, starts and resumes the voice `claude` |
@@ -526,7 +526,7 @@ ls -A ~/.codex/thread-writer-locks/                        # live sessions, minu
 tail -c 65536 <rollout>.jsonl | grep '"token_count"' | tail -1 \
   | jq .payload.rate_limits                                # the figures the header shows
 
-# The MCP endpoint, with Settings ▸ Supervisor switched on:
+# The MCP endpoint, with Settings ▸ MCP Server switched on:
 curl -s -H "Authorization: Bearer <token>" http://127.0.0.1:8790/health   # 200 and the versions
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8790/health    # 401 without the token
 log stream --predicate 'subsystem == "io.mgcrea.armada" && category == "mcp"'  # a line per call
@@ -545,7 +545,7 @@ curl -s http://127.0.0.1:8790/mcp -H "Authorization: Bearer <token>" \
 # Same headers as above plus -H 'Mcp-Name: armada_wait', and in the body
 # "method":"tools/call","params":{"name":"armada_wait","arguments":{"timeout_seconds":5},"_meta":{...}}
 
-# Message delivery, with Settings ▸ Supervisor ▸ Deliver messages on:
+# Message delivery, with Settings ▸ MCP Server ▸ Deliver messages on:
 grep -c deliver-message ~/.claude*/settings.json          # 1 per account; 0 once it is off
 ls ~/Library/Application\ Support/io.mgcrea.armada.debug/inbox   # a folder per session that has had a turn
 pgrep -lf deliver-message.zsh                             # one waiting hook per live session, no more
@@ -588,7 +588,7 @@ dot must show only while the card says it is listening. A screenshot taken while
 up must not contain it.
 
 To point a session in this repo at the endpoint rather than starting a supervisor, put the
-JSON snippet from Settings ▸ Supervisor in `.mcp.json` at the root. It carries the bearer
+JSON snippet from Settings ▸ MCP Server in `.mcp.json` at the root. It carries the bearer
 token, which is why `.gitignore` lists it beside the secrets. Claude Code shows a project
 `.mcp.json` server as pending until it is approved, and connects to it only after that.
 

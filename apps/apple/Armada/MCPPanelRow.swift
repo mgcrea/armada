@@ -31,9 +31,9 @@ struct MCPPanelRow: View {
       activity: controller.activity, now: now)
     if Self.shows(status), !ScreenshotMode.isEnabled {
       Divider()
-      PanelRow(help: "Open Settings ▸ Supervisor") {
+      PanelRow(help: "Open Settings ▸ MCP Server") {
         MenuBarPanel.dismiss()
-        AppDelegate.shared?.showSettings(.supervisor)
+        AppDelegate.shared?.showSettings(.mcpServer)
       } label: {
         HStack(spacing: 6) {
           Image(systemName: "circle.fill")

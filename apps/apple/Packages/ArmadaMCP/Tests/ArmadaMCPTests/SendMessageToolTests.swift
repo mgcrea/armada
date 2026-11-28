@@ -129,9 +129,9 @@ struct SendMessageToolTests {
   @Test("The app's refusal comes back word for word")
   func appRefusal() async {
     let sender = FakeMessageSender()
-    sender.outcome = .refused("Turn on message delivery in Settings ▸ Supervisor first.")
+    sender.outcome = .refused("Turn on message delivery in Settings ▸ MCP Server first.")
     let result = await call(["session": "Docs", "text": "hi"], sender: sender)
     #expect(result.isError)
-    #expect(result.text == "Turn on message delivery in Settings ▸ Supervisor first.")
+    #expect(result.text == "Turn on message delivery in Settings ▸ MCP Server first.")
   }
 }

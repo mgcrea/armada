@@ -82,7 +82,7 @@ nonisolated enum NewSession {
   }
 
   /// What turns an ordinary Claude Code launch into a supervisor: Armada's MCP server
-  /// attached, its tools pre-allowed, and a brief. See `SupervisorPane`.
+  /// attached, its tools pre-allowed, and a brief. See `MCPServerPane`.
   ///
   /// **Nothing is written to the account's configuration**, which is the property the rest
   /// of this file keeps. The server arrives through `--mcp-config`, naming a file in this

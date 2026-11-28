@@ -34,9 +34,12 @@ struct NewSessionToolbarItem: ToolbarContent {
 /// folder's own sessions still offer "New Session in <project>" on their right-click, and
 /// the Projects pane starts one in any saved project.
 ///
-/// **A split button on Claude Code**: a click picks a folder, and the menu beside it adds
-/// the supervisor. Codex and Grok Build have no supervisor, and a menu of one item is a
-/// button with an extra click, so they get the button.
+/// **A split button on Claude Code while the MCP server runs**: a click picks a folder, and
+/// the menu beside it adds the supervisor. Codex and Grok Build have no supervisor, and a menu
+/// of one item is a button with an extra click, so they get the button — and so does Claude
+/// Code while the server is off. The item used to stay there disabled, "(needs the MCP
+/// server)", in front of everyone who runs the server for other agents or not at all; the
+/// supervisor is now offered where the server is, in Settings ▸ MCP Server.
 private struct NewSessionButton: View {
   let agent: NewSession.Agent
   let suggestion: URL?
@@ -52,17 +55,14 @@ private struct NewSessionButton: View {
 
   @ViewBuilder private var control: some View {
     // Claude only: the supervisor is a Claude Code session, and the home folder because it
-    // belongs to no one project. Settings ▸ Supervisor offers a folder picker.
-    if case .claude(let folder) = agent {
+    // belongs to no one project. Settings ▸ MCP Server offers a folder picker.
+    if case .claude(let folder) = agent, mcp.runningPort != nil {
       Menu {
         Button("From Folder…") { chooseFolder() }
-        // The reason in the item's own name, because a disabled menu item never shows its
-        // tooltip, and the overview's footer that used to say it is gone.
-        Button(supervisorTitle) {
+        Button("Supervisor Session") {
           launcher.startSupervisor(
             on: folder, in: FileManager.default.homeDirectoryForCurrentUser)
         }
-        .disabled(mcp.runningPort == nil)
       } label: {
         label
       } primaryAction: {
@@ -75,10 +75,6 @@ private struct NewSessionButton: View {
         label
       }
     }
-  }
-
-  private var supervisorTitle: String {
-    mcp.runningPort == nil ? "Supervisor Session (needs the MCP server)" : "Supervisor Session"
   }
 
   private var label: some View {

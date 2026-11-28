@@ -114,7 +114,7 @@ final class SessionClosing {
 
 extension View {
   /// The question before a busy session is closed and the alert for one that was not, attached
-  /// once per window: the main window, and Settings ▸ Supervisor.
+  /// once per window: the main window, and Settings ▸ MCP Server.
   func sessionClosingAlerts() -> some View {
     modifier(SessionClosingAlerts())
   }

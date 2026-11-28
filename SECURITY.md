@@ -33,7 +33,7 @@ Three properties, each of which is checkable rather than asserted:
   signature.
 
   The one socket it listens on is the supervisor's MCP endpoint, and only once you turn it on
-  in Settings ▸ Supervisor. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
+  in Settings ▸ MCP Server. It is swift-mcp-kit's listener, bound to `127.0.0.1` and not
   configurable to anything else, answering only a 256-bit bearer token kept in the Keychain,
   and eleven of its twenty tools are read-only. The other nine are listed and callable only while
   Allow writes is on, which it is not by default, and none is pre-allowed. `armada_start_session`
@@ -69,12 +69,13 @@ Three properties, each of which is checkable rather than asserted:
   removed when you turn it off (see Messaging); a copied transcript when you continue a Claude
   Code session on another account, which refuses rather than overwrite a different conversation;
   and Armada's own MCP entry in a Claude Code account's `.claude.json`, Codex's `config.toml`,
-  Antigravity CLI's `~/.gemini/config/mcp_config.json`, Cursor's `~/.cursor/mcp.json`, or VS
-  Code's `mcp.json` when you press Configure in Settings ▸ Supervisor, with the previous file kept
+  Grok Build's `~/.grok/config.toml`, Antigravity CLI's `~/.gemini/config/mcp_config.json`,
+  Cursor's `~/.cursor/mcp.json`, or VS
+  Code's `mcp.json` when you press Configure in Settings ▸ MCP Server, with the previous file kept
   beside it as a backup and someone else's `armada` entry never replaced without asking; and a
   Codex automation's `automation.toml` when an agent saves or deletes a schedule over MCP while
-  Allow writes is on (see In scope). Grok Build's folders and `~/.gemini/antigravity-cli` are
-  only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
+  Allow writes is on (see In scope). Grok Build's folders, its `config.toml` aside, and
+  `~/.gemini/antigravity-cli` are only read. Beyond those, the only things it writes anywhere are its own preferences; its usage history, saved projects
   and token ledger (`usage-history.json`, `projects.json`, `usage-index.sqlite`) in Application
   Support; and a session startup script in its own temporary directory — beside which a
   supervisor session's MCP configuration, or an agent-started session's opening message, is
@@ -274,7 +275,7 @@ delivers messages can steer every Claude Code session on the Mac.
 
 What stands in front of it:
 
-- **Three switches, all off by default.** The MCP server, Allow writes, and Settings ▸ Supervisor
+- **Three switches, all off by default.** The MCP server, Allow writes, and Settings ▸ MCP Server
   ▸ Deliver messages to sessions. Only the last installs anything, and turning it off removes it.
 - **One hook per account, and nothing else in the file.** Turning delivery on adds one
   `asyncRewake` Stop hook to each Claude Code account's `settings.json`, as a byte-level edit that

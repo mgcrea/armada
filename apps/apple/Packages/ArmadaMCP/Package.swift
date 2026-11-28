@@ -22,7 +22,7 @@ let package = Package(
     .library(name: "ArmadaMCP", targets: ["ArmadaMCP"])
   ],
   dependencies: [
-    .package(url: "https://github.com/mgcrea/swift-mcp-kit.git", .upToNextMinor(from: "1.8.1"))
+    .package(url: "https://github.com/mgcrea/swift-mcp-kit.git", .upToNextMinor(from: "1.10.0"))
   ],
   targets: [
     .target(
@@ -30,8 +30,8 @@ let package = Package(
       dependencies: [
         .product(name: "MCPKit", package: "swift-mcp-kit"),
         .product(name: "MCPKitLoopback", package: "swift-mcp-kit"),
-        // Used by `AntigravityWiring` and re-exported into the app target, which links only
-        // `ArmadaMCP`, for `MCPClientWiring`.
+        // Not imported here: the app target links `ArmadaMCP` and `MCPKitUI`, and reaches
+        // `MCPKitWiring` through them for its client list (`MCPClients.swift`).
         .product(name: "MCPKitWiring", package: "swift-mcp-kit"),
       ]),
     .testTarget(

@@ -3,7 +3,7 @@ import Foundation
 /// The one door from a tool to putting text in front of a running session.
 ///
 /// **Only reachable past the kit's write gate**, like `SessionStarter` and `SessionCloser`, and
-/// in the app only while Settings ▸ Supervisor delivers messages, which installs the hook that
+/// in the app only while Settings ▸ MCP Server delivers messages, which installs the hook that
 /// picks them up in Claude Code. The tool has already found the session, refused a Grok Build TUI
 /// session or one mid-turn and a Codex thread that is closed or a subagent, and vetted the text; the app checks again, because
 /// it is the side that writes the message.

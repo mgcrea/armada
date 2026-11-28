@@ -11,7 +11,7 @@ import Foundation
 /// - `--strict-mcp-config` with the one `--mcp-config` file loads Armada's server and none
 ///   of the person's own.
 /// - `--allowedTools` names the read tools one by one, plus `armada_start_session` and
-///   `armada_focus_session` only while Settings ▸ Supervisor allows writes. `--disallowedTools`
+///   `armada_focus_session` only while Settings ▸ MCP Server allows writes. `--disallowedTools`
 ///   names `armada_close_session`, `armada_send_message`, `armada_save_schedule`,
 ///   `armada_delete_schedule` and the four room tools always (`armada_room_read` can block for
 ///   four minutes and stores seat bindings, which a spoken answer must not wait on), and start
