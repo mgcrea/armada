@@ -1947,7 +1947,8 @@ struct UnitCheck {
         && agyLimits?.window(length: .sevenDay, model: "Partner models", now: now)?.utilization
           == 58
         && agyLimits?.window(length: .fiveHour, model: "Partner models", now: now)?.utilization
-          == 0)
+          == 0
+    )
     check(
       "a payload with no quota is no reading",
       AntigravityFiles.limits(Data(#"{"agent_state":"authenticating"}"#.utf8), observedAt: now)
