@@ -141,8 +141,8 @@ struct AccountUsageCard: View {
 /// between the vendors:
 ///
 /// - **no `limits` array**, so two flat windows rather than a per-model breakdown;
-/// - **no quota correction**, because a refusal is read out of a Claude transcript
-///   and Codex's logs have not been mined for the equivalent;
+/// - **refusal correction in `CodexAccount.usage`**, overriding a stale `token_count` when a
+///   newer `usage_limit_exceeded` turn failure falls inside the active window;
 /// - **no "binding" flag**, which is Claude's own marker for the window it is
 ///   measuring you against.
 struct CodexUsageCard: View {

@@ -276,8 +276,8 @@ struct CodexSummary: View {
       // rather than as the same thing for another vendor.
       if let usage = account.usage, !usage.isEmpty {
         VStack(alignment: .leading, spacing: 3) {
-          CompactUsage(label: "5h", window: usage.primary?.usage, forecast: nil, now: now)
-          CompactUsage(label: "7d", window: usage.secondary?.usage, forecast: nil, now: now)
+          CompactUsage(label: "5h", window: usage.window(.fiveHour), forecast: nil, now: now)
+          CompactUsage(label: "7d", window: usage.window(.sevenDay), forecast: nil, now: now)
         }
         .padding(.top, 2)
       }

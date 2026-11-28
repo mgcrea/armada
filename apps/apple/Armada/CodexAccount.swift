@@ -26,8 +26,17 @@ final class CodexAccount: Identifiable {
   var displayPath: String { home.displayPath }
 
   /// The plan limits, which for Codex arrive inside a session log rather than from
-  /// a file of their own. Nil until a scan has read a `token_count` event.
-  var usage: CodexRateLimits? { sessions.rateLimits }
+  /// a file of their own, corrected by any newer `usage_limit_exceeded` refusal inside
+  /// the active window. Nil until a scan has read a `token_count` event or recent refusal.
+  var usage: CodexRateLimits? {
+    if let limits = sessions.rateLimits {
+      return limits.corrected(by: sessions.refusalAt)
+    }
+    if let hit = sessions.refusalAt, AppClock.now.timeIntervalSince(hit) < 5 * 3600 {
+      return CodexRateLimits.refused(at: hit)
+    }
+    return nil
+  }
 
   /// "Plus", "Pro" — nil until the first `token_count` is read.
   var planLabel: String? { usage?.planLabel }

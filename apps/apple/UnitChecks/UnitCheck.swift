@@ -1999,6 +1999,65 @@ struct UnitCheck {
     expectEqual(
       "and its tail is read from the newest whole line",
       CodexRollout.tail(at: longURL)?.lastEventType, "agent_message")
+
+    let refusedLines = """
+      {"timestamp":"2026-11-27T13:22:26.806Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","plan_type":"plus","primary":{"used_percent":96.0,"window_minutes":300,"resets_at":1795798786},"secondary":{"used_percent":15.0,"window_minutes":10080,"resets_at":1796385586}}}}
+      {"timestamp":"2026-11-27T13:28:25.814Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"premium","primary":null,"secondary":null,"plan_type":"plus"}}}
+      {"timestamp":"2026-11-27T13:28:25.819Z","type":"event_msg","payload":{"type":"task_complete","error":{"message":"You’ve hit your usage limit.","codex_error_info":"usage_limit_exceeded"}}}
+      """
+    let refusedTail = CodexRollout.tail(at: write("refused.jsonl", refusedLines))
+    check(
+      "null premium token_count is skipped and usage_limit_exceeded is recorded",
+      refusedTail?.rateLimits?.window(.fiveHour)?.utilization == 96
+        && refusedTail?.refusalAt == UsageSnapshot.parseTimestamp("2026-11-27T13:28:25.819Z"))
+
+    let corrected = refusedTail?.rateLimits?.corrected(
+      by: refusedTail?.refusalAt, now: refusedTail?.refusalAt ?? .now)
+    check(
+      "a newer refusal overrides the active 5h window to 100% without touching 7d",
+      corrected?.window(.fiveHour)?.utilization == 100
+        && corrected?.window(.fiveHour)?.rejectedAt == refusedTail?.refusalAt
+        && corrected?.window(.sevenDay)?.utilization == 15
+        && corrected?.window(.sevenDay)?.rejectedAt == nil)
+
+    // Both windows have rolled over since: the refusal no longer marks anything.
+    let rolled = refusedTail?.rateLimits?.corrected(
+      by: refusedTail?.refusalAt, now: Date(timeIntervalSince1970: 1_800_000_000))
+    check(
+      "a refusal is not kept on a window that has since reset",
+      rolled?.window(.fiveHour)?.utilization == 96 && rolled?.window(.fiveHour)?.rejectedAt == nil
+        && rolled?.window(.sevenDay)?.rejectedAt == nil)
+
+    let refusalOnlyLines = """
+      {"timestamp":"2026-11-27T16:30:45.244Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"premium","primary":null,"secondary":null,"plan_type":null}}}
+      {"timestamp":"2026-11-27T16:30:45.255Z","type":"event_msg","payload":{"type":"task_complete","error":{"message":"You’ve hit your usage limit.","codex_error_info":"usage_limit_exceeded"}}}
+      """
+    let refusalOnlyTail = CodexRollout.tail(at: write("refusal-only.jsonl", refusalOnlyLines))
+    check(
+      "a rollout with only a failed turn still surfaces refusalAt",
+      refusalOnlyTail?.rateLimits == nil
+        && refusalOnlyTail?.refusalAt == UsageSnapshot.parseTimestamp("2026-11-27T16:30:45.255Z"))
+
+    let sevenDaySaturated = CodexRateLimits(
+      primary: CodexWindow(
+        usage: UsageWindow(utilization: 12, resetsAt: Date(timeIntervalSince1970: 1_795_798_786)),
+        minutes: 300),
+      secondary: CodexWindow(
+        usage: UsageWindow(utilization: 98, resetsAt: Date(timeIntervalSince1970: 1_796_385_586)),
+        minutes: 10080),
+      planType: "plus",
+      observedAt: Date(timeIntervalSince1970: 1_795_785_000))
+    let sevenDayRefused = sevenDaySaturated.corrected(
+      by: Date(timeIntervalSince1970: 1_795_786_000))
+    check(
+      "when the weekly window is the exhausted one, refusal targets 7d",
+      sevenDayRefused.window(.fiveHour)?.rejectedAt == nil
+        && sevenDayRefused.window(.sevenDay)?.utilization == 100
+        && sevenDayRefused.window(.sevenDay)?.rejectedAt != nil)
+    check(
+      "a stale refusal older than observedAt leaves limits untouched",
+      sevenDaySaturated.corrected(by: Date(timeIntervalSince1970: 1_795_784_000)).window(.sevenDay)?
+        .utilization == 98)
   }
 
   // MARK: - Projects

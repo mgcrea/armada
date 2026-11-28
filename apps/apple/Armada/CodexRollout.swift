@@ -89,6 +89,61 @@ nonisolated struct CodexRateLimits: Sendable, Hashable {
     // "plus" → "Plus". Codex sends these lowercase.
     return planType.prefix(1).uppercased() + planType.dropFirst()
   }
+
+  /// A reading with only a live refusal (`100%`, no `resetsAt`), for a Codex home whose
+  /// newest rollouts refused before any `codex` `token_count` was recorded.
+  static func refused(at refusalAt: Date) -> CodexRateLimits {
+    CodexRateLimits(
+      primary: CodexWindow(
+        usage: UsageWindow(utilization: 100, resetsAt: nil, rejectedAt: refusalAt),
+        minutes: 300),
+      secondary: nil,
+      planType: nil,
+      observedAt: refusalAt)
+  }
+
+  /// Marks the active window exhausted when a `usage_limit_exceeded` refusal arrived after
+  /// `observedAt` and before that window rolled over.
+  func corrected(by refusalAt: Date?, now: Date = .now) -> CodexRateLimits {
+    guard let refusalAt, refusalAt > observedAt,
+      let length = refusedLength(at: refusalAt, now: now)
+    else { return self }
+    return CodexRateLimits(
+      primary: primary.map { Self.rejectIfMatching($0, length: length, at: refusalAt) },
+      secondary: secondary.map { Self.rejectIfMatching($0, length: length, at: refusalAt) },
+      planType: planType,
+      observedAt: observedAt)
+  }
+
+  /// A window that rolled over before the refusal, or has rolled since, is not the one refused:
+  /// its reset has already given the quota back.
+  private func refusedLength(at refusalAt: Date, now: Date) -> UsageWindowLength? {
+    func isLive(_ length: UsageWindowLength) -> UsageWindow? {
+      guard let w = window(length) else { return nil }
+      if let resetsAt = w.resetsAt, resetsAt <= max(refusalAt, now) { return nil }
+      return w
+    }
+    switch (isLive(.fiveHour), isLive(.sevenDay)) {
+    case (let five?, let seven?):
+      return seven.utilization > five.utilization ? .sevenDay : .fiveHour
+    case (.some, .none):
+      return .fiveHour
+    case (.none, .some):
+      return .sevenDay
+    case (.none, .none):
+      return nil
+    }
+  }
+
+  private static func rejectIfMatching(
+    _ window: CodexWindow, length: UsageWindowLength, at refusalAt: Date
+  ) -> CodexWindow {
+    guard window.length == length else { return window }
+    return CodexWindow(
+      usage: UsageWindow(
+        utilization: 100, resetsAt: window.usage.resetsAt, rejectedAt: refusalAt),
+      minutes: window.minutes)
+  }
 }
 
 /// What the head of a rollout says about the session.
@@ -136,6 +191,8 @@ nonisolated struct CodexRolloutTail: Sendable {
   let lastEventType: String?
   let lastEventAt: Date?
   let rateLimits: CodexRateLimits?
+  /// Timestamp of the newest `usage_limit_exceeded` refusal in the tail, if any.
+  let refusalAt: Date?
   let totalTokens: Int?
 
   /// The newest request's prompt, and the window Codex says it was measured against.
@@ -262,6 +319,7 @@ nonisolated enum CodexRollout {
     var lastEventType: String?
     var lastEventAt: Date?
     var rateLimits: CodexRateLimits?
+    var refusalAt: Date?
     var totalTokens: Int?
 
     // A tail read starts mid-line unless it started at byte zero.
@@ -274,6 +332,10 @@ nonisolated enum CodexRollout {
       if lastEventType == nil {
         lastEventType = payload?["type"] as? String ?? object["type"] as? String
         lastEventAt = at
+      }
+
+      if refusalAt == nil, isUsageLimitRefusal(object: object, payload: payload) {
+        refusalAt = at ?? lastEventAt ?? .now
       }
 
       if rateLimits == nil, payload?["type"] as? String == "token_count" {
@@ -295,26 +357,83 @@ nonisolated enum CodexRollout {
     let newest = CodexContext.newestReading(inChunk: chunk, droppingFirstLine: start > 0)
     let series = CodexContext.series(inChunk: chunk, droppingFirstLine: start > 0)
 
-    guard lastEventType != nil || rateLimits != nil else { return nil }
+    guard lastEventType != nil || rateLimits != nil || refusalAt != nil else { return nil }
     return CodexRolloutTail(
       lastEventType: lastEventType, lastEventAt: lastEventAt, rateLimits: rateLimits,
-      totalTokens: totalTokens, context: newest?.reading, contextLimit: newest?.limit,
-      growth: ContextGrowth(series: series))
+      refusalAt: refusalAt, totalTokens: totalTokens, context: newest?.reading,
+      contextLimit: newest?.limit, growth: ContextGrowth(series: series))
+  }
+
+  private static func isUsageLimitRefusal(
+    object: [String: Any], payload: [String: Any]?
+  ) -> Bool {
+    guard object["type"] as? String == "event_msg", let payload else { return false }
+    let type = payload["type"] as? String
+    if type == "task_complete",
+      let error = payload["error"] as? [String: Any],
+      error["codex_error_info"] as? String == "usage_limit_exceeded"
+    {
+      return true
+    }
+    if type == "error" {
+      if payload["codex_error_info"] as? String == "usage_limit_exceeded" { return true }
+      if let error = payload["error"] as? [String: Any],
+        error["codex_error_info"] as? String == "usage_limit_exceeded"
+      {
+        return true
+      }
+    }
+    return false
   }
 
   /// Decoded as narrowly as the Claude side decodes its cache, and for the same
   /// reason: the live object also carries `credits`, `individual_limit`,
-  /// `spend_control_reached`, `rate_limit_reached_type` and `limit_name`, none of
-  /// which this reads. An unrelated key changing shape cannot break it.
+  /// `spend_control_reached` and `limit_name`, none of which this reads. An unrelated
+  /// key changing shape cannot break it.
   private static func limits(_ value: Any?, observedAt: Date) -> CodexRateLimits? {
     guard let object = value as? [String: Any] else { return nil }
+    let reached = object["rate_limit_reached_type"] as? String
+    var primary = window(
+      object["primary"], key: "primary", reached: reached, observedAt: observedAt)
+    var secondary = window(
+      object["secondary"], key: "secondary", reached: reached, observedAt: observedAt)
+    if reached == "rate_limit_reached",
+      primary?.usage.rejectedAt == nil, secondary?.usage.rejectedAt == nil
+    {
+      if primary?.usage.utilization == 100 {
+        primary = primary.map { markRejected($0, at: observedAt) }
+      }
+      if secondary?.usage.utilization == 100 {
+        secondary = secondary.map { markRejected($0, at: observedAt) }
+      }
+      if primary?.usage.rejectedAt == nil, secondary?.usage.rejectedAt == nil {
+        switch (primary, secondary) {
+        case (let p?, let s?):
+          if s.usage.utilization > p.usage.utilization {
+            secondary = markRejected(s, at: observedAt)
+          } else {
+            primary = markRejected(p, at: observedAt)
+          }
+        case (let p?, .none): primary = markRejected(p, at: observedAt)
+        case (.none, let s?): secondary = markRejected(s, at: observedAt)
+        case (.none, .none): break
+        }
+      }
+    }
     let limits = CodexRateLimits(
-      primary: window(object["primary"]),
-      secondary: window(object["secondary"]),
+      primary: primary,
+      secondary: secondary,
       planType: object["plan_type"] as? String,
       observedAt: observedAt
     )
     return limits.isEmpty ? nil : limits
+  }
+
+  private static func markRejected(_ window: CodexWindow, at observedAt: Date) -> CodexWindow {
+    CodexWindow(
+      usage: UsageWindow(
+        utilization: 100, resetsAt: window.usage.resetsAt, rejectedAt: observedAt),
+      minutes: window.minutes)
   }
 
   /// **`resets_at` here is epoch seconds, an integer.** The Claude side's
@@ -326,14 +445,21 @@ nonisolated enum CodexRollout {
   /// `used_percent` is a `Double` (`61.0`), unlike Claude's `Int`. Read as a
   /// `Double` and rounded here rather than cast, because a JSON `61.0` is not an
   /// `Int` to `JSONSerialization` and the cast would quietly produce nil.
-  private static func window(_ value: Any?) -> CodexWindow? {
+  private static func window(
+    _ value: Any?, key: String, reached: String?, observedAt: Date
+  ) -> CodexWindow? {
     guard let object = value as? [String: Any],
       let percent = object["used_percent"] as? Double,
       let minutes = object["window_minutes"] as? Int
     else { return nil }
     let resets = (object["resets_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-    return CodexWindow(
+    let base = CodexWindow(
       usage: UsageWindow(utilization: Int(percent.rounded()), resetsAt: resets),
       minutes: minutes)
+    let isReached =
+      reached == key
+      || (base.length == .fiveHour && reached == "five_hour")
+      || (base.length == .sevenDay && reached == "seven_day")
+    return isReached ? markRejected(base, at: observedAt) : base
   }
 }

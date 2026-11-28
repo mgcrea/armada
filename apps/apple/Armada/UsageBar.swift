@@ -192,7 +192,7 @@ struct UsageFigure: View {
   static func rejectionHelp(_ at: Date) -> String {
     "A request was refused for hitting this limit at "
       + "\(at.formatted(date: .omitted, time: .shortened)), so the window is spent — "
-      + "whatever Claude Code's older cached figure says."
+      + "whatever the older figure says."
   }
 }
 

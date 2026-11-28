@@ -36,6 +36,8 @@ nonisolated struct CodexScan: Sendable {
   let titles: [String: String]
   /// The newest rate limits seen in anything this scan actually read.
   let rateLimits: CodexRateLimits?
+  /// The newest `usage_limit_exceeded` refusal seen in anything this scan actually read.
+  let refusalAt: Date?
   /// The title index's modification date as of the last time it was read.
   let titleIndexStamp: Date?
 }
@@ -80,6 +82,7 @@ final class CodexWatcher {
 
   private(set) var sessions: [CodexSession] = []
   private(set) var rateLimits: CodexRateLimits?
+  private(set) var refusalAt: Date?
   private(set) var didScan = false
 
   let home: CodexHome
@@ -165,6 +168,8 @@ final class CodexWatcher {
     titleIndexStamp = nil
     byId = [:]
     sessions = []
+    rateLimits = nil
+    refusalAt = nil
   }
 
   /// Coalesce: a burst of writes during a turn is one scan, and a scan that
@@ -207,6 +212,7 @@ final class CodexWatcher {
     let cutoff = Date.now.addingTimeInterval(-recentWindow)
     var entries: [CodexScanEntry] = []
     var newest: CodexRateLimits?
+    var newestRefusal: Date?
     /// The most recently written rollout in the whole tree, in scope or not, and
     /// whether this pass already read it. See the fallback below the loop.
     var newestRollout: (url: URL, modified: Date, read: Bool)?
@@ -244,6 +250,9 @@ final class CodexWatcher {
         {
           newest = limits
         }
+        if let hit = tail?.refusalAt, hit > (newestRefusal ?? .distantPast) {
+          newestRefusal = hit
+        }
 
         entries.append(
           CodexScanEntry(
@@ -263,10 +272,16 @@ final class CodexWatcher {
     // One extra bounded tail read, and only when the newest rollout was not already
     // read for its own row.
     if let candidate = newestRollout, !candidate.read,
-      let limits = CodexRollout.tail(at: candidate.url)?.rateLimits,
-      limits.observedAt > (newest?.observedAt ?? .distantPast)
+      let tail = CodexRollout.tail(at: candidate.url)
     {
-      newest = limits
+      if let limits = tail.rateLimits,
+        limits.observedAt > (newest?.observedAt ?? .distantPast)
+      {
+        newest = limits
+      }
+      if let hit = tail.refusalAt, hit > (newestRefusal ?? .distantPast) {
+        newestRefusal = hit
+      }
     }
 
     // Only when something is untitled: the index is 104KB and re-reading it on
@@ -287,7 +302,7 @@ final class CodexWatcher {
     let titles = needsTitles ? CodexTitleIndex.read(home.sessionIndex) : [:]
 
     return CodexScan(
-      entries: entries, titles: titles, rateLimits: newest,
+      entries: entries, titles: titles, rateLimits: newest, refusalAt: newestRefusal,
       titleIndexStamp: needsTitles ? indexModified : titleIndexStamp)
   }
 
@@ -349,6 +364,9 @@ final class CodexWatcher {
       // on the timestamp, so the 5-second sweep costs nothing — a Codex reading only
       // changes when a turn writes a new `token_count`.
       UsageHistory.shared.record(limits.asSnapshot, for: home.id)
+    }
+    if let hit = scan.refusalAt, hit > (refusalAt ?? .distantPast) {
+      refusalAt = hit
     }
     titleIndexStamp = scan.titleIndexStamp
     didScan = true
