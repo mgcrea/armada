@@ -13,8 +13,9 @@ import Foundation
 /// - `--allowedTools` names the read tools one by one, plus `armada_start_session` and
 ///   `armada_focus_session` only while Settings ▸ Supervisor allows writes. `--disallowedTools`
 ///   names `armada_close_session`, `armada_send_message`, `armada_save_schedule`,
-///   `armada_delete_schedule`, `armada_room_open`, `armada_room_post` and `armada_room_round`
-///   always, and start and focus whenever writes are off. Headless, an
+///   `armada_delete_schedule` and the four room tools always (`armada_room_read` can block for
+///   four minutes and stores seat bindings, which a spoken answer must not wait on), and start
+///   and focus whenever writes are off. Headless, an
 ///   allowed tool runs without asking and a tool that is not allowed is denied, never asked
 ///   about, so the brief makes voice say what it will start and wait for the person to confirm
 ///   on their next question. Bringing a window forward changes nothing, so it
@@ -33,7 +34,7 @@ public enum SupervisorArguments {
   /// The tools voice may call, by bare name.
   public static let readTools = [
     "armada_needs_attention", "armada_get_fleet", "armada_get_session", "armada_get_usage",
-    "armada_get_projects", "armada_read_transcript", "armada_room_read",
+    "armada_get_projects", "armada_read_transcript",
   ]
 
   /// The write tools voice may call while Allow writes is on.
@@ -44,7 +45,8 @@ public enum SupervisorArguments {
   /// Tools the server can offer that voice must never call, whatever Allow writes says.
   public static let deniedTools = [
     "armada_close_session", "armada_send_message", "armada_save_schedule",
-    "armada_delete_schedule", "armada_room_open", "armada_room_post", "armada_room_round",
+    "armada_delete_schedule", "armada_room_open", "armada_room_post", "armada_room_read",
+    "armada_room_round",
   ]
 
   public static let interruptRequestID = "armada-voice-interrupt"

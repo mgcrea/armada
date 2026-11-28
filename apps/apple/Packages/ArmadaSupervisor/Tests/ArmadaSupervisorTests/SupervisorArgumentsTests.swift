@@ -33,7 +33,6 @@ struct SupervisorArgumentsTests {
         "mcp__armada__armada_needs_attention", "mcp__armada__armada_get_fleet",
         "mcp__armada__armada_get_session", "mcp__armada__armada_get_usage",
         "mcp__armada__armada_get_projects", "mcp__armada__armada_read_transcript",
-        "mcp__armada__armada_room_read",
       ])
     #expect(
       value(after: "--disallowedTools", in: argv)
@@ -41,7 +40,7 @@ struct SupervisorArgumentsTests {
         + "mcp__armada__armada_close_session,mcp__armada__armada_send_message,"
         + "mcp__armada__armada_save_schedule,mcp__armada__armada_delete_schedule,"
         + "mcp__armada__armada_room_open,mcp__armada__armada_room_post,"
-        + "mcp__armada__armada_room_round"
+        + "mcp__armada__armada_room_read,mcp__armada__armada_room_round"
     )
     #expect(
       allowed?.contains {
@@ -66,7 +65,7 @@ struct SupervisorArgumentsTests {
         == "mcp__armada__armada_close_session,mcp__armada__armada_send_message,"
         + "mcp__armada__armada_save_schedule,mcp__armada__armada_delete_schedule,"
         + "mcp__armada__armada_room_open,mcp__armada__armada_room_post,"
-        + "mcp__armada__armada_room_round")
+        + "mcp__armada__armada_room_read,mcp__armada__armada_room_round")
     let brief = try #require(value(after: "--append-system-prompt", in: writes))
     #expect(brief != VoiceBrief.text)
     #expect(brief.contains("armada_start_session"))
