@@ -6,20 +6,22 @@ import Foundation
 ///
 /// **Checks again what the tool already checked.** The tool found the project in a snapshot and
 /// vetted the message, but the project can be removed and its folder moved between that
-/// snapshot and this hop, and this is the side that opens the terminal or VS Code.
+/// snapshot and this hop, and this is the side that opens the terminal.
 ///
-/// **Throttled.** One launch per `throttle` seconds from agents, so a supervisor caught in a
-/// loop opens one window and is told to wait rather than filling the screen.
+/// **Budgeted.** At most `AgentLaunchBudget.limit` launches a minute from agents, so a
+/// supervisor caught in a loop is told to wait rather than filling the screen, while a room can
+/// still start every seat at once.
 ///
-/// **Names the session when it can.** A fresh Claude Code session bound for a terminal gets an id
-/// minted here and passed as `--session-id`, so the agent can watch or close exactly the session
-/// it started. Grok Build takes the same (`--session-id`). VS Code opens its tab through the
-/// extension's link, which takes no id, and Codex and the Antigravity CLI have no such flag; all
-/// three still come back without one.
+/// **Always in the terminal**, even when the person starts their own Claude Code sessions in VS
+/// Code (`startForAgent`).
+///
+/// **Names the session when it can.** A fresh Claude Code session gets an id minted here and
+/// passed as `--session-id`, so the agent can watch or close exactly the session it started.
+/// Grok Build takes the same (`--session-id`). Codex and the Antigravity CLI have no such flag,
+/// and come back without one.
 ///
 /// **Resumes only what nothing has open.** See `resume`.
 nonisolated struct SessionStarterBridge: SessionStarter {
-  static let throttle: TimeInterval = 10
   /// A transcript written this recently may belong to a session Armada does not watch — one over
   /// ssh, or on a folder it has not discovered — so it is not resumed.
   static let recentWrite: TimeInterval = 30
@@ -67,8 +69,7 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     let start: NewSession.Start
     let takesID =
       switch agent {
-      case .claude: !launcher.opensInVSCode(agent)
-      case .grok: true
+      case .claude, .grok: true
       case .codex, .antigravity: false
       }
     if takesID {
@@ -100,20 +101,14 @@ nonisolated struct SessionStarterBridge: SessionStarter {
     return .started(
       StartedSession(
         project: project.displayName, path: project.path, vendor: vendor, accountID: accountID,
-        account: account, terminal: launcher.destinationName(for: agent),
-        withPrompt: request.prompt != nil,
-        promptAwaitsSend: request.prompt != nil && launcher.opensInVSCode(agent)
-          && !VSCodeLaunch.sendsPrompt,
+        account: account, terminal: launcher.terminal.name,
+        withPrompt: request.prompt != nil, promptAwaitsSend: false,
         sessionID: sessionID, model: request.model))
   }
 
   @MainActor
   private static func throttled(_ now: Date) -> String? {
-    guard let last = NewSessionLauncher.shared.lastAgentLaunchAt,
-      now.timeIntervalSince(last) < throttle
-    else { return nil }
-    return "An agent started a session \(Int(now.timeIntervalSince(last))) seconds ago. Wait a "
-      + "moment before starting another."
+    NewSessionLauncher.shared.agentLaunches.refusal(at: now)
   }
 
   /// Continue a Claude Code session in a terminal, in the folder it ran in, on the account whose

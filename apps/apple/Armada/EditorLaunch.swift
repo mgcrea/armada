@@ -149,31 +149,17 @@ nonisolated enum EditorLaunch {
     settings.contains("claudeCode.environmentVariables") && settings.contains("CLAUDE_CONFIG_DIR")
   }
 
-  /// `<scheme>://anthropic.claude-code/open`, with the opening message when there is one.
+  /// `<scheme>://anthropic.claude-code/open`, which opens a fresh conversation tab.
   ///
   /// **No `session`, ever.** With one, the extension resumes that session rather than forking
-  /// it, which is the two-writers case `NewSession.Start` refuses. Without one it opens a fresh
-  /// conversation tab, and puts `prompt` in the input box: measured 2026-09-16, no `claude`
-  /// process started and no transcript was written until a message was sent.
-  static func openURL(scheme: String, prompt: String?) -> URL? {
+  /// it, which is the two-writers case `NewSession.Start` refuses. Measured 2026-09-16, no
+  /// `claude` process starts and no transcript is written until the person sends a message.
+  static func openURL(scheme: String) -> URL? {
     var components = URLComponents()
     components.scheme = scheme
     components.host = extensionID
     components.path = "/open"
-    if let prompt, !prompt.isEmpty {
-      components.queryItems = [URLQueryItem(name: "prompt", value: prompt)]
-    }
     return components.url
-  }
-
-  /// Whether the text a message input reports is `prompt`, so Return sends that message and no
-  /// other. Runs of whitespace compare equal: a line break in a `contentEditable` input is not
-  /// promised to read back as the `\n` the link carried.
-  static func inputHolds(_ text: String?, prompt: String) -> Bool {
-    guard let text else { return false }
-    let words = { (string: String) in string.split(whereSeparator: \.isWhitespace) }
-    let expected = words(prompt)
-    return !expected.isEmpty && words(text) == expected
   }
 
   /// The Claude Code extension's id, the same on the Marketplace and Open VSX.

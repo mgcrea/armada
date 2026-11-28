@@ -168,7 +168,6 @@ struct GeneralPane: View {
   private var transcriptStyle = TranscriptStyle.fallback.stored
   @AppStorage(TerminalApp.defaultsKey) private var terminal = ""
   @AppStorage(VSCodeLaunch.defaultsKey) private var inVSCode = false
-  @AppStorage(VSCodeLaunch.sendPromptDefaultsKey) private var sendPromptInVSCode = true
   @AppStorage(HandoverTarget.copyOnlyDefaultsKey) private var handoverCopiesOnly = false
   @AppStorage(PromptCacheAlertScope.defaultsKey) private var cacheAlerts = PromptCacheAlertScope.off
   @AppStorage(PromptCacheAlertSize.defaultsKey)
@@ -364,9 +363,6 @@ struct GeneralPane: View {
         // which launches it takes and why the rest stay in the terminal.
         if VSCodeLaunch.isInstalled {
           Toggle("Start Claude Code sessions in \(VSCodeLaunch.name)", isOn: $inVSCode)
-          if inVSCode {
-            Toggle("Send an agent's opening message", isOn: $sendPromptInVSCode)
-          }
           if inVSCode && !trust.isTrusted {
             Text(
               "Needs \(HostWindow.grantName), below, to bring the project's window to the front."
@@ -385,7 +381,7 @@ struct GeneralPane: View {
         // bug on a Mac with three terminals installed. See `TerminalApp` for the rule.
         Text(
           VSCodeLaunch.isInstalled
-            ? "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. In \(VSCodeLaunch.name), a fresh Claude Code session opens as a tab in the project's own window, or a new window on the session's account. An agent's opening message is typed into the tab and sent with Return, or left for you to send when that is off. Forks, Codex and the supervisor still start in the terminal."
+            ? "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. In \(VSCodeLaunch.name), a fresh Claude Code session opens as a tab in the project's own window, or a new window on the session's account. Forks, Codex, the supervisor and sessions an agent starts still open in the terminal."
             : "Armada starts a session by opening a small script in your terminal, so it needs a terminal that runs a script it is handed — Terminal and iTerm do. It asks for no Automation permission, and the session appears in the list here like any other."
         )
       }

@@ -58,7 +58,7 @@ final class NewSessionLauncher {
   ) -> String? {
     trustIfSaved(agent, in: project)
     return launch(
-      agent, in: project, start: start, prompt: nil, name: name,
+      agent, in: project, start: start, name: name,
       completion: { [weak self] message in self?.failure = message })
   }
 
@@ -67,22 +67,17 @@ final class NewSessionLauncher {
   /// `name` reaches only a terminal launch. VS Code takes fresh sessions alone (see
   /// `VSCodeLaunch.handles`), and the one caller that names a session starts a fork.
   private func launch(
-    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start, prompt: String?,
-    name: String? = nil, model: String? = nil, completion: @escaping @MainActor (String) -> Void
+    _ agent: NewSession.Agent, in project: URL, start: NewSession.Start, name: String? = nil,
+    completion: @escaping @MainActor (String) -> Void
   ) -> String? {
     if case .claude(let folder) = agent, opensInVSCode(agent, start: start) {
-      // The extension's link opens a tab and takes a prompt, nothing more.
-      if model != nil {
-        return "This project opens Claude Code in VS Code, whose extension cannot be told which "
-          + "model to use. Leave `model` out, or switch models in the session with /model."
-      }
       return VSCodeLaunch.start(
         folder, accountName: Accounts.shared.account(id: folder.path)?.displayName ?? folder.path,
-        in: project, prompt: prompt, completion: completion)
+        in: project, completion: completion)
     }
     return NewSession.start(
-      agent, in: project, terminal: terminal, start: start, prompt: prompt, name: name,
-      model: model, completion: completion)
+      agent, in: project, terminal: terminal, start: start, name: name,
+      model: nil, completion: completion)
   }
 
   /// The same launch, from the menu bar panel, which has no alert of its own.
@@ -101,7 +96,7 @@ final class NewSessionLauncher {
   ) {
     trustIfSaved(agent, in: project)
     if let message = launch(
-      agent, in: project, start: start, prompt: nil, name: name,
+      agent, in: project, start: start, name: name,
       completion: { [weak self] message in
         self?.failure = message
         AppDelegate.shared?.showMain()
@@ -112,12 +107,12 @@ final class NewSessionLauncher {
     }
   }
 
-  /// When an agent last started a session through `armada_start_session`, for its throttle.
-  private(set) var lastAgentLaunchAt: Date?
+  /// The sessions agents started through `armada_start_session` lately. See `AgentLaunchBudget`.
+  private(set) var agentLaunches = AgentLaunchBudget()
 
   /// A launch that did not go through `startForAgent`: a headless Grok Build turn, which Armada
-  /// runs itself rather than asking a terminal to. It counts against the same throttle.
-  func noteAgentLaunch(_ date: Date) { lastAgentLaunchAt = date }
+  /// runs itself rather than asking a terminal to. It counts against the same budget.
+  func noteAgentLaunch(_ date: Date) { agentLaunches.record(date) }
 
   /// A launch an agent asked for, through `SessionStarterBridge`.
   ///
@@ -130,10 +125,17 @@ final class NewSessionLauncher {
     model: String? = nil
   ) -> String? {
     trustIfSaved(agent, in: project)
-    let message = launch(
-      agent, in: project, start: start, prompt: prompt, model: model,
+    // Always the terminal, whatever the person chose for their own sessions. VS Code would need
+    // Armada to be the active app to bring the project's window forward, which it is when the
+    // person clicks and is not when an agent calls; measured 2026-11-28, a room seat sent there
+    // never opened. In the terminal the session also gets an id the agent can watch and close,
+    // and its opening message goes on the command line. Opened behind the person's app, so
+    // starting a room does not take the keyboard from them (see `NewSession.start`).
+    let message = NewSession.start(
+      agent, in: project, terminal: terminal, start: start, prompt: prompt, name: nil,
+      model: model, activates: false,
       completion: { [weak self] message in self?.failure = message })
-    if message == nil { lastAgentLaunchAt = Date() }
+    if message == nil { agentLaunches.record(Date()) }
     return message
   }
 

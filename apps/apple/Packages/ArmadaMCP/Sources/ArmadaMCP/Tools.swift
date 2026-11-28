@@ -16,10 +16,8 @@ import MCPKit
 /// the Mac through Armada, and all are registered behind the kit's write gate, so none is listed
 /// nor callable until the person turns on Allow writes.
 /// Starting is confined to folders the person saved as projects, and what it opens is an ordinary
-/// session, in their terminal or in VS Code when they chose it, that asks them for every
-/// permission. Closing reaches Claude Code and Antigravity CLI processes, and a busy session only
-/// with `force`. Sending a
-/// keystroke stays out: in VS Code an opening message waits in the input for the person to send.
+/// session, in their terminal, that asks them for every permission. Closing reaches Claude Code
+/// and Antigravity CLI processes, and a busy session only with `force`.
 /// `armada_save_schedule` and `armada_delete_schedule` write only Codex's own automation files;
 /// the Codex app runs them.
 public enum Tools {
@@ -30,7 +28,7 @@ public enum Tools {
     session on this Mac, across every account. These tools read what it already holds, and none reaches the network. The \
     nine that act are listed only when the person has turned on Allow writes in Armada. \
     armada_start_session opens a fresh session in one of their saved projects, or resumes a \
-    closed one, in their terminal or VS Code, and that session still asks them for every \
+    closed one, in their terminal, and that session still asks them for every \
     permission, unless it is a headless Grok Build turn, which has nobody to ask and so may do \
     only what the person's own allow rules permit. armada_close_session ends a Claude Code \
     or Antigravity session's process, or a headless turn Armada started. armada_send_message puts a message in \
@@ -989,7 +987,7 @@ public enum Tools {
         title: "Start a session",
         description:
           "Open a Claude Code, Codex, Grok Build or Antigravity session in a saved project, "
-          + "in a terminal or VS Code. `resume` continues a closed session (not Codex). It asks "
+          + "in a terminal. `resume` continues a closed session (not Codex). It asks "
           + "for permissions and shows in armada_get_fleet under `sessionId`. `headless` runs a "
           + "Grok Build turn with no terminal, held to existing allow rules. `room` and `seat` "
           + "start that seat from the room's brief, with no prompt or resume.",
@@ -1016,7 +1014,7 @@ public enum Tools {
           ],
           "model": [
             "type": "string", "maxLength": 100,
-            "description": "opus, gpt-6-astra, grok-4.6. Not in VS Code.",
+            "description": "opus, gpt-6-astra, grok-4.6.",
           ],
           "headless": [
             "type": "boolean",

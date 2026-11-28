@@ -154,7 +154,8 @@ nonisolated enum NewSession {
   static func start(
     _ agent: Agent, in project: URL, terminal: TerminalApp, start: Start = .fresh,
     supervisor: Supervisor? = nil, prompt: String? = nil, name: String? = nil,
-    model: String? = nil, completion: @escaping @MainActor (String) -> Void = { _ in }
+    model: String? = nil, activates: Bool = true,
+    completion: @escaping @MainActor (String) -> Void = { _ in }
   ) -> String? {
     let fileManager = FileManager.default
     let path = project.standardizedFileURL.path(percentEncoded: false)
@@ -193,8 +194,13 @@ nonisolated enum NewSession {
       return "Armada could not write the startup script: \(error.localizedDescription)"
     }
 
+    // `activates` is false for a session an agent starts. Terminal runs a script by typing its
+    // path into a fresh shell, and while Terminal is in front, a key the person is typing
+    // elsewhere lands in that line first: measured 2026-11-28, a stray `h` turned a room seat's
+    // launch into `h/var/…/armada.command ; exit;`, which closed the window before the session
+    // started. Opened behind, the script still runs and the person's keys stay where they were.
     let configuration = NSWorkspace.OpenConfiguration()
-    configuration.activates = true
+    configuration.activates = activates
     NSWorkspace.shared.open([script], withApplicationAt: application, configuration: configuration)
     { _, error in
       guard let error else { return }

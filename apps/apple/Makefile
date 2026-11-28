@@ -283,6 +283,7 @@ UNIT_SRC := \
 	Armada/SessionHistory.swift \
 	Armada/LaunchScript.swift \
 	Armada/SessionClosePolicy.swift \
+	Armada/AgentLaunchBudget.swift \
 	Armada/SessionBatch.swift \
 	Armada/NewAccount.swift \
 	Armada/CodexHome.swift \

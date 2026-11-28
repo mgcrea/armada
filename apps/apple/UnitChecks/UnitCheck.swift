@@ -60,6 +60,7 @@ struct UnitCheck {
     sessionHistory()
     launchScript()
     sessionClosePolicy()
+    agentLaunchBudget()
     sessionBatch()
     newAccount()
     addedHomes()
@@ -4074,6 +4075,32 @@ struct UnitCheck {
       !SessionClosePolicy.armsThrottle(.person))
   }
 
+  // MARK: - AgentLaunchBudget
+
+  static func agentLaunchBudget() {
+    section("AgentLaunchBudget")
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    var budget = AgentLaunchBudget()
+    check("an empty budget lets a launch go", budget.refusal(at: now) == nil)
+    for offset in 0..<(AgentLaunchBudget.limit - 1) {
+      budget.record(now.addingTimeInterval(TimeInterval(offset)))
+    }
+    check(
+      "a full room starts back to back",
+      budget.refusal(at: now.addingTimeInterval(TimeInterval(AgentLaunchBudget.limit))) == nil)
+    budget.record(now.addingTimeInterval(TimeInterval(AgentLaunchBudget.limit)))
+    let refusal = budget.refusal(at: now.addingTimeInterval(10))
+    check("one more inside the minute is refused", refusal != nil)
+    check("and says how long to wait", refusal?.contains("Try again in 50 seconds") == true)
+    check(
+      "the oldest launch leaving the window frees a place",
+      budget.refusal(at: now.addingTimeInterval(AgentLaunchBudget.window)) == nil)
+    budget.record(now.addingTimeInterval(AgentLaunchBudget.window + 1))
+    expectEqual(
+      "recording forgets launches the window passed", budget.launches.count,
+      AgentLaunchBudget.limit - 1)
+  }
+
   // MARK: - SessionBatch
 
   static func sessionBatch() {
@@ -5298,21 +5325,8 @@ struct UnitCheck {
     section("EditorLaunch.openURL")
     expectEqual(
       "a fresh tab carries no session",
-      EditorLaunch.openURL(scheme: "vscode", prompt: nil)?.absoluteString,
+      EditorLaunch.openURL(scheme: "vscode")?.absoluteString,
       "vscode://anthropic.claude-code/open")
-    expectEqual(
-      "and the message is encoded",
-      EditorLaunch.openURL(scheme: "vscode", prompt: "fix a&b #1")?.absoluteString,
-      "vscode://anthropic.claude-code/open?prompt=fix%20a%26b%20%231")
-    check(
-      "the input holds the message, line breaks read back as spaces",
-      EditorLaunch.inputHolds("fix the\u{a0}build  now", prompt: "fix the build\nnow"))
-    check(
-      "not a placeholder, a longer message or nothing",
-      !EditorLaunch.inputHolds("⌘ Esc to focus or unfocus Claude", prompt: "fix")
-        && !EditorLaunch.inputHolds("fix it", prompt: "fix")
-        && !EditorLaunch.inputHolds(nil, prompt: "fix")
-        && !EditorLaunch.inputHolds("", prompt: " "))
     check(
       "extension folders of any version",
       EditorLaunch.isClaudeExtension("anthropic.claude-code-2.1.273-darwin-arm64")

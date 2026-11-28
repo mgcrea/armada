@@ -80,7 +80,7 @@ struct SupervisorPane: View {
       Toggle(isOn: $allowWrites) {
         Text("Allow writes")
         Text(
-          "Lets a connected agent start a Claude Code, Codex or Grok Build session in one of your saved projects, in \(VSCodeLaunch.isChosen ? "\(launcher.terminal.name), or \(VSCodeLaunch.name) for Claude Code," : launcher.terminal.name), optionally with an opening message; resume a closed Claude Code or Grok Build session there; close a Claude Code session, a busy one only when it passes force; bring a session's window to the front; save or delete a Codex schedule, which Codex then runs unattended; and message a session, once delivery is on below. A session it starts asks you for every permission as usual."
+          "Lets a connected agent start a Claude Code, Codex or Grok Build session in one of your saved projects, in \(launcher.terminal.name), optionally with an opening message; resume a closed Claude Code or Grok Build session there; close a Claude Code session, a busy one only when it passes force; bring a session's window to the front; save or delete a Codex schedule, which Codex then runs unattended; and message a session, once delivery is on below. A session it starts asks you for every permission as usual."
         )
       }
       .disabled(!enabled)
