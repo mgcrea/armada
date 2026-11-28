@@ -212,7 +212,48 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_17_0, v1_16_0, v1_15_0, v1_14_0, v1_13_0]
+  static let releases: [Release] = [v1_18_0, v1_17_0, v1_16_0, v1_15_0, v1_14_0]
+
+  // swift-format-ignore
+  private static let v1_18_0: Release = Release(
+    version: "1.18.0",
+    date: "2026-11-28",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Investigation rooms.",
+            body: [
+              "The MCP server can open a shared log for one investigation, with one seat per provider. Seats post notes and read the others back; a post is not delivered to anyone. A round sends each unfinished seat one fixed sentence telling it to read the room and answer, and Armada notifies you once every seat has posted done.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Codex quota refusals.",
+            body: [
+              "When Codex turns down a request because a plan limit was reached, Armada marks the active limit as spent even if the last usage reading still shows room.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Antigravity quota resets.",
+            body: [
+              "Expired model pools no longer count toward the headline usage figure, and Armada refreshes quotas when a turn ends after a reset.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Usage countdowns.",
+            body: [
+              "Reset countdowns show days and hours left without rounding up to weeks.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_17_0: Release = Release(
@@ -321,77 +362,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_13_0: Release = Release(
-    version: "1.13.0",
-    date: "2026-11-15",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "MCP tools: message a Codex thread.",
-            body: [
-              "`armada_send_message` now reaches an open Codex thread as well as a Claude Code session, through Codex's own `codex queue` command (codex-cli 0.163 or later). An idle thread starts a turn on the message at once, a busy one after its turn. Closed threads and Codex subagents are refused, because a queued message would run whenever the thread was next opened. Codex's queue is a fifth place Armada writes into an agent's folders, and the privacy page now lists it.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "MCP tools: pick a model.",
-            body: [
-              "`armada_start_session` takes `model`, the id as the CLI names it (`opus`, `gpt-6-astra`, `grok-4.6`), for a Claude Code, Codex or Grok Build session opened in a terminal.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "MCP tools: headless Grok Build turns.",
-            body: [
-              "With `headless`, `armada_start_session` runs a Grok Build turn as Armada's own process, with no terminal. With nobody there to answer a permission prompt, the turn may do only what your allow rules already permit, and everything else is denied. `armada_send_message` runs the session's next turn once the last has ended, `armada_close_session` stops a running one, and quitting Armada stops any still running.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "Ultra and Max.",
-            body: [
-              "Anthropic renamed Max 20x to Ultra and Max 5x to Max on 30 October 2026. Accounts on those plans now show the new names.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Codex from ChatGPT 26.1103.",
-            body: [
-              "ChatGPT moved the Codex CLI it bundles inside its app, so on a Mac with no other copy, Armada could not start a Codex session or add a Codex account. It finds the new location, and still the old one.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Investigation rooms.",
-            body: [
-              "The MCP server can open a shared log for one investigation, with one seat per provider. Seats post notes and read the others back; a post is not delivered to anyone. A round sends each unfinished seat one fixed sentence telling it to read the room and answer, and Armada notifies you once every seat has posted done.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

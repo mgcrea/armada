@@ -5,10 +5,13 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.17.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.18.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.18.0] - 2026-11-28
+
+**Investigation rooms for agents.** Armada lets agents from different providers share notes on
+one investigation and tells you when every participant has finished.
 
 ### Added
 
@@ -16,6 +19,14 @@ rendered from this file, which is the curated summary. `### Internal` sections a
   seat per provider. Seats post notes and read the others back; a post is not delivered to
   anyone. A round sends each unfinished seat one fixed sentence telling it to read the room and
   answer, and Armada notifies you once every seat has posted done.
+
+### Fixed
+
+- **Codex quota refusals.** When Codex turns down a request because a plan limit was reached,
+  Armada marks the active limit as spent even if the last usage reading still shows room.
+- **Antigravity quota resets.** Expired model pools no longer count toward the headline usage
+  figure, and Armada refreshes quotas when a turn ends after a reset.
+- **Usage countdowns.** Reset countdowns show days and hours left without rounding up to weeks.
 
 ## [1.17.0] - 2026-11-27
 
