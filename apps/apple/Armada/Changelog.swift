@@ -212,7 +212,54 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_18_0, v1_17_0, v1_16_0, v1_15_0, v1_14_0]
+  static let releases: [Release] = [v1_19_0, v1_18_0, v1_17_0, v1_16_0, v1_15_0]
+
+  // swift-format-ignore
+  private static let v1_19_0: Release = Release(
+    version: "1.19.0",
+    date: "2026-11-28",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "One-click MCP setup for Grok Build.",
+            body: [
+              "Settings ▸ MCP Server and the MCP toolbar popover list Grok Build, and Configure adds Armada to `~/.grok/config.toml`. Grok Build could already reach Armada through Claude Code's `~/.claude.json`; its own entry takes precedence, so it keeps working whichever Claude account is configured.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Settings ▸ Supervisor is now Settings ▸ MCP Server.",
+            body: [
+              "Any agent on your Mac can reach the server, so the pane is named for it: Server, Access (Allow writes and message delivery), Clients, then Supervisor, which starts a Claude Code session attached to the server.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "New Session offers the supervisor only while the MCP server runs.",
+            body: [
+              "With the server off, Claude Code's New Session is a plain button, like Codex's and Grok Build's, instead of a menu holding a greyed-out item.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Agents start sessions in your terminal.",
+            body: [
+              "A session an agent starts through `armada_start_session` opens in your terminal even when you start your own Claude Code sessions in VS Code. A VS Code launch from an agent never reached the project's window unless Armada was the app in front, and in the terminal the agent gets the session's id. The window opens behind the app you are in, so what you are typing cannot land in its command line and stop the session starting. The \"Send an agent's opening message\" setting is gone with it.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Agents can start a whole room at once.",
+            body: [
+              "Instead of one session every ten seconds, agents may start up to eight a minute, enough for every seat of a room.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_18_0: Release = Release(
@@ -326,95 +373,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_14_0: Release = Release(
-    version: "1.14.0",
-    date: "2026-11-24",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Build Slots.",
-            body: [
-              "Settings ▸ Build Slots ▸ Queue builds puts `swift` and `xcodebuild` shims in `~/.local/bin`. From then on, every `swift build`, `swift test` and `xcodebuild` build or test started in a terminal or by an agent, in any repo, waits for one of a set number of slots, two by default. A waiting build says so on its error output and names what it waits behind, so an agent can tell queued from hung. The queue rests on the system's file locks: it keeps working with Armada quit, and a build that dies frees its slot at once. A build started from inside one that holds a slot, such as a test host or a Makefile's own `swift build`, runs straight through, and `ARMADA_BUILDSLOT=off` runs any build unqueued. Xcode's own builds, `xcrun` and `swift run` don't go through the shims and don't queue. Armada never replaces a `swift` or `xcodebuild` in `~/.local/bin` that it did not write, and switching the setting off removes only its own.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Wait on memory.",
-            body: [
-              "The Memory setting holds a new build back while macOS reports memory pressure, as long as another build is running, so one always runs.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Building and waiting, on the session rows.",
-            body: [
-              "A session whose build holds a slot says `building` and for how long, on its row, in its details and in the popover; one in the queue says `waiting for a slot`. Settings ▸ Build Slots lists the queue as it stands.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "MCP tools: build slots.",
-            body: [
-              "`armada_get_build_slots` reads the queue: how many slots, the memory rule and the Mac's memory pressure, who holds each slot and who waits, and the session behind each. `armada_get_fleet` and `armada_get_session` give each session's build slot.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "One-click MCP setup for Grok Build.",
-            body: [
-              "Settings ▸ MCP Server and the MCP toolbar popover list Grok Build, and Configure adds Armada to `~/.grok/config.toml`. Grok Build could already reach Armada through Claude Code's `~/.claude.json`; its own entry takes precedence, so it keeps working whichever Claude account is configured.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "Settings ▸ Supervisor is now Settings ▸ MCP Server.",
-            body: [
-              "Any agent on your Mac can reach the server, so the pane is named for it: Server, Access (Allow writes and message delivery), Clients, then Supervisor, which starts a Claude Code session attached to the server.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "New Session offers the supervisor only while the MCP server runs.",
-            body: [
-              "With the server off, Claude Code's New Session is a plain button, like Codex's and Grok Build's, instead of a menu holding a greyed-out item.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Agents start sessions in your terminal.",
-            body: [
-              "A session an agent starts through `armada_start_session` opens in your terminal even when you start your own Claude Code sessions in VS Code. A VS Code launch from an agent never reached the project's window unless Armada was the app in front, and in the terminal the agent gets the session's id. The window opens behind the app you are in, so what you are typing cannot land in its command line and stop the session starting. The \"Send an agent's opening message\" setting is gone with it.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Agents can start a whole room at once.",
-            body: [
-              "Instead of one session every ten seconds, agents may start up to eight a minute, enough for every seat of a room.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

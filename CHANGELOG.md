@@ -5,10 +5,12 @@ Notable changes to this repository. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases are tagged `app-v<version>` the way the sibling repos are,
-with `app-v1.18.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
+with `app-v1.19.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
-## [Unreleased]
+## [1.19.0] - 2026-11-28
+
+**Grok Build setup and faster agent room launches.** Connect Grok Build from Armada’s MCP Server settings and launch a whole investigation room in background terminal windows.
 
 ### Added
 
