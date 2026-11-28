@@ -87,6 +87,7 @@ nonisolated struct FleetBridge: FleetSource {
       // Corrected by a live refusal exactly as the popover and the Usage pane correct it,
       // through the same function, so the agent is never told a number the meter disowns.
       usage: account.usage.map { usage($0, correctedBy: account.quotaHit, now: now) },
+      usageUnavailable: account.usageUnavailable?.rawValue,
       quotaHit: account.quotaHit.map(quotaHit),
       sessions: account.sessions.sessions.map { session($0, in: account) })
   }

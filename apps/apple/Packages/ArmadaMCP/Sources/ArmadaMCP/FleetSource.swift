@@ -86,19 +86,23 @@ public struct FleetSnapshot: Sendable {
     /// one session's.
     public let modelID: String?
     public let usage: Usage?
+    /// Why the account reports no limits at all, when it has said so: `token`, `apiKey`,
+    /// `signedOut` or `unknown` (the app's `UsageUnavailable`). `usage` is nil while it is set.
+    public let usageUnavailable: String?
     /// The newest rate-limit refusal seen in any of this account's transcripts.
     public let quotaHit: QuotaHit?
     public let sessions: [ClaudeSession]
 
     public init(
       id: String, name: String, plan: String?, modelID: String?, usage: Usage?,
-      quotaHit: QuotaHit?, sessions: [ClaudeSession]
+      usageUnavailable: String? = nil, quotaHit: QuotaHit?, sessions: [ClaudeSession]
     ) {
       self.id = id
       self.name = name
       self.plan = plan
       self.modelID = modelID
       self.usage = usage
+      self.usageUnavailable = usageUnavailable
       self.quotaHit = quotaHit
       self.sessions = sessions
     }

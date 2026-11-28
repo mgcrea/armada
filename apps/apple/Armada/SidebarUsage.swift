@@ -29,6 +29,9 @@ struct SidebarUsage: View {
   /// Asked again at each tick, so a window rolling over voids its bar with nothing else
   /// having changed.
   let lines: (Date) -> [Line]
+  /// A few dimmed words where the bars would be, for an account that reports no limits at
+  /// all, so it does not read as one still being asked. See `UsageUnavailable`.
+  var unavailable: UsageUnavailable? = nil
 
   @AppStorage(DayWeights.defaultsKey) private var storedWeights = DayWeights.evenStored
   @AppStorage(WorkingHours.defaultsKey) private var storedHours = WorkingHours.flatStored
@@ -48,6 +51,13 @@ struct SidebarUsage: View {
         }
         .padding(.top, 2)
         .opacity(StalenessBadge.isStale(fetchedAt: fetchedAt, source: source, now: now) ? 0.5 : 1)
+      } else if let unavailable {
+        Text(unavailable.shortLabel)
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+          .help(unavailable.explanation)
+          .padding(.top, 2)
       }
     }
   }
@@ -67,17 +77,19 @@ extension SidebarUsage {
   /// A Claude Code account's two windows, corrected by a refusal as the menu bar's are.
   init(account: Account) {
     let usage = account.usage.flatMap { $0.isEmpty ? nil : $0 }
-    self.init(fetchedAt: usage?.fetchedAt, source: usage?.source ?? .cache) { now in
-      guard let usage else { return [] }
-      return [
-        usage.window(.fiveHour, correctedBy: account.quotaHit, now: now).map {
-          Line(id: "5h", window: $0, length: .fiveHour)
-        },
-        usage.window(.sevenDay, correctedBy: account.quotaHit, now: now).map {
-          Line(id: "7d", window: $0, length: .sevenDay)
-        },
-      ].compactMap { $0 }
-    }
+    self.init(
+      fetchedAt: usage?.fetchedAt, source: usage?.source ?? .cache,
+      lines: { now in
+        guard let usage else { return [] }
+        return [
+          usage.window(.fiveHour, correctedBy: account.quotaHit, now: now).map {
+            Line(id: "5h", window: $0, length: .fiveHour)
+          },
+          usage.window(.sevenDay, correctedBy: account.quotaHit, now: now).map {
+            Line(id: "7d", window: $0, length: .sevenDay)
+          },
+        ].compactMap { $0 }
+      }, unavailable: account.usageUnavailable)
   }
 
   /// A Codex home's two windows. Never faded: a Codex figure is as old as its turn, and only

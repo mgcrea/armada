@@ -679,6 +679,14 @@ struct AccountSummary: View {
         if let sevenDay, sevenDay.isNoteworthy {
           UsageVerdictLine(forecast: sevenDay)
         }
+      } else if let reason = account.usageUnavailable {
+        // Where the meters would be, so an account that cannot report limits does not read as
+        // one still being asked. The sentence and the way out are in the Usage pane.
+        Text(reason.shortLabel)
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+          .help(reason.explanation)
+          .padding(.top, 2)
       }
     }
     // Bounded to the rows that are drawn, and keyed on them so a session ending

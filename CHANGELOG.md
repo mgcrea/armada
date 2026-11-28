@@ -8,6 +8,18 @@ Releases are tagged `app-v<version>` the way the sibling repos are,
 with `app-v1.19.0` being the newest. Both the GitHub release notes and the Sparkle update dialog are
 rendered from this file, which is the curated summary. `### Internal` sections are left out of both.
 
+## [Unreleased]
+
+### Changed
+
+- **An account that can't report plan limits now says why.** A Claude Code account signed in with
+  a long-lived token (`claude setup-token`) gets no plan limits from Claude Code, and Armada used to
+  show "No usage data yet" forever. The Usage pane now says the account is signed in with a token,
+  billed by API usage, or signed out, with a Sign In… button that opens `claude auth login` in your
+  terminal for that account. The sidebar and the menu bar show a short note where the meters would
+  be, and an old cached reading is no longer shown for it. `armada_get_usage` reports the reason as
+  `usageUnavailable`.
+
 ## [1.19.0] - 2026-11-28
 
 **Grok Build setup and faster agent room launches.** Connect Grok Build from Armada’s MCP Server settings and launch a whole investigation room in background terminal windows.

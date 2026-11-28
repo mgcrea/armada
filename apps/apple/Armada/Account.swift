@@ -19,6 +19,20 @@ final class Account: Identifiable {
   /// "not yet" from "nothing there".
   private(set) var didReadUsage = false
 
+  /// Why this account reports no plan limits, once it has said it has none; nil while it
+  /// reports them, and before it has been asked. See `UsageUnavailable`.
+  ///
+  /// **While this is set, `usage` stays nil**, the cached reading included: a figure from
+  /// before the account lost its limits is a meter for something it can no longer report,
+  /// however clearly it is marked stale. The first probe that returns windows clears it.
+  private(set) var usageUnavailable: UsageUnavailable?
+
+  /// Bumped by each `probeUsage`, so one that finishes after a newer one has answered drops
+  /// its answer. Probes can overlap: `Accounts.probeAll` throttles at 20s, and a probe that
+  /// finds no limits asks `auth status` too, up to twice `ClaudeControl.timeout` in all. A
+  /// stale `.noLimits` landing after the person signed in would blank the meters again.
+  private var probeGeneration = 0
+
   /// This account's configured model, with its variant suffix — `"opus[1m]"` here.
   /// The default a session starts on, not what any session is necessarily using.
   private(set) var modelID: String?
@@ -114,7 +128,7 @@ final class Account: Identifiable {
     recentProjects = RecentProject.decode(root: root)
     // A nil decode leaves the last good snapshot in place rather than blanking
     // the pane: the common cause is catching the file mid-rewrite.
-    if let usage = UsageSnapshot.decode(root: root) { adopt(usage) }
+    if usageUnavailable == nil, let usage = UsageSnapshot.decode(root: root) { adopt(usage) }
   }
 
   /// Ask this folder's account for its current windows, off the main actor.
@@ -128,17 +142,40 @@ final class Account: Identifiable {
   /// that called this, and `probe` below runs as its child, so the cancellation reaches
   /// `ClaudeControl`'s check before a process is spawned and this declines to adopt
   /// whatever a probe already running brings back.
+  ///
+  /// **An account with no limits is asked why each time it says so**, not once: `claude auth
+  /// status` is local and a fifth of a second, and a person who swaps a token for an API key
+  /// should not be told about the token until Armada restarts.
   func probeUsage() async {
     // Spawns `claude`, which talks to the network as whoever is signed in.
     guard !ScreenshotMode.isEnabled else { return }
-    guard let probed = await Self.probe(folder), !Task.isCancelled else { return }
-    adopt(probed)
+    probeGeneration += 1
+    let generation = probeGeneration
+    guard let answer = await Self.probe(folder), !Task.isCancelled, generation == probeGeneration
+    else { return }
+    switch answer {
+    case .limits(let snapshot):
+      usageUnavailable = nil
+      adopt(snapshot)
+    case .noLimits:
+      let reason = await Self.reason(folder)
+      guard !Task.isCancelled, generation == probeGeneration else { return }
+      // A failed `auth status` keeps the reason already known, rather than trading a Sign In
+      // button for "didn't report" until the next probe.
+      usageUnavailable = reason ?? usageUnavailable ?? .unknown
+      usage = nil
+    }
   }
 
   /// Off the main actor, as a child of the caller's task.
   @concurrent
-  private nonisolated static func probe(_ folder: ClaudeConfigFolder) async -> UsageSnapshot? {
+  private nonisolated static func probe(_ folder: ClaudeConfigFolder) async -> UsageProbeAnswer? {
     await UsageProbe.run(folder: folder)
+  }
+
+  @concurrent
+  private nonisolated static func reason(_ folder: ClaudeConfigFolder) async -> UsageUnavailable? {
+    await UsageProbe.authStatus(folder: folder)
   }
 
   /// Take a new reading, unless it would be a step backwards.

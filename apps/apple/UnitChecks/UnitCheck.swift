@@ -31,6 +31,7 @@ struct UnitCheck {
     transcriptQuota()
     contextWindow()
     usageForecast()
+    usageUnavailable()
     usageCountdown()
     usageChartSeries()
     dayWeights()
@@ -929,6 +930,62 @@ struct UnitCheck {
   }
 
   // MARK: - UsageForecast
+
+  static func usageUnavailable() {
+    section("UsageUnavailable")
+    func status(_ json: String) -> UsageUnavailable? {
+      UsageUnavailable(authStatus: Data(json.utf8))
+    }
+    // `claude auth status` on 2.1.332, trimmed: the personal folder after a token replaced its
+    // claude.ai login, and the Team folder beside it.
+    expectEqual(
+      "a long-lived token", status(#"{"loggedIn": true, "authMethod": "oauth_token"}"#), .token)
+    expectEqual(
+      "a claude.ai login with no limits is not explained away",
+      status(#"{"loggedIn": true, "authMethod": "claude.ai", "subscriptionType": "team"}"#),
+      .unknown)
+    expectEqual("an API key", status(#"{"loggedIn": true, "authMethod": "api_key"}"#), .apiKey)
+    expectEqual(
+      "a key helper", status(#"{"loggedIn": true, "authMethod": "api_key_helper"}"#), .apiKey)
+    expectEqual(
+      "Bedrock or Vertex", status(#"{"loggedIn": true, "authMethod": "third_party"}"#), .apiKey)
+    expectEqual(
+      "signed out", status(#"{"loggedIn": false, "authMethod": "oauth_token"}"#), .signedOut)
+    expectEqual("no method", status(#"{"loggedIn": true, "authMethod": "none"}"#), .signedOut)
+    expectEqual(
+      "a method nobody knows yet", status(#"{"loggedIn": true, "authMethod": "sso"}"#), .unknown)
+    check("text output is not an answer", status("Logged in with a token\n") == nil)
+    check("an object without loggedIn is not an answer", status(#"{"authMethod": "x"}"#) == nil)
+    check("a token offers sign-in", UsageUnavailable.token.offersSignIn)
+    check("API billing does not", !UsageUnavailable.apiKey.offersSignIn)
+
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func answer(_ json: String) -> UsageProbeAnswer? {
+      guard let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
+      else { return nil }
+      return UsageProbeAnswer(payload: object, fetchedAt: now)
+    }
+    // The token account's answer, measured 2026-11-28, with `session` left out.
+    if case .noLimits? = answer(
+      #"{"subscription_type": null, "rate_limits_available": false, "rate_limits": null}"#)
+    {
+      check("no limits is an answer", true)
+    } else {
+      check("no limits is an answer", false)
+    }
+    if case .limits(let snapshot)? = answer(
+      #"{"rate_limits_available": true, "rate_limits": {"five_hour": {"utilization": 21, "resets_at": "2026-11-28T17:40:00.260574+00:00"}}}"#
+    ) {
+      expectEqual("limits decode as the cache does", snapshot.fiveHour?.utilization, 21)
+      check("and are live", snapshot.source == .live)
+    } else {
+      check("limits are an answer", false)
+    }
+    check(
+      "available with no windows is a failed probe",
+      answer(#"{"rate_limits_available": true, "rate_limits": {}}"#) == nil)
+    check("no flag is a failed probe", answer(#"{"rate_limits": {}}"#) == nil)
+  }
 
   static func usageForecast() {
     section("UsageForecast")

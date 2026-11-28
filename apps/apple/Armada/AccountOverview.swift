@@ -30,7 +30,10 @@ struct AccountOverview: View {
       OverviewUsageSection(
         accountID: account.id, rows: usage.map { account.windowRows(for: $0, now: now) } ?? [],
         week: usage?.sevenDay, fetchedAt: usage?.fetchedAt, now: now,
-        empty: account.didReadUsage ? "No usage data yet" : "Reading usage…"
+        empty: account.didReadUsage ? "No usage data yet" : "Reading usage…",
+        unavailable: account.usageUnavailable.map {
+          UsageUnavailableNote(reason: $0, folder: account.folder)
+        }
       ) {
         if let usage {
           StalenessBadge(
@@ -85,6 +88,9 @@ struct OverviewUsageSection<Status: View>: View {
   let now: Date
   /// Said when there are no windows to list.
   let empty: String
+  /// Said instead of `empty` for an account that reports no limits at all. See
+  /// `UsageUnavailable`.
+  var unavailable: UsageUnavailableNote? = nil
   /// How old the figures are, in the header's trailing corner.
   @ViewBuilder let status: () -> Status
 
@@ -94,7 +100,9 @@ struct OverviewUsageSection<Status: View>: View {
   var body: some View {
     let profile = PaceProfile(storedDays: storedWeights, storedHours: storedHours)
     Section {
-      if rows.isEmpty {
+      if rows.isEmpty, let unavailable {
+        unavailable
+      } else if rows.isEmpty {
         Text(empty).foregroundStyle(.secondary)
       } else {
         ForEach(rows) { row in

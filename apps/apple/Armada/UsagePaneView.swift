@@ -121,6 +121,8 @@ struct AccountUsageCard: View {
         WeeklyChart(
           accountID: account.id, window: usage.sevenDay, profile: profile,
           fetchedAt: usage.fetchedAt, now: now)
+      } else if let reason = account.usageUnavailable {
+        UsageUnavailableNote(reason: reason, folder: account.folder)
       } else {
         Text(account.didReadUsage ? "No usage data yet" : "Reading usage…")
           .font(.callout)
@@ -130,6 +132,36 @@ struct AccountUsageCard: View {
     .padding(16)
     .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
     .demoTarget(DemoTargetKey.usage(account.id))
+  }
+}
+
+/// What a Claude Code account's card says in place of meters it will never have, and the way
+/// out when there is one. See `UsageUnavailable`.
+///
+/// **Sign In opens the terminal rather than signing in for the person**: `claude auth login`
+/// is Anthropic's own flow, in a browser, and the token it replaces may be there on purpose —
+/// for headless runs — which is the person's call to undo, not Armada's.
+struct UsageUnavailableNote: View {
+  let reason: UsageUnavailable
+  let folder: ClaudeConfigFolder
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(reason.explanation)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if reason.offersSignIn {
+        Button("Sign In…") {
+          NewSessionLauncher.shared.start(
+            .claude(folder), in: FileManager.default.homeDirectoryForCurrentUser, start: .signIn)
+        }
+        .controlSize(.small)
+        .help(
+          "Opens \(NewSessionLauncher.shared.terminal.name) with claude auth login on this account. The limits appear once you have signed in."
+        )
+      }
+    }
   }
 }
 

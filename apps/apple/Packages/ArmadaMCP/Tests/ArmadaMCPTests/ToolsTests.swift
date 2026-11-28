@@ -225,6 +225,23 @@ struct ToolsTests {
     #expect(result.text.contains("not read yet"))
   }
 
+  @Test("An account that cannot report limits says why, rather than 'not read yet'")
+  func unavailableUsage() async throws {
+    let source = FakeFleetSource(
+      FakeFleetSource.fleet(claude: [
+        FleetSnapshot.ClaudeAccount(
+          id: "p", name: "Personal", plan: nil, modelID: nil, usage: nil,
+          usageUnavailable: "token", quotaHit: nil, sessions: [])
+      ]))
+    // Named, because the fake fleet's other vendors have unread usage of their own.
+    let result = await call("armada_get_usage", ["account": "Personal"], on: source)
+    let account = try #require(result.structuredContent?["accounts"]?[0])
+    #expect(account["usage"] == .null)
+    #expect(account["usageUnavailable"] == .string("token"))
+    #expect(result.text.contains("signed in with a token"))
+    #expect(!result.text.contains("not read yet"))
+  }
+
   @Test("Usage carries both windows, the reset countdown and the source")
   func usage() async throws {
     let result = await call("armada_get_usage", ["account": "Default"])

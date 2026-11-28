@@ -74,11 +74,17 @@ nonisolated enum NewSession {
   /// `resume` continues a session in place, and is offered only for one that is not live
   /// anywhere, which `SessionStarterBridge` checks: that is what makes it safe where resuming
   /// an open session is not. The resumed session keeps its id (measured the same day).
+  ///
+  /// **And `signIn`, which is no session at all**: `claude auth login --claudeai` on the
+  /// account's folder, for the Usage card of an account whose token reports no limits (see
+  /// `UsageUnavailable`). It goes through here because this is what already opens the
+  /// person's terminal on the right folder; Claude Code only.
   enum Start: Hashable, Sendable {
     case fresh
     case fork(sessionID: String)
     case identified(sessionID: String)
     case resume(sessionID: String)
+    case signIn
   }
 
   /// What turns an ordinary Claude Code launch into a supervisor: Armada's MCP server
@@ -274,6 +280,9 @@ nonisolated enum NewSession {
     case .fork:
       assertionFailure("The Antigravity CLI cannot fork a conversation.")
       launch = .fresh
+    case .signIn:
+      assertionFailure("Only Claude Code is signed in from Armada.")
+      launch = .fresh
     }
     return AntigravityLaunch.arguments(start: launch, model: model.map(quoted), prompt: prompt)
   }
@@ -306,6 +315,16 @@ nonisolated enum NewSession {
         ["--resume", quoted(sessionID)]
       case (.codex, .resume(let sessionID)):
         ["resume", quoted(sessionID)]
+      // Measured with `claude auth login --help` on 2.1.332: `--claudeai` is the default, named
+      // anyway so a future default cannot turn this into a Console login.
+      case (.claude, .signIn):
+        ["auth", "login", "--claudeai"]
+      case (.codex, .signIn), (.grok, .signIn):
+        // Never offered: the Sign In button is on Claude Code's Usage card alone.
+        {
+          assertionFailure("Only Claude Code is signed in from Armada.")
+          return []
+        }()
       case (.claude, .fork(let sessionID)):
         // `--fork-session` is only meaningful alongside `--resume` or `--continue`;
         // measured against Claude Code 2.1.269 on 2026-09-13.

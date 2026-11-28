@@ -1,3 +1,4 @@
+import ArmadaProcess
 import Foundation
 
 /// Asking Claude Code what the limits are, instead of reading what it left behind.
@@ -29,11 +30,12 @@ import Foundation
 ///
 /// `@concurrent`: the probe and its decoding run off the main actor.
 nonisolated enum UsageProbe {
-  /// Ask one config folder's account for its current windows, or nil.
+  /// Ask one config folder's account for its current windows, or whether it has none.
   ///
-  /// Nil on every failure — no binary, a timeout, a malformed answer, or an account
-  /// that reports `rate_limits_available: false` — and the caller keeps the cached
-  /// snapshot. There is no failure here worth blanking a pane for.
+  /// Nil on every failure — no binary, a timeout, a malformed answer — and the caller keeps
+  /// what it had. There is no failure here worth blanking a pane for. An account that answers
+  /// `rate_limits_available: false` is not a failure: that is `.noLimits`, and the caller asks
+  /// `authStatus` why. See `UsageUnavailable`.
   ///
   /// **Runs from the home directory, deliberately.** `ClaudeControl` takes a `cwd`
   /// because what `claude` loads depends on it, and a cwd inside a repo would have it
@@ -44,32 +46,37 @@ nonisolated enum UsageProbe {
   /// an account's limits, and on a 3-minute timer they were eleven processes and a
   /// plugin's failed save every time — see `ClaudeControl.isolation`.
   @concurrent
-  static func run(folder: ClaudeConfigFolder) async -> UsageSnapshot? {
+  static func run(folder: ClaudeConfigFolder) async -> UsageProbeAnswer? {
     guard
       let payload = await ClaudeControl.request(
         subtype: "get_usage", folder: folder,
         cwd: FileManager.default.homeDirectoryForCurrentUser, isolated: true)
     else { return nil }
-    return snapshot(from: payload)
-  }
-
-  /// Decode narrowly, exactly as the cache is decoded.
-  ///
-  /// The payload also carries a `behaviors` block — request and session counts, and
-  /// which skills, agents and MCP servers the person uses — plus `spend` and
-  /// `extra_usage`. None of it is read. That is the same rule `UsageSnapshot` states
-  /// for the cache, and it matters more here: this is the user's own analytics, and
-  /// Armada has no business holding it to draw two meters.
-  private static func snapshot(from payload: [String: Any]) -> UsageSnapshot? {
-    // False for a folder whose account did not resolve — which is what a wrongly set
-    // `CLAUDE_CONFIG_DIR` looks like, rather than an error. See `isDefault`.
-    guard payload["rate_limits_available"] as? Bool == true,
-      let rateLimits = payload["rate_limits"] as? [String: Any]
-    else { return nil }
-
     // `.now` rather than a field: the answer was computed for this request, so its
     // age is the round trip. Nothing in the payload dates it.
-    let snapshot = UsageSnapshot.decode(windows: rateLimits, fetchedAt: .now, source: .live)
-    return snapshot.isEmpty ? nil : snapshot
+    return UsageProbeAnswer(payload: payload, fetchedAt: .now)
+  }
+
+  /// How the folder's account is signed in, for an account that reported no limits.
+  ///
+  /// `claude auth status` with the probe's environment variables, though not its isolation:
+  /// the subcommand reads the settings files, so an `apiKeyHelper` or a provider set there is
+  /// part of its answer — which is the honest one, since sessions see them too. Local — it
+  /// reads the sign-in, it does not call the API — and about 0.2s. It reads no secret into
+  /// Armada: what comes back is the method's name, never the token.
+  ///
+  /// Nil when the command could not run or printed something else, so the caller can keep a
+  /// reason it already had; `.unknown` when it answered with a method this does not know.
+  @concurrent
+  static func authStatus(folder: ClaudeConfigFolder) async -> UsageUnavailable? {
+    guard let executable = ClaudeControl.executable(),
+      let finished = await ChildProcess.collect(
+        executable, arguments: ["auth", "status", "--json"],
+        environment: ClaudeControl.environment(for: folder),
+        directory: FileManager.default.homeDirectoryForCurrentUser,
+        timeout: ClaudeControl.timeout, stop: .terminate(grace: ClaudeControl.killGrace))
+    else { return nil }
+    // Not `succeeded`: a signed-out account exits 1 and still says so.
+    return UsageUnavailable(authStatus: finished.standardOutput)
   }
 }
